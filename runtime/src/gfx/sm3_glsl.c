@@ -1,0 +1,659 @@
+/* Direct3D 9 shader bytecode (vs/ps 2.0 - 3.0) -> GLSL 330 / ESSL 300.
+ *
+ * Linking convention: VS outputs and PS inputs are named by D3D semantic,
+ * `x_<usage>_<index>` (5 = TEXCOORD, 10 = COLOR), so any VS pairs with any PS.
+ * Uniforms: vs_c[256], ps_c[224], vs_i/ps_i[16] (ivec4), vs_b/ps_b[16] (int),
+ * samplers s0..s15 (vertex samplers vs_s0..vs_s3).
+ *
+ * Rendering is done "D3D-up": the VS epilogue flips Y, applies the D3D9
+ * half-pixel offset and remaps depth to GL's [-1,1], so render targets come out
+ * with row 0 = top and textures need no flipping anywhere. */
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "sm3_glsl.h"
+
+typedef struct {
+    char *s;
+    size_t len, cap;
+} Str;
+
+static void sf(Str *b, const char *fmt, ...) {
+    va_list ap;
+    for (;;) {
+        va_start(ap, fmt);
+        int n = vsnprintf(b->s ? b->s + b->len : NULL, b->s ? b->cap - b->len : 0, fmt, ap);
+        va_end(ap);
+        if (n < 0) return;
+        if (b->s && b->len + (size_t)n < b->cap) {
+            b->len += (size_t)n;
+            return;
+        }
+        b->cap = (b->cap + (size_t)n + 1) * 2;
+        b->s = realloc(b->s, b->cap);
+    }
+}
+
+enum {
+    RT_TEMP = 0, RT_INPUT = 1, RT_CONST = 2, RT_ADDR = 3, RT_RASTOUT = 4, RT_ATTROUT = 5, RT_OUTPUT = 6,
+    RT_CONSTINT = 7, RT_COLOROUT = 8, RT_DEPTHOUT = 9, RT_SAMPLER = 10, RT_CONST2 = 11, RT_CONST3 = 12,
+    RT_CONST4 = 13, RT_CONSTBOOL = 14, RT_LOOP = 15, RT_TEMPF16 = 16, RT_MISC = 17, RT_LABEL = 18, RT_PRED = 19,
+};
+
+typedef struct {
+    bool pixel;
+    int major, minor;
+    const uint32_t *tok;
+    uint32_t n, pos;
+    Str decl, body;
+    /* declared semantics */
+    int in_usage[16], in_index[16];      /* v# */
+    int out_usage[16], out_index[16];    /* o# (vs3) */
+    int samp_type[16];
+    bool temp_used[32], input_used[16], output_used[16], tex_used[8], color_out_used[4];
+    bool depth_out, addr_used, loop_used, pred_used, vpos, vface, oD[2], oT[8], oFog, oPts;
+    float defs[256][4];
+    bool def_set[256];
+    int32_t defi[16][4];
+    bool defi_set[16];
+    int defb[16];
+    bool defb_set[16];
+    int indent;
+    int loop_depth;
+    bool failed;
+    char err[160];
+    Sm3Info *info;
+} Ctx;
+
+static const char *P(Ctx *c) { return c->pixel ? "ps" : "vs"; }
+
+static void fail(Ctx *c, const char *fmt, ...) {
+    if (c->failed) return;
+    c->failed = true;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(c->err, sizeof c->err, fmt, ap);
+    va_end(ap);
+}
+
+static int rtype(uint32_t t) { return (int)(((t >> 28) & 7) | ((t >> 8) & 0x18)); }
+static int rnum(uint32_t t) { return (int)(t & 0x7FF); }
+
+static const char *swz_chars = "xyzw";
+
+static void line(Ctx *c, const char *fmt, ...) {
+    for (int i = 0; i < c->indent + 1; i++) sf(&c->body, "  ");
+    va_list ap;
+    va_start(ap, fmt);
+    char tmp[2048];
+    vsnprintf(tmp, sizeof tmp, fmt, ap);
+    va_end(ap);
+    sf(&c->body, "%s\n", tmp);
+}
+
+/* Register name as a vec4 expression (without swizzle). `rel` is an address
+ * token for relative addressing or 0. */
+static void reg_name(Ctx *c, int type, int num, uint32_t rel, char *out, size_t n) {
+    char relexpr[64] = "";
+    if (rel) {
+        int rt = rtype(rel), comp = (int)((rel >> 16) & 3);
+        if (rt == RT_LOOP) snprintf(relexpr, sizeof relexpr, "aL+");
+        else {
+            snprintf(relexpr, sizeof relexpr, "a0.%c+", swz_chars[comp]);
+            c->addr_used = true;
+        }
+    }
+    switch (type) {
+        case RT_TEMP: case RT_TEMPF16:
+            if (num < 32) c->temp_used[num] = true;
+            snprintf(out, n, "r%d", num);
+            return;
+        case RT_INPUT:
+            if (c->pixel && c->major < 3) {
+                /* ps_2_x: v0/v1 are diffuse/specular colors */
+                snprintf(out, n, "x_10_%d", num);
+                c->info->ps_in_mask |= 1u << (16 + num);
+            } else if (rel) {
+                snprintf(out, n, "vin[%s%d]", relexpr, num);
+            } else {
+                if (num < 16) c->input_used[num] = true;
+                snprintf(out, n, "%s_v%d", P(c), num);
+            }
+            return;
+        case RT_CONST: case RT_CONST2: case RT_CONST3: case RT_CONST4: {
+            int base = num + (type == RT_CONST2 ? 2048 : type == RT_CONST3 ? 4096 : type == RT_CONST4 ? 6144 : 0);
+            if (!rel && base < 256 && c->def_set[base]) {
+                float *d = c->defs[base];
+                snprintf(out, n, "vec4(%.9g,%.9g,%.9g,%.9g)", d[0], d[1], d[2], d[3]);
+            } else if (rel) {
+                snprintf(out, n, "%s_c[int(%s%d)]", P(c), relexpr, base);
+            } else {
+                snprintf(out, n, "%s_c[%d]", P(c), base);
+            }
+            return;
+        }
+        case RT_ADDR: /* vs: a0, ps<3: t# */
+            if (c->pixel) {
+                if (num < 8) c->tex_used[num] = true;
+                snprintf(out, n, "x_5_%d", num);
+                c->info->ps_in_mask |= 1u << num;
+            } else {
+                c->addr_used = true;
+                snprintf(out, n, "vec4(a0)");
+            }
+            return;
+        case RT_CONSTINT:
+            if (num < 16 && c->defi_set[num])
+                snprintf(out, n, "vec4(%d,%d,%d,%d)", c->defi[num][0], c->defi[num][1], c->defi[num][2], c->defi[num][3]);
+            else snprintf(out, n, "vec4(%s_i[%d])", P(c), num);
+            return;
+        case RT_CONSTBOOL:
+            if (num < 16 && c->defb_set[num]) snprintf(out, n, "vec4(%d)", c->defb[num]);
+            else snprintf(out, n, "vec4(%s_b[%d])", P(c), num);
+            return;
+        case RT_LOOP:
+            c->loop_used = true;
+            snprintf(out, n, "vec4(aL)");
+            return;
+        case RT_MISC:
+            if (num == 0) { c->vpos = true; snprintf(out, n, "vPos"); }
+            else { c->vface = true; snprintf(out, n, "vec4(gl_FrontFacing ? 1.0 : -1.0)"); }
+            return;
+        case RT_PRED:
+            c->pred_used = true;
+            snprintf(out, n, "vec4(p0)");
+            return;
+        case RT_SAMPLER:
+            snprintf(out, n, "s%d", num);
+            return;
+        default:
+            snprintf(out, n, "vec4(0.0)");
+            fail(c, "unsupported source register type %d", type);
+            return;
+    }
+}
+
+/* source operand -> GLSL vec4 expression with swizzle and modifier */
+static void src(Ctx *c, uint32_t t, uint32_t rel, char *out, size_t n) {
+    char base[128];
+    reg_name(c, rtype(t), rnum(t), rel, base, sizeof base);
+    uint32_t sw = (t >> 16) & 0xFF;
+    char swz[8];
+    if (sw == 0xE4) swz[0] = 0;
+    else {
+        swz[0] = '.';
+        for (int i = 0; i < 4; i++) swz[1 + i] = swz_chars[(sw >> (2 * i)) & 3];
+        swz[5] = 0;
+    }
+    char e[192];
+    snprintf(e, sizeof e, "%s%s", base, swz);
+    switch ((t >> 24) & 0xF) {
+        case 0: snprintf(out, n, "%s", e); break;
+        case 1: snprintf(out, n, "(-%s)", e); break;
+        case 2: snprintf(out, n, "(%s-0.5)", e); break;
+        case 3: snprintf(out, n, "(0.5-%s)", e); break;
+        case 4: snprintf(out, n, "(2.0*%s-1.0)", e); break;
+        case 5: snprintf(out, n, "(1.0-2.0*%s)", e); break;
+        case 6: snprintf(out, n, "(1.0-%s)", e); break;
+        case 7: snprintf(out, n, "(2.0*%s)", e); break;
+        case 8: snprintf(out, n, "(-2.0*%s)", e); break;
+        case 11: snprintf(out, n, "abs(%s)", e); break;
+        case 12: snprintf(out, n, "(-abs(%s))", e); break;
+        case 13: snprintf(out, n, "(1.0-%s)", e); break; /* NOT (bool) */
+        default: snprintf(out, n, "%s", e); break;       /* dz/dw: projective forms, ignored */
+    }
+}
+
+typedef struct {
+    char name[64];
+    char mask[6];  /* ".xyz" or "" */
+    int ncomp;
+    bool sat;
+    bool is_addr;
+} Dst;
+
+static void dst(Ctx *c, uint32_t t, Dst *d) {
+    int type = rtype(t), num = rnum(t);
+    uint32_t m = (t >> 16) & 0xF;
+    d->sat = (t >> 20) & 1;
+    d->is_addr = false;
+    d->ncomp = 0;
+    d->mask[0] = 0;
+    if (m != 0xF) {
+        d->mask[0] = '.';
+        int k = 1;
+        for (int i = 0; i < 4; i++)
+            if (m & (1u << i)) d->mask[k++] = swz_chars[i];
+        d->mask[k] = 0;
+        d->ncomp = k - 1;
+    } else {
+        d->ncomp = 4;
+    }
+    switch (type) {
+        case RT_TEMP: case RT_TEMPF16:
+            if (num < 32) c->temp_used[num] = true;
+            snprintf(d->name, sizeof d->name, "r%d", num);
+            break;
+        case RT_ADDR:
+            if (c->pixel) { snprintf(d->name, sizeof d->name, "x_5_%d", num); }
+            else { c->addr_used = true; d->is_addr = true; snprintf(d->name, sizeof d->name, "a0"); }
+            break;
+        case RT_RASTOUT:
+            if (num == 0) snprintf(d->name, sizeof d->name, "o_pos");
+            else if (num == 1) { c->oFog = true; snprintf(d->name, sizeof d->name, "o_fog"); }
+            else { c->oPts = true; snprintf(d->name, sizeof d->name, "o_pts"); }
+            break;
+        case RT_ATTROUT:
+            if (num < 2) c->oD[num] = true;
+            snprintf(d->name, sizeof d->name, "x_10_%d", num);
+            c->info->vs_out_mask |= 1u << (16 + num);
+            break;
+        case RT_OUTPUT:
+            if (c->major >= 3) {
+                if (num < 16) c->output_used[num] = true;
+                snprintf(d->name, sizeof d->name, "o%d", num);
+            } else {
+                if (num < 8) c->oT[num] = true;
+                snprintf(d->name, sizeof d->name, "x_5_%d", num);
+                c->info->vs_out_mask |= 1u << num;
+            }
+            break;
+        case RT_COLOROUT:
+            if (num < 4) c->color_out_used[num] = true;
+            snprintf(d->name, sizeof d->name, "oC%d", num);
+            break;
+        case RT_DEPTHOUT:
+            c->depth_out = true;
+            snprintf(d->name, sizeof d->name, "o_depth");
+            break;
+        case RT_PRED:
+            c->pred_used = true;
+            snprintf(d->name, sizeof d->name, "p0v");
+            break;
+        default:
+            fail(c, "unsupported destination register type %d", type);
+            snprintf(d->name, sizeof d->name, "r31");
+            break;
+    }
+}
+
+/* assign a vec4 expression to a destination with mask/saturate */
+static void assign(Ctx *c, const Dst *d, const char *expr) {
+    char e[2048];
+    if (d->sat) snprintf(e, sizeof e, "clamp(%s,0.0,1.0)", expr);
+    else snprintf(e, sizeof e, "%s", expr);
+    if (d->is_addr) { /* mova: round to nearest (vs_2_0+) */
+        if (d->mask[0]) line(c, "a0%s = ivec4(floor((%s)+0.5))%s;", d->mask, e, d->mask);
+        else line(c, "a0 = ivec4(floor((%s)+0.5));", e);
+        return;
+    }
+    if (d->mask[0]) line(c, "%s%s = vec4(%s)%s;", d->name, d->mask, e, d->mask);
+    else line(c, "%s = vec4(%s);", d->name, e);
+}
+
+static int op_len(Ctx *c, uint32_t ins) {
+    if (c->major >= 2) return (int)((ins >> 24) & 0xF);
+    return -1;
+}
+
+/* read a source parameter (and its relative-address token) */
+static uint32_t read_src(Ctx *c, uint32_t *rel) {
+    uint32_t t = c->tok[c->pos++];
+    *rel = 0;
+    if ((t >> 13) & 1) {
+        if (c->major >= 2) *rel = c->tok[c->pos++];
+        else *rel = 0x0003E000u | 0x80000000u; /* vs_1_1: a0.x */
+    }
+    return t;
+}
+
+static const char *cmp_op(uint32_t control) {
+    switch (control) {
+        case 1: return ">";
+        case 2: return "==";
+        case 3: return ">=";
+        case 4: return "<";
+        case 5: return "!=";
+        case 6: return "<=";
+        default: return "==";
+    }
+}
+
+static void translate_ins(Ctx *c) {
+    uint32_t ins = c->tok[c->pos++];
+    uint32_t op = ins & 0xFFFF;
+    uint32_t control = (ins >> 16) & 0xFF;
+    if (op == 0xFFFE) { /* comment */
+        c->pos += (ins >> 16) & 0x7FFF;
+        return;
+    }
+    if (op == 0xFFFF) return;
+    int len = op_len(c, ins);
+    uint32_t start = c->pos;
+    Dst d;
+    char a[256], b[256], e[256], expr[1024];
+    uint32_t ra, rb, re;
+    if (ins & (1u << 28)) fail(c, "predicated instruction (op %u)", op);
+
+    switch (op) {
+        case 0: break; /* nop */
+        case 31: { /* dcl */
+            uint32_t usage_tok = c->tok[c->pos++];
+            uint32_t reg = c->tok[c->pos++];
+            int type = rtype(reg), num = rnum(reg);
+            int usage = (int)(usage_tok & 0x1F), uidx = (int)((usage_tok >> 16) & 0xF);
+            if (type == RT_SAMPLER) {
+                if (num < 16) c->samp_type[num] = (int)((usage_tok >> 27) & 0xF);
+            } else if (type == RT_INPUT && num < 16) {
+                c->in_usage[num] = usage;
+                c->in_index[num] = uidx;
+            } else if (type == RT_OUTPUT && num < 16) {
+                c->out_usage[num] = usage;
+                c->out_index[num] = uidx;
+            } else if (type == RT_ADDR && c->pixel && num < 8) {
+                c->tex_used[num] = true; /* ps_2_0 dcl t# */
+            } else if (type == RT_MISC) {
+                if (num == 0) c->vpos = true; else c->vface = true;
+            }
+            break;
+        }
+        case 81: { /* def c#, x, y, z, w */
+            uint32_t reg = c->tok[c->pos++];
+            int num = rnum(reg);
+            float v[4];
+            memcpy(v, &c->tok[c->pos], 16);
+            c->pos += 4;
+            if (num < 256) { memcpy(c->defs[num], v, 16); c->def_set[num] = true; }
+            break;
+        }
+        case 48: { /* defi */
+            uint32_t reg = c->tok[c->pos++];
+            int num = rnum(reg);
+            if (num < 16) { memcpy(c->defi[num], &c->tok[c->pos], 16); c->defi_set[num] = true; }
+            c->pos += 4;
+            break;
+        }
+        case 47: { /* defb */
+            uint32_t reg = c->tok[c->pos++];
+            int num = rnum(reg);
+            if (num < 16) { c->defb[num] = (int)c->tok[c->pos]; c->defb_set[num] = true; }
+            c->pos += 1;
+            break;
+        }
+#define DST() dst(c, c->tok[c->pos++], &d)
+#define SRC(x, r) src(c, read_src(c, &r), r, x, sizeof x)
+        case 1: case 46: DST(); SRC(a, ra); assign(c, &d, a); break; /* mov / mova */
+        case 2: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "%s+%s", a, b); assign(c, &d, expr); break;
+        case 3: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "%s-%s", a, b); assign(c, &d, expr); break;
+        case 4: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "%s*%s+%s", a, b, e); assign(c, &d, expr); break;
+        case 5: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "%s*%s", a, b); assign(c, &d, expr); break;
+        case 6: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "vec4(1.0/(%s).x)", a); assign(c, &d, expr); break;
+        case 7: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "vec4(inversesqrt(abs((%s).x)))", a); assign(c, &d, expr); break;
+        case 8: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(dot((%s).xyz,(%s).xyz))", a, b); assign(c, &d, expr); break;
+        case 9: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(dot(%s,%s))", a, b); assign(c, &d, expr); break;
+        case 10: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "min(%s,%s)", a, b); assign(c, &d, expr); break;
+        case 11: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "max(%s,%s)", a, b); assign(c, &d, expr); break;
+        case 12: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(lessThan(%s,%s))", a, b); assign(c, &d, expr); break;
+        case 13: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(greaterThanEqual(%s,%s))", a, b); assign(c, &d, expr); break;
+        case 14: case 78: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "vec4(exp2((%s).x))", a); assign(c, &d, expr); break;
+        case 15: case 79: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "vec4(log2(abs((%s).x)))", a); assign(c, &d, expr); break;
+        case 16: /* lit */
+            DST(); SRC(a, ra);
+            snprintf(expr, sizeof expr,
+                     "vec4(1.0, max((%s).x,0.0), ((%s).x>0.0 ? pow(max((%s).y,0.0), clamp((%s).w,-127.9961,127.9961)) : 0.0), 1.0)",
+                     a, a, a, a);
+            assign(c, &d, expr);
+            break;
+        case 17: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(1.0,(%s).y*(%s).y,(%s).z,(%s).w)", a, b, a, b); assign(c, &d, expr); break;
+        case 18: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "mix(%s,%s,%s)", e, b, a); assign(c, &d, expr); break;
+        case 19: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "fract(%s)", a); assign(c, &d, expr); break;
+        case 20: case 21: case 22: case 23: case 24: { /* m4x4 m4x3 m3x4 m3x3 m3x2 */
+            DST();
+            SRC(a, ra);
+            uint32_t mt = read_src(c, &rb);
+            int rows = op == 20 ? 4 : op == 21 ? 3 : op == 22 ? 4 : op == 23 ? 3 : 2;
+            bool v3 = op >= 22;
+            char parts[4][256];
+            for (int r = 0; r < 4; r++) {
+                if (r >= rows) { snprintf(parts[r], sizeof parts[r], "0.0"); continue; }
+                uint32_t t = (mt & ~0x7FFu) | (uint32_t)(rnum(mt) + r);
+                char m[192];
+                src(c, t, rb, m, sizeof m);
+                if (v3) snprintf(parts[r], sizeof parts[r], "dot((%s).xyz,(%s).xyz)", a, m);
+                else snprintf(parts[r], sizeof parts[r], "dot(%s,%s)", a, m);
+            }
+            snprintf(expr, sizeof expr, "vec4(%s,%s,%s,%s)", parts[0], parts[1], parts[2], parts[3]);
+            assign(c, &d, expr);
+            break;
+        }
+        case 32: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(pow(abs((%s).x),(%s).x))", a, b); assign(c, &d, expr); break;
+        case 33: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(cross((%s).xyz,(%s).xyz),0.0)", a, b); assign(c, &d, expr); break;
+        case 34: DST(); SRC(a, ra); if (len >= 3) { c->pos += (uint32_t)len - 2; } snprintf(expr, sizeof expr, "sign(%s)", a); assign(c, &d, expr); break;
+        case 35: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "abs(%s)", a); assign(c, &d, expr); break;
+        case 36: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "((%s)*inversesqrt(max(dot((%s).xyz,(%s).xyz),1e-30)))", a, a, a); assign(c, &d, expr); break;
+        case 37: /* sincos: vs_2 has two extra constant sources */
+            DST(); SRC(a, ra);
+            if (len == 4 || (c->major < 3 && len > 2)) { uint32_t r1, r2; read_src(c, &r1); read_src(c, &r2); }
+            snprintf(expr, sizeof expr, "vec4(cos((%s).x),sin((%s).x),0.0,0.0)", a, a);
+            assign(c, &d, expr);
+            break;
+        case 80: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "mix(%s,%s,vec4(greaterThan(%s,vec4(0.5))))", e, b, a); assign(c, &d, expr); break;
+        case 88: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "mix(%s,%s,vec4(greaterThanEqual(%s,vec4(0.0))))", e, b, a); assign(c, &d, expr); break;
+        case 90: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "vec4(dot((%s).xy,(%s).xy)+(%s).x)", a, b, e); assign(c, &d, expr); break;
+        case 91: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "dFdx(%s)", a); assign(c, &d, expr); break;
+        case 92: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "dFdy(%s)", a); assign(c, &d, expr); break;
+        case 66: case 95: case 93: { /* texld / texldl / texldd */
+            if (c->major < 2) { fail(c, "ps_1_x texture instructions"); c->pos = start + (len > 0 ? (uint32_t)len : 0); break; }
+            DST();
+            SRC(a, ra);
+            uint32_t st = read_src(c, &rb);
+            int s = rnum(st);
+            int ty = s < 16 ? c->samp_type[s] : 2;
+            const char *coord = ty == 3 || ty == 4 ? ".xyz" : ".xy";
+            char samp[32];
+            snprintf(samp, sizeof samp, c->pixel ? "s%d" : "vs_s%d", s);
+            if (op == 95 || !c->pixel) {
+                snprintf(expr, sizeof expr, "textureLod(%s,(%s)%s,(%s).w)", samp, a, coord, a);
+            } else if (op == 93) {
+                SRC(b, rb);
+                SRC(e, re);
+                snprintf(expr, sizeof expr, "textureGrad(%s,(%s)%s,(%s)%s,(%s)%s)", samp, a, coord, b, coord, e, coord);
+            } else if (control == 1) { /* texldp */
+                snprintf(expr, sizeof expr, "texture(%s,(%s)%s/(%s).w)", samp, a, coord, a);
+            } else if (control == 2) { /* texldb */
+                snprintf(expr, sizeof expr, "texture(%s,(%s)%s,(%s).w)", samp, a, coord, a);
+            } else {
+                snprintf(expr, sizeof expr, "texture(%s,(%s)%s)", samp, a, coord);
+            }
+            if (s < 16) c->info->samplers_used |= 1u << s;
+            assign(c, &d, expr);
+            break;
+        }
+        case 65: { /* texkill: operand is a destination-style token */
+            uint32_t t = c->tok[c->pos++];
+            char n[128];
+            reg_name(c, rtype(t), rnum(t), 0, n, sizeof n);
+            line(c, "if (any(lessThan((%s).xyz, vec3(0.0)))) discard;", n);
+            break;
+        }
+        case 40: SRC(a, ra); line(c, "if ((%s).x != 0.0) {", a); c->indent++; break;
+        case 41: SRC(a, ra); SRC(b, rb); line(c, "if ((%s).x %s (%s).x) {", a, cmp_op(control), b); c->indent++; break;
+        case 42: c->indent--; line(c, "} else {"); c->indent++; break;
+        case 43: c->indent--; line(c, "}"); break;
+        case 27: { /* loop aL, i# */
+            uint32_t r0; read_src(c, &r0);
+            SRC(b, rb);
+            c->loop_used = true;
+            int depth = c->loop_depth++;
+            line(c, "aL = int((%s).y);", b);
+            line(c, "for (int n%d = 0; n%d < int((%s).x) && n%d < 255; n%d++, aL += int((%s).z)) {", depth, depth, b, depth, depth, b);
+            c->indent++;
+            break;
+        }
+        case 38: { /* rep i# */
+            SRC(a, ra);
+            int depth = c->loop_depth++;
+            line(c, "for (int n%d = 0; n%d < int((%s).x) && n%d < 255; n%d++) {", depth, depth, a, depth, depth);
+            c->indent++;
+            break;
+        }
+        case 29: case 39: c->indent--; c->loop_depth--; line(c, "}"); break;
+        case 44: line(c, "break;"); break;
+        case 45: SRC(a, ra); SRC(b, rb); line(c, "if ((%s).x %s (%s).x) break;", a, cmp_op(control), b); break;
+        case 28: if (c->indent == 0) line(c, "/* ret */"); else fail(c, "subroutines"); break;
+        case 25: case 26: case 30: fail(c, "subroutines (call/label)"); c->pos = start + (len > 0 ? (uint32_t)len : 0); break;
+        default:
+            fail(c, "opcode %u", op);
+            if (len > 0) c->pos = start + (uint32_t)len;
+            break;
+    }
+    /* trust the encoded length when present (skips unused operands) */
+    if (len >= 0 && op != 81 && op != 48 && op != 47 && op != 0xFFFE) c->pos = start + (uint32_t)len;
+}
+
+static const char *prelude_common =
+    "#define saturate(x) clamp(x,0.0,1.0)\n";
+
+bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info *info, char *err, size_t errlen) {
+    Ctx *c = calloc(1, sizeof *c);
+    memset(info, 0, sizeof *info);
+    c->info = info;
+    c->tok = tok;
+    c->n = n;
+    uint32_t ver = tok[0];
+    c->pixel = (ver >> 16) == 0xFFFF;
+    c->major = (int)((ver >> 8) & 0xFF);
+    c->minor = (int)(ver & 0xFF);
+    info->pixel = c->pixel;
+    for (int i = 0; i < 16; i++) { c->samp_type[i] = 2; c->in_usage[i] = c->out_usage[i] = -1; }
+    c->pos = 1;
+    while (c->pos < n && tok[c->pos] != 0x0000FFFFu && !c->failed) translate_ins(c);
+
+    Str s = {0};
+    sf(&s, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
+    sf(&s, "%s", prelude_common);
+    const char *p = P(c);
+    sf(&s, "uniform vec4 %s_c[%d];\nuniform ivec4 %s_i[16];\nuniform int %s_b[16];\n", p, c->pixel ? 224 : 256, p, p);
+    if (c->pixel) {
+        for (int i = 0; i < 16; i++) {
+            if (!(info->samplers_used & (1u << i))) continue;
+            const char *ty = c->samp_type[i] == 3 ? "samplerCube" : c->samp_type[i] == 4 ? "sampler3D" : "sampler2D";
+            sf(&s, "uniform %s s%d;\n", ty, i);
+        }
+        sf(&s, "uniform int u_alpha_func;\nuniform float u_alpha_ref;\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (c->in_usage[i] < 0) continue;
+                info->ps_in_usage[i] = c->in_usage[i];
+                info->ps_in_index[i] = c->in_index[i];
+                if (c->in_usage[i] == 5 || c->in_usage[i] == 10)
+                    sf(&s, "in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", c->in_usage[i], c->in_index[i], i, c->in_usage[i],
+                       c->in_index[i]);
+                else
+                    sf(&s, "in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", c->in_usage[i], c->in_index[i], i, c->in_usage[i],
+                       c->in_index[i]);
+                info->ps_in_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++)
+                if (c->tex_used[i] || info->ps_in_mask & (1u << i)) sf(&s, "in vec4 x_5_%d;\n", i);
+            for (int i = 0; i < 2; i++)
+                if (info->ps_in_mask & (1u << (16 + i))) sf(&s, "in vec4 x_10_%d;\n", i);
+        }
+        for (int i = 0; i < 4; i++)
+            if (c->color_out_used[i] || i == 0) sf(&s, "layout(location=%d) out vec4 oC%d;\n", i, i);
+    } else {
+        for (int i = 0; i < 16; i++) {
+            if (!c->input_used[i] && c->in_usage[i] < 0) continue;
+            sf(&s, "layout(location=%d) in vec4 vs_v%d;\n", i, i);
+            info->vs_in_usage[i] = c->in_usage[i] < 0 ? 0 : c->in_usage[i];
+            info->vs_in_index[i] = c->in_index[i] < 0 ? 0 : c->in_index[i];
+            info->vs_in_mask |= 1u << i;
+        }
+        sf(&s, "uniform vec4 u_vp_fix;\n");  /* xy: half-pixel offset in NDC */
+        sf(&s, "uniform int u_bgra_mask;\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0) continue; /* POSITION handled below */
+                if (u < 0) { u = 5; x = i; }
+                if (u == 4) continue; /* PSIZE */
+                sf(&s, "out vec4 x_%d_%d;\n", u, x);
+                info->vs_out_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++)
+                if (c->oT[i]) sf(&s, "out vec4 x_5_%d;\n", i);
+            for (int i = 0; i < 2; i++)
+                if (c->oD[i]) sf(&s, "out vec4 x_10_%d;\n", i);
+        }
+    }
+    sf(&s, "void main() {\n");
+    for (int i = 0; i < 32; i++)
+        if (c->temp_used[i]) sf(&s, "  vec4 r%d = vec4(0.0);\n", i);
+    if (c->addr_used) sf(&s, "  ivec4 a0 = ivec4(0);\n");
+    if (c->loop_used) sf(&s, "  int aL = 0;\n");
+    if (c->vpos) sf(&s, "  vec4 vPos = vec4(gl_FragCoord.xy - 0.5, 0.0, 0.0);\n");
+    if (!c->pixel) {
+        /* D3DCOLOR attributes are BGRA in memory */
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i)) sf(&s, "  vec4 vs_v%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? vs_v%d.zyxw : vs_v%d;\n", i, i, i, i);
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i)) sf(&s, "  #define vs_v%d vs_v%d_\n", i, i);
+        sf(&s, "  vec4 o_pos = vec4(0.0,0.0,0.0,1.0); vec4 o_fog = vec4(0.0); vec4 o_pts = vec4(1.0);\n");
+        if (c->major >= 3)
+            for (int i = 0; i < 16; i++)
+                if (c->output_used[i]) sf(&s, "  vec4 o%d = vec4(0.0);\n", i);
+        if (c->major < 3) {
+            for (int i = 0; i < 2; i++)
+                if (c->oD[i]) sf(&s, "  x_10_%d = vec4(0.0);\n", i);
+        }
+    } else {
+        sf(&s, "  float o_depth = gl_FragCoord.z;\n");
+        for (int i = 1; i < 4; i++)
+            if (c->color_out_used[i]) sf(&s, "  oC%d = vec4(0.0);\n", i);
+        sf(&s, "  oC0 = vec4(0.0);\n");
+    }
+    sf(&s, "%s", c->body.s ? c->body.s : "");
+    if (!c->pixel) {
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0) sf(&s, "  o_pos = o%d;\n", i);
+                else if (u == 4) sf(&s, "  o_pts = o%d;\n", i);
+                else {
+                    if (u < 0) { u = 5; x = i; }
+                    sf(&s, "  x_%d_%d = o%d;\n", u, x, i);
+                }
+            }
+        }
+        sf(&s, "  gl_Position = o_pos;\n"
+               "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n"
+               "  gl_Position.y = -gl_Position.y;\n"
+               "  gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;\n");
+    } else {
+        /* alpha test (D3DRS_ALPHATESTENABLE emulation): func 0 = disabled */
+        sf(&s, "  if (u_alpha_func != 0) {\n"
+               "    float a_ = floor(oC0.a * 255.0 + 0.5), r_ = u_alpha_ref;\n"
+               "    bool pass_ = u_alpha_func == 1 ? false : u_alpha_func == 2 ? a_ < r_ : u_alpha_func == 3 ? a_ == r_ :\n"
+               "                 u_alpha_func == 4 ? a_ <= r_ : u_alpha_func == 5 ? a_ > r_ : u_alpha_func == 6 ? a_ != r_ :\n"
+               "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
+               "    if (!pass_) discard;\n"
+               "  }\n");
+        if (c->depth_out) sf(&s, "  gl_FragDepth = o_depth;\n");
+    }
+    sf(&s, "}\n");
+    free(c->body.s);
+    bool ok = !c->failed;
+    if (!ok && err) snprintf(err, errlen, "%s", c->err);
+    info->major = c->major;
+    for (int i = 0; i < 16; i++) info->samp_type[i] = c->samp_type[i];
+    free(c);
+    *out = s.s;
+    return ok;
+}

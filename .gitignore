@@ -1,0 +1,4 @@
+build/
+build-*/
+games/*/gen/
+.DS_Store

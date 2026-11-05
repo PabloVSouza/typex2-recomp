@@ -1,0 +1,62 @@
+// x86-32 -> C lifter.
+//
+// Each guest function becomes `void f_XXXXXXXX(X2Cpu *c)`. General-purpose
+// registers and EFLAGS bits are C locals (clang drops dead flag computations),
+// spilled to `c` around anything that can observe them: calls, returns and
+// runtime helpers. x87/SSE/MMX state lives in `c`.
+//
+// Generated code relies on the inline helpers in runtime/include/x2/recomp.h.
+#pragma once
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "discover.hpp"
+
+namespace x2 {
+
+struct Unsupported {
+    std::string why;
+};
+
+class Lifter {
+public:
+    Lifter(const Image& img, Discovery& disc);
+    ~Lifter();
+
+    // Returns the C definition of the function.
+    std::string lift_function(const Function& fn);
+    // Lifts one non-control-flow instruction to C statements (for lifter tests).
+    // Returns false if it is control flow or unsupported.
+    bool lift_single(uint32_t addr, std::vector<std::string>& lines, std::string& text);
+
+    std::map<std::string, int> unsupported;  // "mnemonic (reason)" -> count
+
+    // used by the vector/x87 helpers
+    std::string rn(unsigned reg) const;
+    std::string ea(const cs_x86_op& op, bool with_seg = true) const;
+    std::string rd(const cs_x86_op& op, int size = 0) const;
+    std::string wr(const cs_x86_op& op, const std::string& val) const;
+
+private:
+    struct Out {
+        std::vector<std::string> lines;
+        bool falls = true;
+    };
+    Out lift(const Insn& ins, const Function& fn, const std::vector<uint32_t>* table);
+    Out lift_seq(const cs_insn& d, const Insn& ins);
+    bool lift_int(const std::string& m, const cs_insn& d, std::vector<std::string>& L);
+    bool lift_string(const std::string& m, const cs_insn& d, std::vector<std::string>& L);
+    bool lift_vec(const std::string& m, const cs_insn& d, std::vector<std::string>& L);
+    std::vector<std::string> lift_x87(const cs_insn& d, const uint8_t* b, int opi);
+    std::string branch_to(uint32_t target, const Function& fn) const;
+
+    const Image& img_;
+    Discovery& disc_;
+    csh cs_ = 0;
+    cs_insn* ci_ = nullptr;
+    mutable uint32_t cur_addr_ = 0;  // instruction being lifted (back-edge detection)
+};
+
+}  // namespace x2
