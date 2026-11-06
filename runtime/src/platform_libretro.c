@@ -186,10 +186,12 @@ static bool btn(unsigned port, unsigned id) { return input_state_cb(port, RETRO_
 
 /* RetroPad id of each padmap button (positions as in padmap.h) */
 static const unsigned pad_ids[X2P_COUNT] = {
-    RETRO_DEVICE_ID_JOYPAD_B, RETRO_DEVICE_ID_JOYPAD_A, RETRO_DEVICE_ID_JOYPAD_Y,  RETRO_DEVICE_ID_JOYPAD_X,
-    RETRO_DEVICE_ID_JOYPAD_L, RETRO_DEVICE_ID_JOYPAD_R, RETRO_DEVICE_ID_JOYPAD_L2, RETRO_DEVICE_ID_JOYPAD_R2,
+    RETRO_DEVICE_ID_JOYPAD_B,  RETRO_DEVICE_ID_JOYPAD_A,  RETRO_DEVICE_ID_JOYPAD_Y,  RETRO_DEVICE_ID_JOYPAD_X,
+    RETRO_DEVICE_ID_JOYPAD_L,  RETRO_DEVICE_ID_JOYPAD_R,  RETRO_DEVICE_ID_JOYPAD_L2, RETRO_DEVICE_ID_JOYPAD_R2,
+    RETRO_DEVICE_ID_JOYPAD_L3, RETRO_DEVICE_ID_JOYPAD_R3,
 };
 
+/* player switches; X2_PAD_TEST set when a button mapped to Test is down */
 static u16 player_bits(unsigned port) {
     u16 v = 0;
     const int dead = 16000;
@@ -203,7 +205,6 @@ static u16 player_bits(unsigned port) {
     for (int i = 0; i < X2P_COUNT; i++)
         if (btn(port, pad_ids[i])) v |= map[i];
     if (btn(port, RETRO_DEVICE_ID_JOYPAD_START)) v |= JVS_START;
-    if (btn(port, RETRO_DEVICE_ID_JOYPAD_R3)) v |= JVS_SERVICE;
     return v;
 }
 
@@ -211,25 +212,28 @@ static void update_inputs(void) {
     input_poll_cb();
     u16 p1 = player_bits(0), p2 = player_bits(1);
     bool coin1 = btn(0, RETRO_DEVICE_ID_JOYPAD_SELECT), coin2 = btn(1, RETRO_DEVICE_ID_JOYPAD_SELECT);
-    bool test = btn(0, RETRO_DEVICE_ID_JOYPAD_L3) || btn(1, RETRO_DEVICE_ID_JOYPAD_L3);
+    /* Test: a button mapped to it, or coin held down */
+    bool held1 = x2_padmap_hold_test(0, coin1), held2 = x2_padmap_hold_test(1, coin2);
+    bool test = ((p1 | p2) & X2_PAD_TEST) || held1 || held2;
+    p1 &= (u16)~X2_PAD_TEST;
+    p2 &= (u16)~X2_PAD_TEST;
     jvs_set_inputs(test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 
 /* built after boot, so the labels follow X2_PAD from x2.env */
 static void set_input_descriptors(void) {
     static char labels[X2P_COUNT][16];
-    static struct retro_input_descriptor desc[2 * (8 + X2P_COUNT) + 1];
-    static const struct { unsigned id; const char *name; } fixed[8] = {
+    static struct retro_input_descriptor desc[2 * (6 + X2P_COUNT) + 1];
+    static const struct { unsigned id; const char *name; } fixed[6] = {
         {RETRO_DEVICE_ID_JOYPAD_UP, "Up"},       {RETRO_DEVICE_ID_JOYPAD_DOWN, "Down"},
         {RETRO_DEVICE_ID_JOYPAD_LEFT, "Left"},   {RETRO_DEVICE_ID_JOYPAD_RIGHT, "Right"},
-        {RETRO_DEVICE_ID_JOYPAD_START, "Start"}, {RETRO_DEVICE_ID_JOYPAD_SELECT, "Coin"},
-        {RETRO_DEVICE_ID_JOYPAD_L3, "Test"},     {RETRO_DEVICE_ID_JOYPAD_R3, "Service"},
+        {RETRO_DEVICE_ID_JOYPAD_START, "Start"}, {RETRO_DEVICE_ID_JOYPAD_SELECT, "Coin (hold: Test)"},
     };
     const u16 *map = x2_padmap();
     for (int i = 0; i < X2P_COUNT; i++) x2_padmap_label(map[i], labels[i]);
     unsigned n = 0;
     for (unsigned port = 0; port < 2; port++) {
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 6; i++)
             desc[n++] = (struct retro_input_descriptor){port, RETRO_DEVICE_JOYPAD, 0, fixed[i].id, fixed[i].name};
         for (int i = 0; i < X2P_COUNT; i++)
             if (map[i]) desc[n++] = (struct retro_input_descriptor){port, RETRO_DEVICE_JOYPAD, 0, pad_ids[i], labels[i]};

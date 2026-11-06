@@ -68,7 +68,7 @@ build/tools/retro_host build/typex2_libretro.dylib "<game folder>"   # the core,
 | F11 / F12 / Esc | fullscreen / screenshot / quit |
 
 Gamepads map to players 1–2 with the same button layout as the RetroArch core
-(below, `X2_PAD` to change it); Back = coin, Back+Start quits (for ES-DE).
+(below, `X2_PAD` to change it); Back = coin (hold 2 s: test menu), Back+Start quits (for ES-DE).
 On touch screens an on-screen pad appears while no gamepad is connected
 (`X2_TOUCH=1/0` forces it on/off).
 
@@ -124,7 +124,8 @@ Running:
   closing content RetroArch must be restarted to load another game.
 * RetroPad: FinalBurn Neo's Neo Geo layout ("Modern" pad): B A = A B (bottom
   row), Y X = C D (top row), R2 = A+B, R = C+D, L2 = A+B+C, L = B+C+D; Start =
-  start, Select = coin, L3 = test, R3 = service. `X2_PAD` changes it (below);
+  start, Select = coin (hold 2 s: test menu). L3 / R3 are left free for
+  RetroArch hotkeys. `X2_PAD` changes it (below);
   RetroArch remaps apply on top.
 
 ## Debugging switches (environment variables)
@@ -136,7 +137,7 @@ Running:
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
-| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2) → cabinet buttons (any of a b c d 5 6, `-` for none); see `runtime/src/padmap.h` |
+| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d 5 6, t test, v service, `-` for none); see `runtime/src/padmap.h` |
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, abxy, t test, v service, p F9 capture) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture |
@@ -169,4 +170,4 @@ Running:
 * GDI text with stb_truetype (Android): heavy weights are only emboldened by
   one pixel, so they look lighter than on macOS.
 * KOF XIII runs in Japanese by default; switch the language in the test menu
-  (F2 / L3 / TEST).
+  (F2, hold Select / Back on a pad, or TEST on the touch pad).

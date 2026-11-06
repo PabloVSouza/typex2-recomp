@@ -520,6 +520,8 @@ static u16 pad_bits(SDL_Gamepad *g) {
         if (SDL_GetGamepadButton(g, face[i])) v |= map[X2P_SOUTH + i];
     if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER)) v |= map[X2P_L1];
     if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) v |= map[X2P_R1];
+    if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_LEFT_STICK)) v |= map[X2P_L3];
+    if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_RIGHT_STICK)) v |= map[X2P_R3];
     const s16 trig = 16000;
     if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > trig) v |= map[X2P_L2];
     if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > trig) v |= map[X2P_R2];
@@ -546,6 +548,12 @@ static void update_inputs(void) {
     p2 |= pad_bits(pads[1]);
     bool coin1 = k[SDL_SCANCODE_5] || touch_coin || (pads[0] && SDL_GetGamepadButton(pads[0], SDL_GAMEPAD_BUTTON_BACK));
     bool coin2 = k[SDL_SCANCODE_6] || (pads[1] && SDL_GetGamepadButton(pads[1], SDL_GAMEPAD_BUTTON_BACK));
+    /* Test from the pad: a button mapped to it (X2_PAD), or Back held down */
+    bool pad_test = ((p1 | p2) & X2_PAD_TEST) != 0;
+    pad_test |= x2_padmap_hold_test(0, pads[0] && SDL_GetGamepadButton(pads[0], SDL_GAMEPAD_BUTTON_BACK));
+    pad_test |= x2_padmap_hold_test(1, pads[1] && SDL_GetGamepadButton(pads[1], SDL_GAMEPAD_BUTTON_BACK));
+    p1 &= (u16)~X2_PAD_TEST;
+    p2 &= (u16)~X2_PAD_TEST;
     /* X2_INPUT="frame:keys,frame:keys,..." scripted input for automated tests.
      * keys: c=coin1 s=start1 u/d/l/r=directions a/b/x/y=buttons 1-4, '-' = release all.
      * Each entry holds from its frame until the next entry. */
@@ -583,7 +591,7 @@ static void update_inputs(void) {
             }
         }
     }
-    jvs_set_inputs(k[SDL_SCANCODE_F2] || script_test || touch_test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
+    jvs_set_inputs(k[SDL_SCANCODE_F2] || script_test || touch_test || pad_test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 
 static void open_pads(void) {
