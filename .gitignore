@@ -2,3 +2,4 @@ build/
 build-*/
 games/*/gen/
 .DS_Store
+/third_party/

@@ -31,7 +31,7 @@ typedef struct {
 
 struct Graph {
     X2ComObj com;
-    u32 control, event, position, audio, step, seeking, filter_vr, pin;
+    u32 control, event, position, audio, basic_video, step, seeking, filter_vr, pin;
     u32 event_handle;
     bool running, complete_pending;
     s32 volume;
@@ -41,7 +41,7 @@ struct Graph {
     bool completed;
 };
 
-static u32 vt_graph, vt_control, vt_event, vt_position, vt_audio, vt_step, vt_filter, vt_pin, vt_enum;
+static u32 vt_graph, vt_control, vt_event, vt_position, vt_audio, vt_video, vt_step, vt_filter, vt_pin, vt_enum;
 
 static Graph *graph_of(u32 obj) {
     X2ComObj *o = x2_com_get(obj);
@@ -73,6 +73,7 @@ static void G_QueryInterface(X2Cpu *c) {
         case 0x56a868b6u: case 0x56a868c0u: ret_iface(c, g->event, out); return; /* IMediaEvent(Ex) */
         case 0x56a868b2u: ret_iface(c, g->position, out); return;  /* IMediaPosition */
         case 0x56a868b3u: ret_iface(c, g->audio, out); return;     /* IBasicAudio */
+        case 0x56a868b5u: case 0x329bb360u: ret_iface(c, g->basic_video, out); return; /* IBasicVideo(2) */
         case 0xe46a9787u: ret_iface(c, g->step, out); return;      /* IVideoFrameStep */
     }
     x2_log("dshow: QueryInterface for unsupported IID %08x", iid);
@@ -230,10 +231,35 @@ static void MP_Can(X2Cpu *c) { WR32(ARG(1), 0xFFFFFFFFu); RET(S_OK); }
 static void BA_put_Volume(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
     g->volume = (s32)ARG(1);
+    if (getenv("X2_AUDIOLOG")) x2_log("dshow: put_Volume %d", g->volume);
     if (g->video) x2_video_set_volume(g->video, g->volume <= -10000 ? 0.f : powf(10.f, (float)g->volume / 2000.f));
     RET(S_OK);
 }
 static void BA_get_Volume(X2Cpu *c) { WR32(ARG(1), (u32)graph_of(ARG(0))->volume); RET(S_OK); }
+
+/* IBasicVideo: report the movie's size; source/destination rectangles are the full frame */
+static void video_size(Graph *g, int *w, int *h) {
+    double d;
+    *w = 1280;
+    *h = 720;
+    if (g->video) x2_video_info(g->video, w, h, &d);
+}
+static void BV_get_AvgTimePerFrame(X2Cpu *c) { WRF64(ARG(1), 1.0 / 30.0); RET(S_OK); }
+static void BV_get_Zero(X2Cpu *c) { WR32(ARG(1), 0); RET(S_OK); }
+static void BV_get_Width(X2Cpu *c) { int w, h; video_size(graph_of(ARG(0)), &w, &h); WR32(ARG(1), (u32)w); RET(S_OK); }
+static void BV_get_Height(X2Cpu *c) { int w, h; video_size(graph_of(ARG(0)), &w, &h); WR32(ARG(1), (u32)h); RET(S_OK); }
+static void BV_GetPosition(X2Cpu *c) {
+    int w, h;
+    video_size(graph_of(ARG(0)), &w, &h);
+    WR32(ARG(1), 0); WR32(ARG(2), 0); WR32(ARG(3), (u32)w); WR32(ARG(4), (u32)h);
+    RET(S_OK);
+}
+static void BV_GetVideoSize(X2Cpu *c) {
+    int w, h;
+    video_size(graph_of(ARG(0)), &w, &h);
+    WR32(ARG(1), (u32)w); WR32(ARG(2), (u32)h);
+    RET(S_OK);
+}
 static void BA_get_Balance(X2Cpu *c) { WR32(ARG(1), 0); RET(S_OK); }
 
 /* ---- IDispatch stubs --------------------------------------------------------------- */
@@ -295,19 +321,24 @@ static Filter *filter_of(u32 g) {
     if (!strcmp(o->iface, "ISampleGrabber")) return *(Filter **)(o + 1);
     return (Filter *)o;
 }
+/* the ISampleGrabber tear-off of a grabber filter, with a new reference */
+static u32 grabber_iface(Filter *f) {
+    if (!f->grabber_iface) {
+        X2ComObj *t = calloc(1, sizeof(X2ComObj) + sizeof(Filter *));
+        t->immortal = true;
+        *(Filter **)(t + 1) = f;
+        f->grabber_iface = x2_com_wrap(t, vt_grabber, "ISampleGrabber");
+    } else {
+        x2_com_get(f->grabber_iface)->refs++;
+    }
+    return f->grabber_iface;
+}
+
 static void SF_QueryInterface(X2Cpu *c) {
     Filter *f = filter_of(ARG(0));
     u32 iid = RD32(ARG(1)), out = ARG(2);
     if (iid == 0x6b652fffu && f->grabber) { /* IID_ISampleGrabber */
-        if (!f->grabber_iface) {
-            X2ComObj *t = calloc(1, sizeof(X2ComObj) + sizeof(Filter *));
-            t->immortal = true;
-            *(Filter **)(t + 1) = f;
-            f->grabber_iface = x2_com_wrap(t, vt_grabber, "ISampleGrabber");
-        } else {
-            x2_com_get(f->grabber_iface)->refs++;
-        }
-        WR32(out, f->grabber_iface);
+        WR32(out, grabber_iface(f));
         RET(S_OK);
         return;
     }
@@ -442,7 +473,8 @@ static void SF_FindPin(X2Cpu *c) {
 static void SF_GetClassID(X2Cpu *c) { memset(X2P(ARG(1)), 0, 16); RET(S_OK); }
 static void SF_QueryFilterInfo(X2Cpu *c) { memset(X2P(ARG(1)), 0, 128 * 2 + 4); RET(S_OK); }
 
-u32 x2_dshow_create_filter(bool grabber) {
+/* iid: guest pointer to the IID the caller asked CoCreateInstance for (0 = IBaseFilter) */
+u32 x2_dshow_create_filter(bool grabber, u32 iid) {
     if (!vt_spin) {
         static const X2Method pin[] = {
             {"QueryInterface", x2_com_QueryInterface_self, 3}, {"AddRef", x2_com_AddRef, 1},
@@ -481,7 +513,9 @@ u32 x2_dshow_create_filter(bool grabber) {
     Filter *f = calloc(1, sizeof *f);
     f->grabber = grabber;
     f->com.immortal = true;
-    return x2_com_wrap(&f->com, vt_sfilter, grabber ? "SampleGrabber" : "NullRenderer");
+    u32 obj = x2_com_wrap(&f->com, vt_sfilter, grabber ? "SampleGrabber" : "NullRenderer");
+    if (grabber && iid && RD32(iid) == 0x6b652fffu) return grabber_iface(f); /* IID_ISampleGrabber */
+    return obj;
 }
 
 #define M(name, fn, n) {#name, fn, n}
@@ -525,6 +559,23 @@ static void init_vtables(void) {
         M(put_Balance, Ok, 2), M(get_Balance, BA_get_Balance, 2),
     };
     vt_audio = x2_com_vtable("IBasicAudio", ba, sizeof ba / sizeof *ba);
+    static const X2Method bv[] = {
+        TEAR_IUNKNOWN, IDISPATCH, M(get_AvgTimePerFrame, BV_get_AvgTimePerFrame, 2), M(get_BitRate, BV_get_Zero, 2),
+        M(get_BitErrorRate, BV_get_Zero, 2), M(get_VideoWidth, BV_get_Width, 2), M(get_VideoHeight, BV_get_Height, 2),
+        M(put_SourceLeft, Ok, 2), M(get_SourceLeft, BV_get_Zero, 2), M(put_SourceWidth, Ok, 2),
+        M(get_SourceWidth, BV_get_Width, 2), M(put_SourceTop, Ok, 2), M(get_SourceTop, BV_get_Zero, 2),
+        M(put_SourceHeight, Ok, 2), M(get_SourceHeight, BV_get_Height, 2), M(put_DestinationLeft, Ok, 2),
+        M(get_DestinationLeft, BV_get_Zero, 2), M(put_DestinationWidth, Ok, 2),
+        M(get_DestinationWidth, BV_get_Width, 2), M(put_DestinationTop, Ok, 2),
+        M(get_DestinationTop, BV_get_Zero, 2), M(put_DestinationHeight, Ok, 2),
+        M(get_DestinationHeight, BV_get_Height, 2), M(SetSourcePosition, Ok, 5),
+        M(GetSourcePosition, BV_GetPosition, 5), M(SetDefaultSourcePosition, Ok, 1),
+        M(SetDestinationPosition, Ok, 5), M(GetDestinationPosition, BV_GetPosition, 5),
+        M(SetDefaultDestinationPosition, Ok, 1), M(GetVideoSize, BV_GetVideoSize, 3),
+        U(GetVideoPaletteEntries, 5), U(GetCurrentImage, 3), M(IsUsingDefaultSource, Ok, 1),
+        M(IsUsingDefaultDestination, Ok, 1),
+    };
+    vt_video = x2_com_vtable("IBasicVideo", bv, sizeof bv / sizeof *bv);
     static const X2Method vs[] = {TEAR_IUNKNOWN, M(Step, Ok, 3), M(CanStep, Ok, 3), M(CancelStep, Ok, 1)};
     vt_step = x2_com_vtable("IVideoFrameStep", vs, 6);
     static const X2Method bf[] = {
@@ -556,6 +607,7 @@ u32 x2_dshow_create_graph(void) {
     g->event = tear(g, vt_event, "IMediaEventEx");
     g->position = tear(g, vt_position, "IMediaPosition");
     g->audio = tear(g, vt_audio, "IBasicAudio");
+    g->basic_video = tear(g, vt_video, "IBasicVideo");
     g->step = tear(g, vt_step, "IVideoFrameStep");
     g->filter_vr = tear(g, vt_filter, "IBaseFilter");
     g->pin = tear(g, vt_pin, "IPin");

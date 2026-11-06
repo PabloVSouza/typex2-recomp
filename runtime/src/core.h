@@ -98,6 +98,8 @@ bool x2_run_apcs(X2Cpu *c);
 
 extern _Thread_local X2Thread *x2_self;
 void x2_trace_dump(X2Thread *t, int n);
+/* name the calling thread; critical = keep on the fastest cores (guest main, renderer) */
+void x2_thread_perf(const char *name, bool critical);
 X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended);
 void x2_thread_resume(X2Thread *t);
 X2Thread *x2_start_main(void);  /* guest main thread; host main stays with the platform */
@@ -108,11 +110,17 @@ extern bool x2_gil_on;
 #define X2_GIL_ENTER() do { if (x2_gil_on) pthread_mutex_lock(&x2_gil); } while (0)
 #define X2_GIL_LEAVE() do { if (x2_gil_on) pthread_mutex_unlock(&x2_gil); } while (0)
 void x2_exit_process(u32 code) __attribute__((noreturn));
+/* set by front ends that must not end the host process (libretro): called by
+ * ExitProcess instead of _exit; the calling guest thread is parked afterwards */
+extern void (*x2_exit_hook)(u32 code);
+/* boot.c: load <dir>/game.exe for `game` and start its main thread */
+X2Thread *x2_boot(const X2GameTables *game, const char *dir);
+void x2_load_env_file(const char *dir);
 u32 x2_peb(void);
 void x2_set_last_error(u32 e);
 
 /* ---- handles ---------------------------------------------------------- */
-typedef enum { H_FREE, H_FILE, H_EVENT, H_MUTEX, H_SEMAPHORE, H_THREAD, H_FIND, H_COMM, H_CRYPT, H_MISC } X2HType;
+typedef enum { H_FREE, H_FILE, H_EVENT, H_MUTEX, H_SEMAPHORE, H_THREAD, H_FIND, H_COMM, H_CRYPT, H_PIPE, H_MISC } X2HType;
 typedef struct X2Handle {
     X2HType type;
     void *obj;

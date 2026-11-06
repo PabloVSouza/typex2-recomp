@@ -11,7 +11,7 @@
 #include <OpenGL/gl3.h>
 #endif
 #elif defined(__ANDROID__)
-#include <GLES3/gl3.h>
+#include <GLES3/gl32.h> /* 3.2: glDrawElementsBaseVertex for streamed draws */
 #define X2_GLES 1
 #else
 #define GL_GLEXT_PROTOTYPES 1

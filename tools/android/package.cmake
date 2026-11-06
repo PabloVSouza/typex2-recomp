@@ -1,0 +1,66 @@
+# Builds a debug-signed APK from the native libraries, without Gradle:
+#   javac (SDL's Java glue) -> d8 -> aapt2 link (manifest) -> zip libs -> zipalign -> apksigner
+# Invoked by the apk-<game> target (see runtime/CMakeLists.txt) with:
+#   SDK, BUILD_TOOLS, PLATFORM_JAR, SDL_SRC, LIBS (|-separated .so paths), APP_ID, APP_LABEL, MANIFEST_IN, OUT_DIR, APK
+cmake_minimum_required(VERSION 3.24)
+
+# optional: STRIP (llvm-strip)
+foreach(v SDK BUILD_TOOLS PLATFORM_JAR SDL_SRC LIBS APP_ID APP_LABEL MANIFEST_IN OUT_DIR APK)
+  if(NOT DEFINED ${v})
+    message(FATAL_ERROR "package.cmake: ${v} is not set")
+  endif()
+endforeach()
+
+function(run)
+  execute_process(COMMAND ${ARGN} RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+  if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "failed (${rc}): ${ARGN}\n${out}\n${err}")
+  endif()
+endfunction()
+
+set(W ${OUT_DIR}/apk-work)
+file(REMOVE_RECURSE ${W})
+file(MAKE_DIRECTORY ${W}/classes ${W}/dex ${W}/pkg/lib/arm64-v8a)
+
+# 1. SDL's Java activity (org.libsdl.app) -> classes -> classes.dex
+file(GLOB java ${SDL_SRC}/android-project/app/src/main/java/org/libsdl/app/*.java)
+find_program(JAVAC javac REQUIRED)
+run(${JAVAC} --release 11 -nowarn -classpath ${PLATFORM_JAR} -d ${W}/classes ${java})
+file(GLOB_RECURSE classes ${W}/classes/*.class)
+run(${BUILD_TOOLS}/d8 --release --min-api 33 --lib ${PLATFORM_JAR} --output ${W}/dex ${classes})
+
+# 2. manifest -> base APK (resources table + binary manifest)
+set(X2_APP_ID ${APP_ID})
+set(X2_APP_LABEL ${APP_LABEL})
+configure_file(${MANIFEST_IN} ${W}/AndroidManifest.xml @ONLY)
+run(${BUILD_TOOLS}/aapt2 link -o ${W}/base.apk --manifest ${W}/AndroidManifest.xml -I ${PLATFORM_JAR}
+    --min-sdk-version 33 --target-sdk-version 36 --debug-mode)
+
+# 3. add classes.dex and the native libraries
+file(COPY ${W}/dex/classes.dex DESTINATION ${W}/pkg)
+string(REPLACE "|" ";" libs_list "${LIBS}")
+file(COPY ${libs_list} DESTINATION ${W}/pkg/lib/arm64-v8a)
+if(DEFINED STRIP)
+  # drop debug info; keep the dynamic symbols that fault backtraces print
+  file(GLOB libs ${W}/pkg/lib/arm64-v8a/*.so)
+  foreach(l ${libs})
+    run(${STRIP} --strip-debug ${l})
+  endforeach()
+endif()
+find_program(ZIP zip REQUIRED)
+execute_process(COMMAND ${ZIP} -q -r ${W}/base.apk classes.dex lib WORKING_DIRECTORY ${W}/pkg RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "zip failed")
+endif()
+
+# 4. align and sign with a local debug key (created on first use)
+run(${BUILD_TOOLS}/zipalign -p -f 4 ${W}/base.apk ${W}/aligned.apk)
+set(KS ${OUT_DIR}/debug.keystore)
+if(NOT EXISTS ${KS})
+  find_program(KEYTOOL keytool REQUIRED)
+  run(${KEYTOOL} -genkeypair -keystore ${KS} -storepass android -keypass android -alias debug
+      -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Type X2 recomp debug")
+endif()
+run(${BUILD_TOOLS}/apksigner sign --ks ${KS} --ks-pass pass:android --key-pass pass:android
+    --out ${APK} ${W}/aligned.apk)
+message(STATUS "APK: ${APK}")

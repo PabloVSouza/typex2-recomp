@@ -1,15 +1,13 @@
 /* Maps the original game.exe into guest memory and binds its imports to
  * host implementations. The recompiled code is matched to the executable by
  * image base/size/entry (from the generated x2_image). */
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
 #include "core.h"
 
-extern const X2ImportEntry x2_import_table[];
-extern const unsigned x2_import_count;
-extern const X2ImageInfo x2_image;
 
 X2Module x2_module;
 
@@ -35,7 +33,7 @@ void x2_load_image(const char *exe_path) {
     else strcpy(m->game_dir, ".");
 
     FILE *fp = fopen(exe_path, "rb");
-    if (!fp) x2_fatal("cannot open %s", exe_path);
+    if (!fp) x2_fatal("cannot open %s: %s", exe_path, strerror(errno));
     fseek(fp, 0, SEEK_END);
     size_t n = (size_t)ftell(fp);
     fseek(fp, 0, SEEK_SET);
@@ -56,9 +54,9 @@ void x2_load_image(const char *exe_path) {
     m->stack_reserve = rd32(f, n, oh + 72);
     u32 tls_rva = rd32(f, n, oh + 96 + 9 * 8);
 
-    if (m->base != x2_image.base || m->size != x2_image.size || m->entry != x2_image.entry)
+    if (m->base != x2_game->image->base || m->size != x2_game->image->size || m->entry != x2_game->image->entry)
         x2_fatal("%s does not match the recompiled image (base %08x/%08x size %x/%x entry %08x/%08x)", exe_path, m->base,
-                 x2_image.base, m->size, x2_image.size, m->entry, x2_image.entry);
+                 x2_game->image->base, m->size, x2_game->image->size, m->entry, x2_game->image->entry);
 
     if (x2_vm_alloc(m->base, m->size, "image") != m->base) x2_fatal("cannot map image at %08x", m->base);
     memcpy(X2P(m->base), f, hdr_size < n ? hdr_size : n);
@@ -86,8 +84,8 @@ void x2_load_image(const char *exe_path) {
 
 void x2_resolve_imports(void) {
     unsigned missing = 0;
-    for (unsigned i = 0; i < x2_import_count; i++) {
-        const X2ImportEntry *e = &x2_import_table[i];
+    for (unsigned i = 0; i < x2_game->nimports; i++) {
+        const X2ImportEntry *e = &x2_game->imports[i];
         const X2Hle *h = x2_hle_find(e->dll, e->name);
         char full[256];
         snprintf(full, sizeof full, "%s!%s", e->dll, e->name);
@@ -98,7 +96,7 @@ void x2_resolve_imports(void) {
             X2_TRACE("unimplemented import %s", full);
         }
     }
-    x2_log("bound %u imports (%u unimplemented)", x2_import_count, missing);
+    x2_log("bound %u imports (%u unimplemented)", x2_game->nimports, missing);
 }
 
 static const X2HleModule hle_modules[] = {

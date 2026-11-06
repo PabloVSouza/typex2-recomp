@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "../core.h"
+#include "../txac.h"
 
 #define CALG_MD5 0x8003u
 #define CALG_SHA1 0x8004u
@@ -123,6 +124,7 @@ static void hash_final(Hash *h) {
 
 /* ---- RC4 ------------------------------------------------------------------- */
 typedef struct {
+    bool rsa; /* stand-in for an RSA key-exchange pair: en/decrypt pass data through */
     u8 key[32];
     u32 klen;
     u8 S[256];
@@ -236,6 +238,7 @@ static Rc4 *key_of(u32 h) {
 static void rc4_call(X2Cpu *c, u32 data, u32 plen, bool final) {
     Rc4 *k = key_of(ARG(0));
     if (!k) { RET(0); return; }
+    if (k->rsa) { RET(1); return; }
     rc4_apply(k, (u8 *)X2P(data), RD32(plen));
     if (final) rc4_reset(k); /* Final=TRUE resets the stream state */
     RET(1);
@@ -245,6 +248,144 @@ static void CryptDecrypt(X2Cpu *c) { rc4_call(c, ARG(4), ARG(5), ARG(2) != 0); }
 /* CryptEncrypt(hKey, hHash, Final, dwFlags, pbData, pdwDataLen, dwBufLen) */
 static void CryptEncrypt(X2Cpu *c) { rc4_call(c, ARG(4), ARG(5), ARG(2) != 0); }
 static void CryptDestroyKey(X2Cpu *c) { RET(x2_handle_close(ARG(0))); }
+
+/* ---- TtxAppCrypt (Type X application crypto service) ------------------------
+ * KOF XIII asks the platform service on \\.\pipe\TtxAppCtyptPipe for each
+ * TXAC file key: it sends its exported public key (ff fd + len + blob), then the
+ * file's SIMPLEBLOB (ff fe + len + blob) and reads back len + key blob encrypted
+ * to that public key. We play both sides: the session key is unwrapped with the
+ * game's TypeXmulti/txac key (txac.c) and returned as a PLAINTEXTKEYBLOB; the
+ * game's "RSA" key is a pass-through, so its CryptDecrypt leaves it intact. */
+
+/* CryptGenKey(hProv, Algid, dwFlags, phKey): only AT_KEYEXCHANGE / AT_SIGNATURE */
+static void CryptGenKey(X2Cpu *c) {
+    u32 alg = ARG(1);
+    if (alg != 1 && alg != 2 && alg != 0xa400 && alg != 0x2400) {
+        x2_log("CryptGenKey: unsupported algorithm %04x", alg);
+        x2_set_last_error(NTE_BAD_ALGID);
+        RET(0);
+        return;
+    }
+    Rc4 *k = calloc(1, sizeof *k);
+    k->rsa = true;
+    WR32(ARG(3), x2_handle_new(H_CRYPT, k, free_obj));
+    RET(1);
+}
+
+/* CryptExportKey(hKey, hExpKey, dwBlobType, dwFlags, pbData, pdwDataLen) */
+static void CryptExportKey(X2Cpu *c) {
+    Rc4 *k = key_of(ARG(0));
+    if (!k || !k->rsa || ARG(2) != 6 /* PUBLICKEYBLOB */) { RET(0); return; }
+    enum { BITS = 512, LEN = 8 + 12 + BITS / 8 };
+    u32 out = ARG(4), plen = ARG(5);
+    if (out) {
+        if (RD32(plen) < LEN) { WR32(plen, LEN); x2_set_last_error(234 /* ERROR_MORE_DATA */); RET(0); return; }
+        u8 *p = (u8 *)X2P(out);
+        memset(p, 0, LEN);
+        p[0] = 6; p[1] = 2;                         /* PUBLICKEYBLOB v2 */
+        p[5] = 0xa4;                                /* CALG_RSA_KEYX */
+        memcpy(p + 8, "RSA1", 4);
+        p[12] = BITS & 0xff; p[13] = BITS >> 8;      /* bitlen */
+        p[16] = 1; p[18] = 1;                       /* pubexp 65537 */
+        memset(p + 20, 0xff, BITS / 8);              /* placeholder modulus */
+    }
+    WR32(plen, LEN);
+    RET(1);
+}
+
+/* CryptImportKey(hProv, pbData, dwDataLen, hPubKey, dwFlags, phKey): PLAINTEXTKEYBLOB RC4 */
+static void CryptImportKey(X2Cpu *c) {
+    const u8 *b = (const u8 *)X2P(ARG(1));
+    u32 n = ARG(2);
+    u32 alg = n >= 8 ? (u32)b[4] | (u32)b[5] << 8 : 0;
+    u32 kl = n >= 12 ? (u32)b[8] | (u32)b[9] << 8 : 0;
+    if (n < 12 || b[0] != 8 || alg != CALG_RC4 || kl == 0 || kl > 16 || 12 + kl > n) {
+        x2_log("CryptImportKey: unsupported blob type %u alg %04x (%u bytes)", n ? b[0] : 0, alg, n);
+        x2_set_last_error(0x80090005u /* NTE_BAD_DATA */);
+        RET(0);
+        return;
+    }
+    Rc4 *k = calloc(1, sizeof *k);
+    memcpy(k->key, b + 12, kl);
+    k->klen = kl < 16 ? 16 : kl; /* Microsoft providers zero-salt short RC4 keys to 128 bits */
+    rc4_reset(k);
+    WR32(ARG(5), x2_handle_new(H_CRYPT, k, free_obj));
+    RET(1);
+}
+
+typedef struct {
+    u8 in[1024];
+    u32 in_len;
+    u8 out[256];
+    u32 out_len, out_pos;
+} TtxPipe;
+
+bool x2_ttx_pipe_name(const char *n) {
+    const char *p = strrchr(n, '\\');
+    return !strncmp(n, "\\\\.\\pipe\\", 9) && p && !strcasecmp(p + 1, "TtxAppCtyptPipe");
+}
+
+u32 x2_ttx_pipe_open(void) {
+    static bool loaded;
+    if (!loaded) {
+        loaded = true;
+        if (x2_txac_load_from_dir(x2_module.game_dir)) x2_log("txac: loaded TypeXmulti/txac key");
+    }
+    x2_log("opened TtxAppCrypt pipe (emulated)");
+    return x2_handle_new(H_PIPE, calloc(1, sizeof(TtxPipe)), free_obj);
+}
+
+static void ttx_reply(TtxPipe *p, const u8 *blob, size_t n) {
+    p->out_len = 4 + (u32)n;
+    p->out_pos = 0;
+    p->out[0] = (u8)n; p->out[1] = (u8)(n >> 8); p->out[2] = p->out[3] = 0;
+    memcpy(p->out + 4, blob, n);
+}
+
+void x2_ttx_pipe_write(u32 h, const u8 *data, u32 n) {
+    X2Handle *e = x2_handle_get(h, H_PIPE);
+    if (!e) return;
+    TtxPipe *p = e->obj;
+    if (n > sizeof p->in - p->in_len) n = sizeof p->in - p->in_len;
+    memcpy(p->in + p->in_len, data, n);
+    p->in_len += n;
+    while (p->in_len >= 6) { /* ff <cmd> <u32 len> <len bytes> */
+        u32 len = (u32)p->in[2] | (u32)p->in[3] << 8 | (u32)p->in[4] << 16 | (u32)p->in[5] << 24;
+        X2_TRACE("txac pipe: cmd %02x %02x len %u", p->in[0], p->in[1], len);
+        if (p->in[0] != 0xff || len > sizeof p->in - 6) { p->in_len = 0; break; }
+        if (p->in_len < 6 + len) break;
+        if (p->in[1] == 0xfe) {
+            u8 key[256], blob[12 + 16];
+            size_t kl = 0;
+            uint32_t alg = 0;
+            if (x2_txac_unwrap(p->in + 6, len, key, &kl, &alg) && kl <= 16) {
+                memset(blob, 0, 12);
+                blob[0] = 8; blob[1] = 2; /* PLAINTEXTKEYBLOB */
+                blob[4] = (u8)alg; blob[5] = (u8)(alg >> 8);
+                blob[8] = (u8)kl;
+                memcpy(blob + 12, key, kl);
+                ttx_reply(p, blob, 12 + kl);
+                x2_log("txac: unwrapped a %zu-byte file key", kl);
+            } else {
+                x2_log("txac: cannot unwrap a file key (%s)", x2_txac_have_key() ? "bad blob" : "no TypeXmulti/txac key");
+                ttx_reply(p, NULL, 0);
+            }
+        }
+        memmove(p->in, p->in + 6 + len, p->in_len - 6 - len);
+        p->in_len -= 6 + len;
+    }
+}
+
+u32 x2_ttx_pipe_read(u32 h, u8 *dst, u32 n) {
+    X2Handle *e = x2_handle_get(h, H_PIPE);
+    if (!e) return 0;
+    TtxPipe *p = e->obj;
+    u32 avail = p->out_len - p->out_pos;
+    if (n > avail) n = avail;
+    memcpy(dst, p->out + p->out_pos, n);
+    p->out_pos += n;
+    return n;
+}
 
 const X2Hle x2_hle_advapi32[] = {
     {"CryptAcquireContextA", CryptAcquireContextA, 5},
@@ -257,5 +398,8 @@ const X2Hle x2_hle_advapi32[] = {
     {"CryptDecrypt", CryptDecrypt, 6},
     {"CryptEncrypt", CryptEncrypt, 7},
     {"CryptDestroyKey", CryptDestroyKey, 1},
+    {"CryptGenKey", CryptGenKey, 4},
+    {"CryptExportKey", CryptExportKey, 6},
+    {"CryptImportKey", CryptImportKey, 6},
     {NULL, NULL, 0},
 };

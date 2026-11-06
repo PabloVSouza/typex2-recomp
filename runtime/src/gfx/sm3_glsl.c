@@ -290,6 +290,10 @@ static void assign(Ctx *c, const Dst *d, const char *expr) {
         else line(c, "a0 = ivec4(floor((%s)+0.5));", e);
         return;
     }
+    if (!strcmp(d->name, "o_depth")) { /* oDepth is a scalar; D3D takes .x */
+        line(c, "o_depth = vec4(%s).x;", e);
+        return;
+    }
     if (d->mask[0]) line(c, "%s%s = vec4(%s)%s;", d->name, d->mask, e, d->mask);
     else line(c, "%s = vec4(%s);", d->name, e);
 }

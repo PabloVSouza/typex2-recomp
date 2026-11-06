@@ -1,9 +1,18 @@
 /* Guest threads: each one is a host pthread with its own X2Cpu, TEB, guest
  * stack and static-TLS block. The guest main thread runs on the host main
  * thread (UI toolkits need that); its host stack size is set at link time. */
+#ifdef __linux__
+#define _GNU_SOURCE
+#include <sched.h>
+#include <sys/resource.h>
+#endif
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <pthread/qos.h>
+#endif
 
 #include "core.h"
 
@@ -50,7 +59,6 @@ static int nthreads;
 /* Heuristic guest backtrace: stack words that point just past a CALL in .text.
  * Uses the spilled esp, so it reflects the last call into the runtime. */
 void x2_backtrace_all(void) {
-    extern const X2ImageInfo x2_image;
     for (int i = 0; i < nthreads; i++) {
         X2Thread *t = all_threads[i];
         if (!t || t->finished) continue;
@@ -59,7 +67,7 @@ void x2_backtrace_all(void) {
         int found = 0;
         for (u32 a = esp; a < t->stack_base && found < 24; a += 4) {
             u32 v = RD32(a);
-            if (v < x2_image.text_start + 5 || v >= x2_image.text_end) continue;
+            if (v < x2_game->image->text_start + 5 || v >= x2_game->image->text_end) continue;
             u8 b5 = RD8(v - 5), b6 = RD8(v - 6), b2 = RD8(v - 2), b3 = RD8(v - 3);
             bool call = b5 == 0xE8 || (b6 == 0xFF && ((RD8(v - 5) >> 3) & 7) == 2) || (b2 == 0xFF && ((RD8(v - 1) >> 3) & 7) == 2) ||
                         (b3 == 0xFF && ((RD8(v - 2) >> 3) & 7) == 2);
@@ -167,7 +175,63 @@ static void run_tls_callbacks(X2Thread *t, u32 reason) {
 
 void x2_trace_register(X2Thread *t);
 void x2_trace_dump(X2Thread *t, int n);
+/* Keep guest threads on performance cores: at default QoS, macOS parks threads
+ * that sleep every frame on efficiency cores, where a 5 ms frame can take 20. */
+/* x2_thread_perf(name, critical): name the calling thread and keep it on fast cores.
+ * macOS: interactive QoS. Linux/Android: big.LITTLE parts (e.g. 6x A55 + 2x A76)
+ * schedule a thread that sleeps every frame onto little cores, where a frame can
+ * take 3x longer; `critical` threads (guest main, renderer) are pinned to the
+ * cores with the highest max clock and given a higher priority. */
+void x2_thread_perf(const char *name, bool critical) {
+#ifdef __APPLE__
+    pthread_setname_np(name);
+    pthread_set_qos_class_self_np(critical ? QOS_CLASS_USER_INTERACTIVE : QOS_CLASS_USER_INITIATED, 0);
+#elif defined(__linux__)
+    pthread_setname_np(pthread_self(), name);
+    if (!critical) {
+        /* threads inherit their creator's affinity: give workers every core back */
+        cpu_set_t all;
+        CPU_ZERO(&all);
+        int ncpu = (int)sysconf(_SC_NPROCESSORS_CONF);
+        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++) CPU_SET(i, &all);
+        sched_setaffinity(0, sizeof all, &all);
+        return;
+    }
+    static cpu_set_t big;
+    static int nbig = -1;
+    if (nbig < 0) {
+        long maxf[CPU_SETSIZE] = {0}, top = 0;
+        int ncpu = (int)sysconf(_SC_NPROCESSORS_CONF);
+        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++) {
+            char path[96];
+            snprintf(path, sizeof path, "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", i);
+            FILE *f = fopen(path, "r");
+            if (f) {
+                if (fscanf(f, "%ld", &maxf[i]) != 1) maxf[i] = 0;
+                fclose(f);
+            }
+            if (maxf[i] > top) top = maxf[i];
+        }
+        CPU_ZERO(&big);
+        nbig = 0;
+        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++)
+            if (top && maxf[i] == top) {
+                CPU_SET(i, &big);
+                nbig++;
+            }
+        if (nbig == ncpu) nbig = 0; /* uniform cores: leave scheduling alone */
+        if (nbig) x2_log("cpu: %d fast core(s) at %ld MHz for the guest and renderer threads", nbig, top / 1000);
+    }
+    if (nbig) sched_setaffinity(0, sizeof big, &big);
+    setpriority(PRIO_PROCESS, (id_t)gettid(), -8); /* may be refused; harmless */
+#else
+    (void)name;
+    (void)critical;
+#endif
+}
+
 static void *thread_main(void *p) {
+    x2_thread_perf("x2-worker", false);
     X2Thread *t = p;
     x2_self = t;
     x2_trace_register(t);
@@ -287,6 +351,7 @@ static void run_x2_calls(X2Thread *t) {
 }
 
 static void *guest_main(void *p) {
+    x2_thread_perf("x2-guest", true);
     X2Thread *t = p;
     x2_self = t;
     x2_trace_register(t);

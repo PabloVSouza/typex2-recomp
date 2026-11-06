@@ -27,6 +27,8 @@ typedef struct {
     Sm3Info info;
     bool ok;
     u32 serial;
+    char *glsl;  /* translated source, printed by F9 captures */
+    bool logged; /* source already printed in a capture */
 } Shader;
 static Shader *shaders[MAX_IDS];
 static u32 shader_serial;
@@ -64,7 +66,7 @@ void gfx_gl_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
     s->ok = s->sh != 0;
     if (!s->ok) x2_log("gfx: shader %u failed to compile:\n%s\n--- source ---\n%s", id, log, glsl ? glsl : "");
     else if (x2_log_level >= 3 || (getenv("X2_SHADERLOG") && (u32)atoi(getenv("X2_SHADERLOG")) == id)) x2_log("gfx: shader %u:\n%s", id, glsl);
-    free(glsl);
+    s->glsl = glsl;
     shaders[id] = s;
 }
 
@@ -72,6 +74,7 @@ void gfx_gl_shader_destroy(GfxId id) {
     Shader *s = id < MAX_IDS ? shaders[id] : NULL;
     if (!s) return;
     if (s->sh) glDeleteShader(s->sh);
+    free(s->glsl);
     free(s);
     shaders[id] = NULL;
 }
@@ -233,16 +236,25 @@ static GLenum stencil_op(u32 o) {
         default: return GL_KEEP;
     }
 }
+#ifdef GL_CLAMP_TO_BORDER
+#define X2_GL_CLAMP_TO_BORDER GL_CLAMP_TO_BORDER
+#else
+#define X2_GL_CLAMP_TO_BORDER 0x812D /* GLES 3.2 / EXT_texture_border_clamp */
+#endif
+#ifndef GL_TEXTURE_BORDER_COLOR
+#define GL_TEXTURE_BORDER_COLOR 0x1004
+#endif
 static GLenum address(u32 a) {
     switch (a) {
         case 2: return GL_MIRRORED_REPEAT;
-        case 3: case 4: case 5: return GL_CLAMP_TO_EDGE;
+        case 4: return X2_GL_CLAMP_TO_BORDER; /* D3DTADDRESS_BORDER: D3DSAMP_BORDERCOLOR outside [0,1] */
+        case 3: case 5: return GL_CLAMP_TO_EDGE;
         default: return GL_REPEAT;
     }
 }
 
 typedef struct {
-    u32 key;
+    u32 key, border;
     GLuint s;
 } SamplerEntry;
 static SamplerEntry samplers[512];
@@ -251,24 +263,71 @@ static u32 nsamplers;
 static GLuint get_sampler(const u32 *ss) {
     u32 mag = ss[5], min = ss[6], mip = ss[7];
     u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13;
+    u32 border = ss[4]; /* D3DCOLOR ARGB */
     for (u32 i = 0; i < nsamplers; i++)
-        if (samplers[i].key == key) return samplers[i].s;
+        if (samplers[i].key == key && samplers[i].border == border) return samplers[i].s;
     GLuint s;
     glGenSamplers(1, &s);
     glSamplerParameteri(s, GL_TEXTURE_WRAP_S, (GLint)address(ss[1]));
     glSamplerParameteri(s, GL_TEXTURE_WRAP_T, (GLint)address(ss[2]));
     glSamplerParameteri(s, GL_TEXTURE_WRAP_R, (GLint)address(ss[3]));
+    if (ss[1] == 4 || ss[2] == 4 || ss[3] == 4) {
+        float bc[4] = {(float)(border >> 16 & 255) / 255.0f, (float)(border >> 8 & 255) / 255.0f, (float)(border & 255) / 255.0f,
+                       (float)(border >> 24) / 255.0f};
+        glSamplerParameterfv(s, GL_TEXTURE_BORDER_COLOR, bc);
+    }
     glSamplerParameteri(s, GL_TEXTURE_MAG_FILTER, mag >= 2 ? GL_LINEAR : GL_NEAREST);
     GLint mf;
     if (mip == 0) mf = min >= 2 ? GL_LINEAR : GL_NEAREST;
     else if (mip == 1) mf = min >= 2 ? GL_LINEAR_MIPMAP_NEAREST : GL_NEAREST_MIPMAP_NEAREST;
     else mf = min >= 2 ? GL_LINEAR_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_LINEAR;
     glSamplerParameteri(s, GL_TEXTURE_MIN_FILTER, mf);
-    if (nsamplers < 512) samplers[nsamplers++] = (SamplerEntry){key, s};
+    if (nsamplers < 512) samplers[nsamplers++] = (SamplerEntry){key, border, s};
     return s;
 }
 
 static GLuint vao, scratch_vbo, scratch_ibo, black_tex;
+/* ---- streaming ring for dynamic buffers ------------------------------------
+ * Draws that read a dynamic buffer (gfx_gl.c: rewritten more than once) copy
+ * the vertex/index range they use from the buffer's shadow into a ring that is
+ * written unsynchronized and orphaned when full, so the GPU is never waited on. */
+#define RING_SIZE (8u << 20)
+static GLuint ring_buf[2]; /* [0] vertices, [1] indices */
+static u32 ring_pos[2];
+static u32 ring_put(int r, const void *data, u32 len, u32 align) {
+    GLenum tgt = r ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER;
+    if (!ring_buf[r]) {
+        glGenBuffers(1, &ring_buf[r]);
+        glBindBuffer(tgt, ring_buf[r]);
+        glBufferData(tgt, RING_SIZE, NULL, GL_STREAM_DRAW);
+    } else {
+        glBindBuffer(tgt, ring_buf[r]);
+    }
+    if (!len || len > RING_SIZE) return ~0u;
+    u32 pos = (ring_pos[r] + align - 1) / align * align;
+    if (pos + len > RING_SIZE) { /* orphan: fresh storage, no wait for queued draws */
+        glBufferData(tgt, RING_SIZE, NULL, GL_STREAM_DRAW);
+        pos = 0;
+    }
+    void *p = glMapBufferRange(tgt, pos, len, GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT | GL_MAP_INVALIDATE_RANGE_BIT);
+    if (!p) return ~0u;
+    memcpy(p, data, len);
+    glUnmapBuffer(tgt);
+    ring_pos[r] = pos + len;
+    return pos;
+}
+
+/* texture bound on each unit by draws (other code resets it via gfx_gl_unbind_textures) */
+static GLuint unit_tex[16];
+/* unbind every unit: call after code outside the draw path binds textures */
+void gfx_gl_unbind_textures(void) {
+    for (int i = 0; i < 16; i++) {
+        glActiveTexture(GL_TEXTURE0 + (GLenum)i);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        unit_tex[i] = 0;
+    }
+    glActiveTexture(GL_TEXTURE0);
+}
 static bool draw_inited;
 
 static void draw_init(void) {
@@ -390,12 +449,59 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     if (pg->alpha_func >= 0) glUniform1i(pg->alpha_func, st->rs[15] ? (GLint)st->rs[25] : 0);
     if (pg->alpha_ref >= 0) glUniform1f(pg->alpha_ref, (float)(st->rs[24] & 0xFF));
 
-    /* textures */
+    if (gfx_gl_drawlog) {
+        extern void gfx_gl_texture_info(GfxId id, u32 *fmt, u32 *w, u32 *h, u32 *levels);
+        for (int i = 0; i < 16; i++) {
+            if (!(ps->info.samplers_used & (1u << i))) continue;
+            u32 f = 0, w = 0, h = 0, lv = 0;
+            gfx_gl_texture_info(st->tex[i], &f, &w, &h, &lv);
+            const u32 *ss = st->samp[i];
+            x2_log("  s%d: tex %u fmt %u %ux%u levels %u addr %u/%u border %08x filter mag %u min %u mip %u", i, st->tex[i], f, w, h,
+                   lv, ss[1], ss[2], ss[4], ss[5], ss[6], ss[7]);
+            /* captures also save the compressed atlases (sprite tiles, effects) */
+            static GfxId dumped[4096];
+            static u32 ndumped;
+            if (f >= GFX_FMT_DXT1 && f <= GFX_FMT_DXT5 && ndumped < 4096) {
+                bool seen = false;
+                for (u32 k = 0; k < ndumped; k++) seen |= dumped[k] == st->tex[i];
+                if (!seen) {
+                    extern void gfx_gl_dump_texture(GfxId id);
+                    dumped[ndumped++] = st->tex[i];
+                    gfx_gl_dump_texture(st->tex[i]);
+                }
+            }
+        }
+        Shader *pair[2] = {vs, ps};
+        for (int k = 0; k < 2; k++)
+            if (pair[k]->glsl && !pair[k]->logged) {
+                pair[k]->logged = true;
+                x2_log("  %s shader source:\n%s", k ? "pixel" : "vertex", pair[k]->glsl);
+            }
+    }
+    /* textures. Units the shader does not sample must not keep the render
+     * target's texture bound: Mali treats that as a feedback hazard and resolves
+     * it with copies on every draw (KOF XII ran at 3 fps). */
+    GLuint rt_tex = gfx_gl_texture(st->rt[0]);
+    {
+        /* uploads and texture creation bind on unit 0 outside this function */
+        GLint cur = 0;
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &cur);
+        unit_tex[0] = (GLuint)cur;
+    }
     for (int i = 0; i < 16; i++) {
-        if (!(ps->info.samplers_used & (1u << i))) continue;
+        if (!(ps->info.samplers_used & (1u << i))) {
+            if (rt_tex && unit_tex[i] == rt_tex) {
+                glActiveTexture(GL_TEXTURE0 + (GLenum)i);
+                glBindTexture(GL_TEXTURE_2D, 0);
+                unit_tex[i] = 0;
+            }
+            continue;
+        }
         glActiveTexture(GL_TEXTURE0 + (GLenum)i);
         GLuint t = gfx_gl_texture(st->tex[i]);
         glBindTexture(GL_TEXTURE_2D, t ? t : black_tex);
+        unit_tex[i] = t ? t : black_tex;
         glBindSampler((GLuint)i, get_sampler(st->samp[i]));
     }
     glActiveTexture(GL_TEXTURE0);
@@ -408,6 +514,43 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             nv = 0;
         }
         (void)nv;
+    }
+    /* streaming: if any vertex stream or the index buffer is dynamic, the draw
+     * reads all its data from the ring. vlo..vhi = vertices the draw touches. */
+    bool stream = false;
+    u32 n_verts = prim_count_to_verts(prim, count);
+    u32 isz = st->ib_index_size ? st->ib_index_size : 2;
+    s64 vlo = 0, vhi = 0;
+    if (!up_verts) {
+        extern bool gfx_gl_buffer_dynamic(GfxId id);
+        for (u32 k = 0; k < dc->n && !stream; k++) stream = gfx_gl_buffer_dynamic(st->vb[dc->e[k].stream]);
+        if (indexed && gfx_gl_buffer_dynamic(st->ib)) stream = true;
+    }
+    s32 base_vertex = 0;
+    u32 ring_ioff = 0;
+    s64 stream_off[GFX_MAX_STREAMS];
+    if (stream) {
+        if (indexed) {
+            u32 isize;
+            const u8 *ish = gfx_gl_buffer_shadow(st->ib, &isize);
+            if (!ish || (u64)(start + n_verts) * isz > isize) return;
+            u32 mn = ~0u, mx = 0;
+            for (u32 i = 0; i < n_verts; i++) {
+                u32 v = isz == 4 ? ((const u32 *)ish)[start + i] : ((const u16 *)ish)[start + i];
+                if (v < mn) mn = v;
+                if (v > mx) mx = v;
+            }
+            if (!n_verts) return;
+            vlo = (s64)base + mn;
+            vhi = (s64)base + mx + 1;
+            base_vertex = (s32)(base - vlo); /* index i reads ring vertex (base + i - vlo) */
+            ring_ioff = ring_put(1, ish + (size_t)start * isz, n_verts * isz, isz);
+            if (ring_ioff == ~0u) return;
+        } else {
+            vlo = start;
+            vhi = (s64)start + n_verts;
+        }
+        for (int s = 0; s < GFX_MAX_STREAMS; s++) stream_off[s] = -1;
     }
     u32 bgra_mask = 0;
     for (int loc = 0; loc < 16; loc++) {
@@ -429,6 +572,21 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             glBindBuffer(GL_ARRAY_BUFFER, scratch_vbo);
             stride = up_stride;
             off = e->offset;
+        } else if (stream) {
+            u32 s = e->stream, vsize;
+            stride = st->vb_stride[s];
+            const u8 *vsh = gfx_gl_buffer_shadow(st->vb[s], &vsize);
+            if (!vsh || vlo < 0) { glDisableVertexAttribArray((GLuint)loc); continue; }
+            if (stream_off[s] < 0) { /* copy this stream's vertices once per draw */
+                u64 from = st->vb_offset[s] + (u64)vlo * stride, len = (u64)(vhi - vlo) * stride;
+                if (from >= vsize) { glDisableVertexAttribArray((GLuint)loc); continue; }
+                if (from + len > vsize) len = vsize - from;
+                u32 pos = ring_put(0, vsh + from, (u32)len, 16);
+                if (pos == ~0u) { glDisableVertexAttribArray((GLuint)loc); continue; }
+                stream_off[s] = pos;
+            }
+            glBindBuffer(GL_ARRAY_BUFFER, ring_buf[0]);
+            off = (uintptr_t)stream_off[s] + e->offset;
         } else {
             GLuint b = gfx_gl_buffer(st->vb[e->stream]);
             if (!b) { glDisableVertexAttribArray((GLuint)loc); continue; }
@@ -454,6 +612,14 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             glDrawElements(mode, (GLsizei)n, up_isz == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT, 0);
         } else {
             glDrawArrays(mode, 0, (GLsizei)n);
+        }
+    } else if (stream) {
+        if (indexed) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ring_buf[1]);
+            glDrawElementsBaseVertex(mode, (GLsizei)n, isz == 4 ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+                                     (const void *)(uintptr_t)ring_ioff, base_vertex);
+        } else {
+            glDrawArrays(mode, 0, (GLsizei)n); /* ring holds vertices from `start` on */
         }
     } else if (indexed) {
         GLuint ib = gfx_gl_buffer(st->ib);
@@ -484,6 +650,11 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)cur_fbo);
             glDeleteFramebuffers(1, &f);
         }
+        x2_log("  vsc0-7: %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g",
+               vsc[0][0], vsc[0][1], vsc[0][2], vsc[0][3], vsc[1][0], vsc[1][1], vsc[1][2], vsc[1][3], vsc[2][0], vsc[2][1],
+               vsc[2][2], vsc[2][3], vsc[3][0], vsc[3][1], vsc[3][2], vsc[3][3], vsc[4][0], vsc[4][1], vsc[4][2], vsc[4][3],
+               vsc[5][0], vsc[5][1], vsc[5][2], vsc[5][3], vsc[6][0], vsc[6][1], vsc[6][2], vsc[6][3], vsc[7][0], vsc[7][1],
+               vsc[7][2], vsc[7][3]);
         if (st->vb[0]) {
             u32 sz;
             const u8 *sh = gfx_gl_buffer_shadow(st->vb[0], &sz);

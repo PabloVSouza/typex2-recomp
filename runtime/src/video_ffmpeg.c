@@ -1,5 +1,6 @@
 /* FFmpeg movie decoder: WMV7/WMV9 video -> YV12 frames, WMA -> 48 kHz stereo.
- * One decode thread per playing movie, paced by the wall clock from run(). */
+ * Per playing movie: a reader thread (demux + audio decode) and a video thread
+ * that presents frames by the wall clock started in run(). */
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
@@ -25,7 +26,9 @@ struct X2Video {
     int w, h;
     double duration;
 
-    pthread_t thread;
+    pthread_t thread, vthread;
+    struct VPkt *vq_head, *vq_tail; /* video packets waiting for the video thread */
+    u32 vq_len;
     pthread_mutex_t lock;
     pthread_cond_t cond;
     bool running, quit, thread_started, eof, audio_done, video_done;
@@ -78,6 +81,83 @@ static void store_frame(X2Video *v, AVFrame *f) {
     free(tmp);
 }
 
+/* Video packets queued by the reader for the video thread. A node with a NULL
+ * packet asks the video thread to flush its decoder (after a seek). */
+typedef struct VPkt {
+    AVPacket *pkt;
+    struct VPkt *next;
+} VPkt;
+
+static void vq_push(X2Video *v, AVPacket *p) { /* caller holds v->lock */
+    VPkt *n = calloc(1, sizeof *n);
+    n->pkt = p;
+    if (v->vq_tail) v->vq_tail->next = n;
+    else v->vq_head = n;
+    v->vq_tail = n;
+    v->vq_len++;
+    pthread_cond_broadcast(&v->cond);
+}
+
+static void vq_clear(X2Video *v) { /* caller holds v->lock */
+    while (v->vq_head) {
+        VPkt *n = v->vq_head;
+        v->vq_head = n->next;
+        av_packet_free(&n->pkt);
+        free(n);
+    }
+    v->vq_tail = NULL;
+    v->vq_len = 0;
+}
+
+/* Decodes queued video packets and shows each frame when the clock reaches it. */
+static void *video_thread(void *arg) {
+    X2Video *v = arg;
+    AVFrame *f = av_frame_alloc();
+    AVStream *st = v->fmt->streams[v->vstream];
+    for (;;) {
+        pthread_mutex_lock(&v->lock);
+        while (!v->quit && (!v->running || !v->vq_head)) pthread_cond_wait(&v->cond, &v->lock);
+        if (v->quit) { pthread_mutex_unlock(&v->lock); break; }
+        VPkt *n = v->vq_head;
+        v->vq_head = n->next;
+        if (!v->vq_head) v->vq_tail = NULL;
+        v->vq_len--;
+        pthread_cond_broadcast(&v->cond); /* room for the reader */
+        pthread_mutex_unlock(&v->lock);
+        if (!n->pkt) { /* seek marker */
+            avcodec_flush_buffers(v->vdec);
+            free(n);
+            continue;
+        }
+        int sent = avcodec_send_packet(v->vdec, n->pkt);
+        av_packet_free(&n->pkt);
+        free(n);
+        if (sent < 0) continue;
+        while (avcodec_receive_frame(v->vdec, f) == 0) {
+            double t = f->best_effort_timestamp == AV_NOPTS_VALUE ? 0 : (double)f->best_effort_timestamp * av_q2d(st->time_base);
+            bool drop = false;
+            for (;;) {
+                pthread_mutex_lock(&v->lock);
+                double c = now_clock(v);
+                bool stop = v->quit || !v->running;
+                drop = v->vq_head && !v->vq_head->pkt; /* a seek is pending */
+                pthread_mutex_unlock(&v->lock);
+                if (stop || drop || c >= t) break;
+                double d = t - c;
+                struct timespec ts = {0, (long)((d > 0.01 ? 0.01 : d) * 1e9)};
+                nanosleep(&ts, NULL);
+            }
+            if (!drop) store_frame(v, f);
+            av_frame_unref(f);
+        }
+    }
+    av_frame_free(&f);
+    return NULL;
+}
+
+/* Reader: demuxes ahead of playback. Audio is decoded straight into the ring;
+ * video packets go to the video thread. Reading ahead matters because some
+ * files store many seconds of video before their first audio packet. */
 static void *decode_thread(void *arg) {
     X2Video *v = arg;
     AVPacket *pkt = av_packet_alloc();
@@ -85,8 +165,13 @@ static void *decode_thread(void *arg) {
     float abuf[8192 * 2];
     for (;;) {
         pthread_mutex_lock(&v->lock);
-        while (!v->quit && (!v->running || v->eof)) {
-            if (v->seek_to >= 0) break;
+        for (;;) {
+            if (v->quit || v->seek_to >= 0) break;
+            u32 audio = v->ring_w - v->ring_r;
+            bool audio_ok = v->astream < 0 || audio > 48000; /* 0.5 s of stereo */
+            bool full = audio > 3 * 48000 ||                   /* 1.5 s: keep the 2 s ring from overflowing */
+                        (audio_ok && v->vq_len >= 8) || v->vq_len >= 4096;
+            if (v->running && !v->eof && !full) break;
             pthread_cond_wait(&v->cond, &v->lock);
         }
         if (v->quit) { pthread_mutex_unlock(&v->lock); break; }
@@ -95,54 +180,39 @@ static void *decode_thread(void *arg) {
             v->seek_to = -1;
             v->eof = v->audio_done = v->video_done = false;
             v->ring_r = v->ring_w = 0;
+            vq_clear(v);
+            if (v->vdec) vq_push(v, NULL); /* video thread flushes its decoder */
             pthread_mutex_unlock(&v->lock);
             av_seek_frame(v->fmt, -1, (int64_t)(t * AV_TIME_BASE), AVSEEK_FLAG_BACKWARD);
-            if (v->vdec) avcodec_flush_buffers(v->vdec);
             if (v->adec) avcodec_flush_buffers(v->adec);
             continue;
         }
-        /* keep audio about 0.5 s ahead and video at most one frame ahead */
-        u32 buffered = v->ring_w - v->ring_r;
         pthread_mutex_unlock(&v->lock);
-        if (buffered > 48000 && v->astream >= 0) {
-            struct timespec ts = {0, 5000000};
-            nanosleep(&ts, NULL);
-            continue;
-        }
-        int r = av_read_frame(v->fmt, pkt);
-        if (r < 0) {
+        if (av_read_frame(v->fmt, pkt) < 0) {
             pthread_mutex_lock(&v->lock);
             v->eof = true;
             pthread_mutex_unlock(&v->lock);
             continue;
         }
-        AVCodecContext *dec = pkt->stream_index == v->vstream ? v->vdec : pkt->stream_index == v->astream ? v->adec : NULL;
-        if (!dec || avcodec_send_packet(dec, pkt) < 0) { av_packet_unref(pkt); continue; }
-        AVStream *st = v->fmt->streams[pkt->stream_index];
+        if (pkt->stream_index == v->vstream && v->vdec) {
+            pthread_mutex_lock(&v->lock);
+            vq_push(v, av_packet_clone(pkt));
+            pthread_mutex_unlock(&v->lock);
+            av_packet_unref(pkt);
+            continue;
+        }
+        if (pkt->stream_index != v->astream || !v->adec || avcodec_send_packet(v->adec, pkt) < 0) {
+            av_packet_unref(pkt);
+            continue;
+        }
         av_packet_unref(pkt);
-        while (avcodec_receive_frame(dec, f) == 0) {
-            double t = f->best_effort_timestamp == AV_NOPTS_VALUE ? 0 : (double)f->best_effort_timestamp * av_q2d(st->time_base);
-            if (dec == v->vdec) {
-                /* present when the clock reaches the frame time */
-                for (;;) {
-                    pthread_mutex_lock(&v->lock);
-                    double c = now_clock(v);
-                    bool stop = v->quit || v->seek_to >= 0 || !v->running;
-                    pthread_mutex_unlock(&v->lock);
-                    if (stop || c >= t) break;
-                    double d = t - c;
-                    struct timespec ts = {0, (long)((d > 0.01 ? 0.01 : d) * 1e9)};
-                    nanosleep(&ts, NULL);
-                }
-                store_frame(v, f);
-            } else {
-                int out = swr_convert(v->swr, (uint8_t *[]){(uint8_t *)abuf}, 8192, (const uint8_t **)f->extended_data,
-                                      f->nb_samples);
-                if (out > 0) {
-                    pthread_mutex_lock(&v->lock);
-                    ring_push(v, abuf, (u32)out * 2);
-                    pthread_mutex_unlock(&v->lock);
-                }
+        while (avcodec_receive_frame(v->adec, f) == 0) {
+            int out = swr_convert(v->swr, (uint8_t *[]){(uint8_t *)abuf}, 8192, (const uint8_t **)f->extended_data,
+                                  f->nb_samples);
+            if (out > 0) {
+                pthread_mutex_lock(&v->lock);
+                ring_push(v, abuf, (u32)out * 2);
+                pthread_mutex_unlock(&v->lock);
             }
             av_frame_unref(f);
         }
@@ -209,7 +279,11 @@ void x2_video_close(X2Video *v) {
     v->quit = true;
     pthread_cond_broadcast(&v->cond);
     pthread_mutex_unlock(&v->lock);
-    if (v->thread_started) pthread_join(v->thread, NULL);
+    if (v->thread_started) {
+        pthread_join(v->thread, NULL);
+        if (v->vdec) pthread_join(v->vthread, NULL);
+    }
+    vq_clear(v);
     pthread_mutex_lock(&videos_lock);
     for (X2Video **p = &videos; *p; p = &(*p)->next)
         if (*p == v) { *p = v->next; break; }
@@ -238,6 +312,7 @@ void x2_video_run(X2Video *v) {
     if (!v->thread_started) {
         v->thread_started = true;
         pthread_create(&v->thread, NULL, decode_thread, v);
+        if (v->vdec) pthread_create(&v->vthread, NULL, video_thread, v);
     }
     pthread_cond_broadcast(&v->cond);
     pthread_mutex_unlock(&v->lock);
@@ -294,6 +369,7 @@ void x2_video_mix(float *out, uint32_t frames, uint32_t rate) {
         pthread_mutex_lock(&v->lock);
         if (v->running) {
             for (u32 i = 0; i < frames * 2 && v->ring_r != v->ring_w; i++) out[i] += v->ring[v->ring_r++ % RING] * v->gain;
+            pthread_cond_broadcast(&v->cond); /* the reader may be waiting for ring space */
         }
         pthread_mutex_unlock(&v->lock);
     }

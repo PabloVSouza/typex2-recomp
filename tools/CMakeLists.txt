@@ -17,3 +17,13 @@ if(UNICORN_FOUND AND EXISTS ${X2_LIFTTEST_C})
 endif()
 
 add_executable(kofarc kofarc.cpp ${CMAKE_SOURCE_DIR}/runtime/src/txac.c)
+
+# retro_host: minimal libretro frontend for testing the core (desktop, needs SDL3)
+find_package(SDL3 CONFIG QUIET)
+if(SDL3_FOUND)
+  add_executable(retro_host retro_host.c)
+  target_link_libraries(retro_host PRIVATE SDL3::SDL3 ZLIB::ZLIB ${CMAKE_DL_LIBS})
+  if(APPLE)
+    target_link_libraries(retro_host PRIVATE "-framework OpenGL")
+  endif()
+endif()

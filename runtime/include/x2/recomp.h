@@ -54,12 +54,24 @@ typedef struct X2Cpu {
     u32 mxcsr;
     /* runtime bookkeeping */
     void *thread;
+    const char *host_fn; /* host import being executed (fault reports) */
 } X2Cpu;
 
 typedef void (*X2Func)(X2Cpu *c);
 typedef struct { u32 addr; X2Func fn; } X2FuncEntry;
 typedef struct { u32 slot; const char *dll; const char *name; } X2ImportEntry;
 typedef struct { u32 base, size, entry, text_start, text_end; } X2ImageInfo;
+/* One recompiled game: the tables x2recomp emits in table.c, gathered by a
+ * build-generated descriptor (x2g_<game>) so several games can share a binary. */
+typedef struct {
+    const X2FuncEntry *funcs;
+    unsigned nfuncs;
+    const X2ImportEntry *imports;
+    unsigned nimports;
+    const X2ImageInfo *image;
+    const u32 *tls_callbacks;
+} X2GameTables;
+extern const X2GameTables *x2_game; /* the running game */
 
 extern u8 *x2_mem;
 
@@ -105,8 +117,15 @@ static inline void WRSF64(u32 a, f64 v) { memcpy(X2P(a), &v, 8); }
 #define X2_TSO 0
 #endif
 #endif
+/* X2_TSO=2: release stores only (plain loads). Keeps the store->store ordering
+ * that lock releases need; loads may still be reordered. Cheaper on cores where
+ * acquire loads are slow (Cortex-A76: ~25% of a heavy frame). */
 #if X2_TSO
+#if X2_TSO == 2
+#define X2_LDA(T, a) (*(volatile T *)X2P(a))
+#else
 #define X2_LDA(T, a) __atomic_load_n((T *)X2P(a), __ATOMIC_ACQUIRE)
+#endif
 #define X2_STR(T, a, v) __atomic_store_n((T *)X2P(a), (v), __ATOMIC_RELEASE)
 static inline u8 RD8(u32 a) { return X2_LDA(u8, a); }
 static inline u16 RD16(u32 a) { if (a & 1) return RDS16(a); return X2_LDA(u16, a); }

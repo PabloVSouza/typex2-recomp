@@ -179,8 +179,8 @@ static void CoCreateInstance(X2Cpu *c) {
         return;
     }
     if (RD32(g) == 0xc1f400a0u || RD32(g) == 0xc1f400a4u) { /* CLSID_SampleGrabber / CLSID_NullRenderer */
-        extern u32 x2_dshow_create_filter(bool grabber);
-        WR32(ARG(4), x2_dshow_create_filter(RD32(g) == 0xc1f400a0u));
+        extern u32 x2_dshow_create_filter(bool grabber, u32 iid);
+        WR32(ARG(4), x2_dshow_create_filter(RD32(g) == 0xc1f400a0u, iid));
         RET(0);
         return;
     }

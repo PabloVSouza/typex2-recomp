@@ -110,6 +110,12 @@ static const char *prelude =
     "vec2 x2_lerp(vec2 a, vec2 b, float t) { return mix(a, b, t); }\n"
     "float x2_lerp(float a, float b, float t) { return mix(a, b, t); }\n"
     "#define saturate(x) clamp(x, 0.0, 1.0)\n";
+/* HLSL clip(): discard when any component is negative (fragment shaders only) */
+static const char *prelude_ps =
+    "void clip(float x) { if (x < 0.0) discard; }\n"
+    "void clip(vec2 x) { if (any(lessThan(x, vec2(0.0)))) discard; }\n"
+    "void clip(vec3 x) { if (any(lessThan(x, vec3(0.0)))) discard; }\n"
+    "void clip(vec4 x) { if (any(lessThan(x, vec4(0.0)))) discard; }\n";
 
 typedef struct {
     bool out;
@@ -117,6 +123,31 @@ typedef struct {
     char name[48];
     int usage, index;
 } Param;
+
+/* GLSL ES has no implicit int->float conversion, and HLSL sources write things
+ * like `4.0/255`. Rewrite integer literals in the HLSL body as float literals,
+ * except inside [] (array indices) and inside identifiers. Caller frees. */
+static char *float_literals(const char *s) {
+    size_t n = strlen(s);
+    char *o = malloc(n * 3 + 1), *d = o;
+    int bracket = 0;
+    for (size_t i = 0; i < n;) {
+        char ch = s[i];
+        if (ch == '[') bracket++;
+        if (ch == ']' && bracket) bracket--;
+        bool start = isdigit((unsigned char)ch) && (i == 0 || (!isalnum((unsigned char)s[i - 1]) && s[i - 1] != '_' && s[i - 1] != '.'));
+        if (!start) { *d++ = s[i++]; continue; }
+        size_t j = i;
+        while (j < n && isdigit((unsigned char)s[j])) j++;
+        bool is_float = j < n && (s[j] == '.' || s[j] == 'e' || s[j] == 'E' || s[j] == 'x' || s[j] == 'X' || isalpha((unsigned char)s[j]));
+        memcpy(d, s + i, j - i);
+        d += j - i;
+        if (!is_float && !bracket) { *d++ = '.'; *d++ = '0'; }
+        i = j;
+    }
+    *d = 0;
+    return o;
+}
 
 bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, char **out, Sm3Info *info, char *err,
                   size_t errlen) {
@@ -139,6 +170,7 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
     Str hdr = {0}, body = {0};
     sf(&hdr, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
     sf(&hdr, "%s", prelude);
+    if (pixel) sf(&hdr, "%s", prelude_ps);
     sf(&hdr, "uniform vec4 %s_c[%d];\n", P, pixel ? 224 : 256);
 
     /* globals: walk statements before "void <entry>(" */
@@ -261,8 +293,10 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
     char *raw = malloc((size_t)(be - bs));
     memcpy(raw, bs + 1, (size_t)(be - bs - 1));
     raw[be - bs - 1] = 0;
-    char *conv = substitute(raw, subs, ns);
+    char *conv0 = substitute(raw, subs, ns);
     free(raw);
+    char *conv = float_literals(conv0);
+    free(conv0);
     for (char *p = conv; *p;) {
         char *e = strchr(p, ';');
         if (!e) break;

@@ -40,19 +40,26 @@ static void free_obj(X2Handle *h) { free(h->obj); }
 #define MAX_CS 4096
 static pthread_mutex_t cs_mutex[MAX_CS];
 static u32 ncs;
+static u32 cs_free[MAX_CS], ncs_free; /* indices released by DeleteCriticalSection */
 static pthread_mutex_t cs_alloc_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static pthread_mutex_t *cs_get(u32 cs) {
     if (RD32(cs + 0x14) != CS_TAG) {
         pthread_mutex_lock(&cs_alloc_lock);
         if (RD32(cs + 0x14) != CS_TAG) {  /* lazily initialize zeroed sections */
-            if (ncs >= MAX_CS) x2_fatal("out of critical sections");
-            pthread_mutexattr_t a;
-            pthread_mutexattr_init(&a);
-            pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
-            pthread_mutex_init(&cs_mutex[ncs], &a);
-            pthread_mutexattr_destroy(&a);
-            WR32(cs + 0x10, ncs++);
+            u32 idx;
+            if (ncs_free) {
+                idx = cs_free[--ncs_free];
+            } else {
+                if (ncs >= MAX_CS) x2_fatal("out of critical sections");
+                idx = ncs++;
+                pthread_mutexattr_t a;
+                pthread_mutexattr_init(&a);
+                pthread_mutexattr_settype(&a, PTHREAD_MUTEX_RECURSIVE);
+                pthread_mutex_init(&cs_mutex[idx], &a);
+                pthread_mutexattr_destroy(&a);
+            }
+            WR32(cs + 0x10, idx);
             WR32(cs + 0x14, CS_TAG);
         }
         pthread_mutex_unlock(&cs_alloc_lock);
@@ -66,7 +73,17 @@ static void InitializeCriticalSection(X2Cpu *c) {
     WR32(cs + 4, 0xFFFFFFFFu);  /* LockCount */
     cs_get(cs);
 }
-static void DeleteCriticalSection(X2Cpu *c) { (void)c; /* host mutexes are recycled never; cheap */ }
+/* games create and delete sections on the stack in loops: recycle the host mutex */
+static void DeleteCriticalSection(X2Cpu *c) {
+    u32 cs = ARG(0);
+    pthread_mutex_lock(&cs_alloc_lock);
+    u32 idx = RD32(cs + 0x10);
+    if (RD32(cs + 0x14) == CS_TAG && idx < ncs && ncs_free < MAX_CS) {
+        cs_free[ncs_free++] = idx;
+        WR32(cs + 0x14, 0);
+    }
+    pthread_mutex_unlock(&cs_alloc_lock);
+}
 static void EnterCriticalSection(X2Cpu *c) {
     u32 cs = ARG(0);
     pthread_mutex_lock(cs_get(cs));

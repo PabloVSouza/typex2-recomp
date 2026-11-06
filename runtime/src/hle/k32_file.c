@@ -114,8 +114,14 @@ static bool is_comm_name(const char *n, int *port) {
     return false;
 }
 
+bool x2_ttx_pipe_name(const char *n);
+u32 x2_ttx_pipe_open(void);
+void x2_ttx_pipe_write(u32 h, const u8 *data, u32 n);
+u32 x2_ttx_pipe_read(u32 h, u8 *dst, u32 n);
+
 static u32 create_file(const char *name, u32 acc, u32 disp) {
     int port;
+    if (x2_ttx_pipe_name(name)) return x2_ttx_pipe_open();
     if (is_comm_name(name, &port)) {
         Comm *cm = calloc(1, sizeof *cm);
         cm->port = port;
@@ -192,6 +198,13 @@ static void complete_overlapped(u32 ov, u32 bytes) {
 
 static void ReadFile(X2Cpu *c) {
     u32 h = ARG(0), buf = ARG(1), n = ARG(2), pread_ = ARG(3), ov = ARG(4);
+    if (x2_handle_get(h, H_PIPE)) {
+        u32 got = x2_ttx_pipe_read(h, (u8 *)X2P(buf), n);
+        if (pread_) WR32(pread_, got);
+        if (ov) complete_overlapped(ov, got);
+        RET(1);
+        return;
+    }
     if (x2_handle_get(h, H_COMM)) {
         u32 got = jvs_read((u8 *)X2P(buf), n);
         if (pread_) WR32(pread_, got);
@@ -225,6 +238,7 @@ static void ReadFileEx(X2Cpu *c) {
     u32 h = ARG(0), buf = ARG(1), n = ARG(2), ov = ARG(3), routine = ARG(4);
     int fd = fd_of(h);
     if (fd < 0 || !ov) { x2_set_last_error(ERROR_INVALID_HANDLE); RET(0); return; }
+    if (getenv("X2_TRACE_READS")) x2_log("ReadFileEx fd %d @%llx len %x routine %08x (thread %u)", fd_of(h), (unsigned long long)(((u64)RD32(ov + 12) << 32) | RD32(ov + 8)), n, routine, x2_self->id);
     off_t at = (off_t)(((u64)RD32(ov + 12) << 32) | RD32(ov + 8));
     ssize_t got = 0;
     while ((u32)got < n) {
@@ -236,11 +250,13 @@ static void ReadFileEx(X2Cpu *c) {
     WR32(ov, 0);
     WR32(ov + 4, (u32)got);
     x2_queue_apc(x2_self, routine, got == 0 && n ? 38 /* ERROR_HANDLE_EOF */ : 0, (u32)got, ov);
+    x2_set_last_error(0); /* callers check GetLastError() after the alertable wait */
     RET(1);
 }
 /* GetOverlappedResult(h, overlapped, *bytes, wait): everything completes synchronously */
 static void GetOverlappedResult(X2Cpu *c) {
     if (ARG(2)) WR32(ARG(2), RD32(ARG(1) + 4));
+    if (RD32(ARG(1)) == 0) x2_set_last_error(0);
     RET(RD32(ARG(1)) == 0);
 }
 static void CancelIo(X2Cpu *c) { RET(1); }
@@ -248,6 +264,13 @@ static void SetCurrentDirectoryW(X2Cpu *c) { RET(1); }
 
 static void WriteFile(X2Cpu *c) {
     u32 h = ARG(0), buf = ARG(1), n = ARG(2), pw = ARG(3), ov = ARG(4);
+    if (x2_handle_get(h, H_PIPE)) {
+        x2_ttx_pipe_write(h, (const u8 *)X2P(buf), n);
+        if (pw) WR32(pw, n);
+        if (ov) complete_overlapped(ov, n);
+        RET(1);
+        return;
+    }
     if (x2_handle_get(h, H_COMM)) {
         jvs_write((const u8 *)X2P(buf), n);
         if (pw) WR32(pw, n);

@@ -1,4 +1,4 @@
-/* Host font backend behind gdi32's font calls (CoreText on Apple; others TBD). */
+/* Host font backend behind gdi32's font calls: CoreText on Apple (font_coretext.c), stb_truetype elsewhere (font_stb.c). */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- ES-DE (Android): where to find the Type X2 app. Copy into ES-DE/custom_systems/es_find_rules.xml
+     (or merge the <emulator> block into an existing file). -->
+<ruleList>
+    <emulator name="TYPEX2">
+        <rule type="androidpackage">
+            <entry>com.typex2.recomp/org.libsdl.app.SDLActivity</entry>
+        </rule>
+    </emulator>
+</ruleList>

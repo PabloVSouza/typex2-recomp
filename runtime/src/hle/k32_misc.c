@@ -181,9 +181,14 @@ static void GetVersionExA(X2Cpu *c) {
 static void GetCurrentProcess(X2Cpu *c) { RET(0xFFFFFFFFu); }
 static void GetCurrentProcessId(X2Cpu *c) { RET(0x10); }
 
+void (*x2_exit_hook)(u32 code);
 void x2_exit_process(u32 code) {
     x2_log("ExitProcess(%u)", code);
     fflush(NULL);
+    if (x2_exit_hook) {
+        x2_exit_hook(code);
+        for (;;) pause(); /* the front end tears the session down */
+    }
     _exit((int)code);
 }
 static void ExitProcess(X2Cpu *c) { x2_exit_process(ARG(0)); }

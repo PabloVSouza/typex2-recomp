@@ -1,0 +1,24 @@
+# Type X2 recomp: statically recompiled Taito Type X2 games (RetroArch core info)
+display_name = "Taito - Type X2 (Type X2 recomp)"
+authors = "typex2-recomp contributors"
+supported_extensions = "exe|x2"
+corename = "Type X2"
+categories = "Emulator"
+permissions = ""
+display_version = "0.1.0"
+
+manufacturer = "Taito"
+systemname = "Type X2"
+systemid = "typex2"
+
+# content: the game folder, its game.exe, or a file inside the folder
+needs_fullpath = "true"
+supports_no_game = "false"
+database = ""
+hw_render = "true"
+required_hw_api = "OpenGL Core >= 3.3 | OpenGL ES >= 3.2"
+savestate = "false"
+is_experimental = "true"
+
+notes = "Only games recompiled into this core run (see library list in the log). |One game per RetroArch session: restart RetroArch to switch games. |RetroPad: Y B X A = A B C D, Select = coin, L3 = test, R3 = service."
+description = "Runs statically recompiled Taito Type X2 arcade games (x86 PC hardware) natively. Each supported game is compiled into the core; the original game files are required."

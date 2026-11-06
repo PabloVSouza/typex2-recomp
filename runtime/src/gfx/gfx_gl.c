@@ -7,6 +7,7 @@
  * image is ready to show. */
 #include <stdlib.h>
 #include <string.h>
+#include <sched.h>
 #include <time.h>
 
 #include "../core.h"
@@ -173,6 +174,22 @@ void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *
  * display, so Present() releases the guest on a fixed 60 Hz clock. */
 static u64 next_vsync;
 static u64 guest_wake_ns, guest_work_acc_ns, guest_work_frames;
+
+/* External clock (libretro): instead of its own 60 Hz timer, the guest waits in
+ * Present for a credit from gfx_clock_tick(), called once per front-end frame.
+ * Credits are capped so a stall (loading, paused frontend) does not turn into a
+ * burst of unpaced frames afterwards. */
+static bool ext_clock;
+static u32 ext_credit;
+static pthread_mutex_t ext_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t ext_cond = PTHREAD_COND_INITIALIZER;
+void gfx_set_external_clock(bool on) { ext_clock = on; }
+void gfx_clock_tick(void) {
+    pthread_mutex_lock(&ext_lock);
+    if (ext_credit < 2) ext_credit++;
+    pthread_cond_broadcast(&ext_cond);
+    pthread_mutex_unlock(&ext_lock);
+}
 /* Mean guest CPU time per frame (Present to Present, minus pacing sleeps)
  * since the previous call; feeds the FPS overlay. */
 double gfx_guest_work_ms(void) {
@@ -180,9 +197,11 @@ double gfx_guest_work_ms(void) {
     u64 n = __atomic_exchange_n(&guest_work_frames, 0, __ATOMIC_RELAXED);
     return n ? (double)acc / (double)n / 1e6 : 0;
 }
+static u64 last_work_ns; /* guest time from wake-up to this Present (X2_PACELOG) */
 void gfx_present(void) {
     {
         u64 t = x2_time_ns();
+        last_work_ns = guest_wake_ns ? t - guest_wake_ns : 0;
         if (guest_wake_ns) {
             __atomic_fetch_add(&guest_work_acc_ns, t - guest_wake_ns, __ATOMIC_RELAXED);
             __atomic_fetch_add(&guest_work_frames, 1, __ATOMIC_RELAXED);
@@ -204,16 +223,47 @@ void gfx_present(void) {
     pthread_mutex_unlock(&q_lock);
     frames_presented++;
 
+    if (ext_clock) { /* the front end's frame callback releases the guest */
+        pthread_mutex_lock(&ext_lock);
+        while (!ext_credit) pthread_cond_wait(&ext_cond, &ext_lock);
+        ext_credit--;
+        pthread_mutex_unlock(&ext_lock);
+        guest_wake_ns = x2_time_ns();
+        return;
+    }
     const u64 period = 16666667ull;
     u64 now = x2_time_ns();
     if (!next_vsync || now > next_vsync + 4 * period) next_vsync = now;
     next_vsync += period;
-    if (next_vsync > now) {
-        u64 d = next_vsync - now;
+    /* sleep most of the way, then yield-spin to the deadline so the guest wakes on
+     * time (macOS coalesces timers). Even frame times matter: KOF XIII animates its
+     * stages by elapsed time. The bigger win is interactive QoS (thread.c). */
+    if (next_vsync > now + 2000000ull) {
+        u64 d = next_vsync - now - 2000000ull;
         struct timespec ts = {(time_t)(d / 1000000000ull), (long)(d % 1000000000ull)};
         nanosleep(&ts, NULL);
     }
+    while (x2_time_ns() < next_vsync) sched_yield();
     guest_wake_ns = x2_time_ns();
+    {
+        static int wl = -1;
+        static u64 lw, mn = ~0ull, mx, n, late, wsum, wmax;
+        if (wl < 0) wl = getenv("X2_PACELOG") != NULL;
+        if (wl && lw) {
+            u64 dt = guest_wake_ns - lw;
+            if (dt < mn) mn = dt;
+            if (dt > mx) mx = dt;
+            if (dt > 18000000ull) late++;
+            wsum += last_work_ns;
+            if (last_work_ns > wmax) wmax = last_work_ns;
+            if (++n == 120) {
+                x2_log("pace: wake interval min %.2f max %.2f ms, %llu late; guest work avg %.2f max %.2f ms", mn / 1e6,
+                       mx / 1e6, (unsigned long long)late, wsum / 1e6 / n, wmax / 1e6);
+                mn = ~0ull; mx = n = late = wsum = wmax = 0;
+            }
+        }
+        lw = guest_wake_ns;
+    }
 }
 uint64_t gfx_frame_count(void) { return frames_presented; }
 
@@ -222,12 +272,15 @@ typedef struct {
     GLuint tex, fbo;
     u32 fmt, w, h, levels;
     bool depth;
+    GLuint fbo_depth; /* depth texture currently attached to fbo (0 = none) */
 } Tex;
 typedef struct {
     GLuint buf;
     u32 size;
     bool index;
     u8 *shadow; /* CPU copy for index-buffer reads / partial updates */
+    u32 uploads;
+    bool dynamic; /* updated repeatedly: draws stream it from the shadow (see gfx_gl_draw) */
 } Buf;
 
 #define MAX_IDS (1u << 20)
@@ -271,6 +324,66 @@ static void apply_swizzle(u32 f) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, sw[3]);
 }
 
+/* ---- DXT (S3TC) fallback -----------------------------------------------------
+ * Mobile GPUs (Mali, Adreno, PowerVR) usually lack S3TC. Without it, DXT
+ * textures are stored as RGBA8 and every upload is decoded on the CPU. */
+static bool have_s3tc = true;
+
+static void rgb565(u16 c, u8 *o) {
+    o[0] = (u8)((c >> 11 & 31) * 255 / 31);
+    o[1] = (u8)((c >> 5 & 63) * 255 / 63);
+    o[2] = (u8)((c & 31) * 255 / 31);
+}
+
+/* one 4x4 colour block (DXT1 layout); dxt1 enables the 3-colour + transparent mode */
+static void dxt_color_block(const u8 *b, bool dxt1, u8 out[16][4]) {
+    u16 c0 = (u16)(b[0] | b[1] << 8), c1 = (u16)(b[2] | b[3] << 8);
+    u8 pal[4][4];
+    rgb565(c0, pal[0]);
+    rgb565(c1, pal[1]);
+    pal[0][3] = pal[1][3] = pal[2][3] = pal[3][3] = 255;
+    for (int k = 0; k < 3; k++) {
+        if (c0 > c1 || !dxt1) {
+            pal[2][k] = (u8)((2 * pal[0][k] + pal[1][k]) / 3);
+            pal[3][k] = (u8)((pal[0][k] + 2 * pal[1][k]) / 3);
+        } else {
+            pal[2][k] = (u8)((pal[0][k] + pal[1][k]) / 2);
+            pal[3][k] = 0;
+        }
+    }
+    if (dxt1 && c0 <= c1) pal[3][3] = 0;
+    u32 bits = (u32)b[4] | (u32)b[5] << 8 | (u32)b[6] << 16 | (u32)b[7] << 24;
+    for (int i = 0; i < 16; i++) memcpy(out[i], pal[bits >> (2 * i) & 3], 4);
+}
+
+/* decode w x h texels of packed block rows into RGBA8 */
+static u8 *dxt_decode(u32 fmt, const u8 *src, u32 w, u32 h) {
+    u32 bw = (w + 3) / 4, bh = (h + 3) / 4, bb = fmt == GFX_FMT_DXT1 ? 8 : 16;
+    u8 *out = malloc((size_t)w * h * 4);
+    for (u32 by = 0; by < bh; by++)
+        for (u32 bx = 0; bx < bw; bx++) {
+            const u8 *b = src + ((size_t)by * bw + bx) * bb;
+            u8 px[16][4];
+            dxt_color_block(fmt == GFX_FMT_DXT1 ? b : b + 8, fmt == GFX_FMT_DXT1, px);
+            if (fmt == GFX_FMT_DXT3) {
+                for (int i = 0; i < 16; i++) px[i][3] = (u8)((b[i / 2] >> (4 * (i & 1)) & 15) * 17);
+            } else if (fmt == GFX_FMT_DXT5) {
+                u8 a[8] = {b[0], b[1]};
+                for (int k = 2; k < 8; k++)
+                    a[k] = a[0] > a[1] ? (u8)(((8 - k) * a[0] + (k - 1) * a[1]) / 7)
+                         : k < 6 ? (u8)(((6 - k) * a[0] + (k - 1) * a[1]) / 5) : (k == 6 ? 0 : 255);
+                u64 ab = 0;
+                for (int k = 0; k < 6; k++) ab |= (u64)b[2 + k] << (8 * k);
+                for (int i = 0; i < 16; i++) px[i][3] = a[ab >> (3 * i) & 7];
+            }
+            for (int i = 0; i < 16; i++) {
+                u32 x = bx * 4 + (u32)(i & 3), y = by * 4 + (u32)(i >> 2);
+                if (x < w && y < h) memcpy(out + ((size_t)y * w + x) * 4, px[i], 4);
+            }
+        }
+    return out;
+}
+
 static void do_tex_create(const TexCreate *k) {
     if (k->id >= MAX_IDS) return;
     Tex *t = calloc(1, sizeof *t);
@@ -281,6 +394,10 @@ static void do_tex_create(const TexCreate *k) {
     GLint ifmt; GLenum fmt, type; bool bgra;
     gl_format(k->fmt, &ifmt, &fmt, &type, &bgra);
     bool compressed = k->fmt == GFX_FMT_DXT1 || k->fmt == GFX_FMT_DXT3 || k->fmt == GFX_FMT_DXT5;
+    if (compressed && !have_s3tc) {
+        compressed = false;
+        ifmt = GL_RGBA8; fmt = GL_RGBA; type = GL_UNSIGNED_BYTE; /* decoded on upload */
+    }
     for (u32 l = 0; l < k->levels; l++) {
         u32 w = k->w >> l ? k->w >> l : 1, h = k->h >> l ? k->h >> l : 1;
         if (compressed) {
@@ -313,9 +430,23 @@ static void do_tex_create(const TexCreate *k) {
 static void do_tex_upload(const TexUpload *k) {
     Tex *t = k->id < MAX_IDS ? texs[k->id] : NULL;
     if (!t) return;
+    {
+        static int ul = -1;
+        if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
+        if (ul) x2_log("upload tex %u fmt %u level %u %ux%u at %u,%u (%u bytes)", k->id, t->fmt, k->level, k->w, k->h, k->x, k->y, k->bytes);
+    }
     glBindTexture(GL_TEXTURE_2D, t->tex);
     const u8 *data = (const u8 *)(k + 1);
     bool compressed = t->fmt == GFX_FMT_DXT1 || t->fmt == GFX_FMT_DXT3 || t->fmt == GFX_FMT_DXT5;
+    if (compressed && !have_s3tc) {
+        u8 *rgba = dxt_decode(t->fmt, data, k->w, k->h);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, GL_RGBA,
+                        GL_UNSIGNED_BYTE, rgba);
+        free(rgba);
+        return;
+    }
     if (compressed) {
         GLenum cf = t->fmt == GFX_FMT_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
                   : t->fmt == GFX_FMT_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
@@ -328,15 +459,23 @@ static void do_tex_upload(const TexUpload *k) {
     u32 bw, bpp = fmt_block_bytes(t->fmt, &bw);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(k->pitch / bpp));
+    /* A whole-level update respecifies the level instead of patching it, so the
+     * driver can hand out fresh storage rather than wait for the GPU to finish
+     * with the old contents (Mali stalled ~300 ms on KOF XII's per-frame
+     * video texture). */
+    u32 lw = t->w >> k->level ? t->w >> k->level : 1, lh = t->h >> k->level ? t->h >> k->level : 1;
+    bool whole = k->x == 0 && k->y == 0 && k->w == lw && k->h == lh;
     if (bgra) {
         /* swap B and R into a temporary: GLES has no GL_BGRA upload */
         u32 n = k->bytes / 4;
         u32 *tmp = malloc(k->bytes);
         const u32 *s = (const u32 *)data;
         for (u32 i = 0; i < n; i++) tmp[i] = (s[i] & 0xFF00FF00u) | (s[i] >> 16 & 0xFF) | (s[i] & 0xFF) << 16;
-        glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt,
-                        type, tmp);
+        if (whole) glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, tmp);
+        else glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt, type, tmp);
         free(tmp);
+    } else if (whole) {
+        glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, data);
     } else {
         glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt,
                         type, data);
@@ -347,6 +486,9 @@ static void do_tex_upload(const TexUpload *k) {
 static void do_tex_destroy(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t) return;
+    if (t->depth) /* GL may reuse the name: forget cached attachments of it */
+        for (u32 i = 0; i < MAX_IDS; i++)
+            if (texs[i] && texs[i]->fbo_depth == t->tex) texs[i]->fbo_depth = (GLuint)-1;
     glDeleteTextures(1, &t->tex);
     if (t->fbo) glDeleteFramebuffers(1, &t->fbo);
     free(t);
@@ -369,6 +511,12 @@ static void do_buf_upload(const BufUpload *k) {
     Buf *b = k->id < MAX_IDS ? bufs[k->id] : NULL;
     if (!b || k->offset + k->size > b->size) return;
     memcpy(b->shadow + k->offset, k + 1, k->size);
+    /* glBufferSubData on a buffer that queued draws still read makes tiled GPUs
+     * (Mali) stall: ~0.3 ms per update, 40+ ms per frame for Scaleform's dynamic
+     * vertices. After its first rewrite a buffer only updates the shadow; draws
+     * copy the range they use into a streaming ring (gfx_gl_draw.c). */
+    if (++b->uploads >= 2) b->dynamic = true;
+    if (b->dynamic) return;
     GLenum tgt = GL_ARRAY_BUFFER; /* element buffers bind to the VAO; upload through ARRAY_BUFFER is fine */
     glBindBuffer(tgt, b->buf);
     glBufferSubData(tgt, k->offset, k->size, k + 1);
@@ -388,10 +536,19 @@ static void bind_target(const GfxState *st) {
     GLuint fbo = t && t->fbo ? t->fbo : backbuffer_fbo;
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     Tex *d = st->ds < MAX_IDS ? texs[st->ds] : NULL;
+    /* re-attach only on change: on tiled GPUs (Mali) every attachment change
+     * forces the render target to be flushed and reloaded */
     if (t && t->fbo) {
-        GLenum att = d && d->fmt == GFX_FMT_D24S8 ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
-        if (d && d->w >= t->w && d->h >= t->h) glFramebufferTexture2D(GL_FRAMEBUFFER, att, GL_TEXTURE_2D, d->tex, 0);
-        else glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+        GLuint want = d && d->w >= t->w && d->h >= t->h ? d->tex : 0;
+        if (want != t->fbo_depth) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+            if (want) {
+                GLenum att = d->fmt == GFX_FMT_D24S8 ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+                glFramebufferTexture2D(GL_FRAMEBUFFER, att, GL_TEXTURE_2D, want, 0);
+            }
+            t->fbo_depth = want;
+        }
     }
 }
 
@@ -438,6 +595,7 @@ bool gfx_gl_texture_size(GfxId id, u32 *w, u32 *h) {
     return true;
 }
 GLuint gfx_gl_buffer(GfxId id) { return id < MAX_IDS && bufs[id] ? bufs[id]->buf : 0; }
+bool gfx_gl_buffer_dynamic(GfxId id) { return id < MAX_IDS && bufs[id] && bufs[id]->dynamic; }
 const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size) {
     Buf *b = id < MAX_IDS ? bufs[id] : NULL;
     if (!b) return NULL;
@@ -451,13 +609,21 @@ void gfx_gl_set_backbuffer(GfxId id) { backbuffer_id = id; }
 static GfxId last_rt0;
 static u32 st_draws, st_clears, st_frames, st_uploads;
 bool gfx_gl_drawlog;      /* X2_DRAWLOG=<frame>: log every draw of that frame */
-static u32 drawlog_frame;
+static u32 drawlog_frame, drawlog_last; /* X2_DRAWLOG=<first>[-<last>] */
+/* F9: log every draw of the next frame (with shader sources and sampler state) */
+static volatile bool capture_request;
+void gfx_request_capture(void) { capture_request = true; }
 
 /* Execute one frame; returns the texture the frame presented. */
+static u64 glprof_ns[C_PRESENT + 1], glprof_n[C_PRESENT + 1], glprof_bytes;
+static int glprof = -1; /* X2_GLPROF=1: time spent per replayed command type */
 static void run_frame(Frame *f) {
     for (size_t off = 0; off < f->len;) {
         u32 type = ((u32 *)(f->data + off))[0], size = ((u32 *)(f->data + off))[1];
         const void *p = f->data + off + 8;
+        if (glprof < 0) glprof = getenv("X2_GLPROF") != NULL;
+        u64 prof_t0 = glprof ? x2_time_ns() : 0;
+        if (glprof && type == C_BUF_UPLOAD) glprof_bytes += ((const BufUpload *)p)->size;
         switch (type) {
             case C_TEX_CREATE: do_tex_create(p); break;
             case C_TEX_UPLOAD: do_tex_upload(p); st_uploads++; break;
@@ -504,14 +670,36 @@ static void run_frame(Frame *f) {
                 break;
             }
             case C_PRESENT:
-                gfx_gl_drawlog = drawlog_frame && st_frames + 2 == drawlog_frame;
-                if (gfx_gl_drawlog) x2_log("---- frame %u ----", drawlog_frame);
+                gfx_gl_drawlog = (drawlog_frame && st_frames + 2 >= drawlog_frame && st_frames + 2 <= drawlog_last) || capture_request;
+                if (capture_request) { capture_request = false; x2_log("---- F9 capture ----"); }
+                if (gfx_gl_drawlog) x2_log("---- frame %u ----", (u32)st_frames + 2);
                 if (++st_frames % 120 == 0) {
                     x2_log("gfx: frame %u: %u draws, %u clears, %u texture uploads in the last 120 frames", st_frames, st_draws,
                            st_clears, st_uploads);
                     st_draws = st_clears = st_uploads = 0;
+                    if (glprof > 0) {
+                        static const char *nm[C_PRESENT + 1] = {[C_TEX_CREATE] = "tex-create", [C_TEX_UPLOAD] = "tex-upload",
+                                                                [C_BUF_CREATE] = "buf-create", [C_BUF_UPLOAD] = "buf-upload",
+                                                                [C_CLEAR] = "clear", [C_DRAW] = "draw", [C_DRAW_UP] = "draw-up",
+                                                                [C_SHADER_CREATE] = "shader"};
+                        char line[512];
+                        int len = snprintf(line, sizeof line, "glprof (ms per frame):");
+                        for (int i = 0; i <= C_PRESENT; i++)
+                            if (nm[i] && glprof_n[i])
+                                len += snprintf(line + len, sizeof line - (size_t)len, " %s %.2f (%llu)", nm[i], glprof_ns[i] / 1e6 / 120,
+                                                (unsigned long long)glprof_n[i]);
+                        snprintf(line + len, sizeof line - (size_t)len, "; vertex data %.0f KB/frame", glprof_bytes / 1024.0 / 120);
+                        x2_log("%s", line);
+                        memset(glprof_ns, 0, sizeof glprof_ns);
+                        memset(glprof_n, 0, sizeof glprof_n);
+                        glprof_bytes = 0;
+                    }
                 }
                 break;
+        }
+        if (glprof > 0 && type <= C_PRESENT) {
+            glprof_ns[type] += x2_time_ns() - prof_t0;
+            glprof_n[type]++;
         }
         off += size;
     }
@@ -519,7 +707,22 @@ static void run_frame(Frame *f) {
 
 /* ---- render-thread entry points --------------------------------------------- */
 void gfx_gl_init(u32 w, u32 h) {
+#ifdef X2_GLES
+    {
+        GLint n = 0;
+        have_s3tc = false;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &n);
+        for (GLint i = 0; i < n; i++) {
+            const char *e = (const char *)glGetStringi(GL_EXTENSIONS, (GLuint)i);
+            if (e && (!strcmp(e, "GL_EXT_texture_compression_s3tc") || !strcmp(e, "GL_EXT_texture_compression_dxt1"))) have_s3tc = true;
+        }
+        x2_log("gfx: S3TC %s", have_s3tc ? "supported" : "not supported, DXT textures are decoded on the CPU");
+    }
+#endif
+    if (getenv("X2_NO_S3TC")) have_s3tc = false; /* test the CPU decoder on desktop */
     drawlog_frame = getenv("X2_DRAWLOG") ? (u32)atoi(getenv("X2_DRAWLOG")) : 0;
+    drawlog_last = drawlog_frame;
+    if (drawlog_frame && strchr(getenv("X2_DRAWLOG"), '-')) drawlog_last = (u32)atoi(strchr(getenv("X2_DRAWLOG"), '-') + 1);
     glGenTextures(1, &backbuffer_tex);
     glBindTexture(GL_TEXTURE_2D, backbuffer_tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
@@ -529,6 +732,39 @@ void gfx_gl_init(u32 w, u32 h) {
     glBindFramebuffer(GL_FRAMEBUFFER, backbuffer_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backbuffer_tex, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void gfx_gl_texture_info(GfxId id, u32 *fmt, u32 *w, u32 *h, u32 *levels) {
+    Tex *t = id < MAX_IDS ? texs[id] : NULL;
+    if (!t) return;
+    *fmt = t->fmt; *w = t->w; *h = t->h; *levels = t->levels;
+}
+
+/* Save a texture's level 0 as <X2_DUMPDIR or .>/tex<id>.png (debugging) */
+void gfx_gl_dump_texture(GfxId id) {
+    Tex *t = id < MAX_IDS ? texs[id] : NULL;
+    if (!t || t->depth) return;
+    u8 *px = malloc((size_t)t->w * t->h * 4);
+#ifndef X2_GLES
+    /* works for compressed textures too (they cannot be FBO attachments) */
+    glBindTexture(GL_TEXTURE_2D, t->tex);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+#else
+    GLuint fbo;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->tex, 0);
+    glReadPixels(0, 0, (GLsizei)t->w, (GLsizei)t->h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &fbo);
+#endif
+    extern bool x2_write_png(const char *path, const u8 *rgba, u32 w, u32 h);
+    char path[256];
+    snprintf(path, sizeof path, "%s/tex%u.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : ".", id);
+    x2_log("dumped texture %u (%ux%u fmt %u) to %s", id, t->w, t->h, t->fmt, path);
+    x2_write_png(path, px, t->w, t->h);
+    free(px);
 }
 
 /* Replays queued frames (waiting up to timeout_ms for one). Returns true if
@@ -556,24 +792,16 @@ bool gfx_gl_run_frames(u32 timeout_ms, GLuint *out_tex, u32 *out_w, u32 *out_h) 
         list = n;
     }
     /* X2_DUMPTEX=<id>: save that texture's level 0 once it exists (debugging) */
+    /* X2_DUMPTEX=<id>[@frame] */
     static int dump_id = -1;
-    if (dump_id < 0) dump_id = getenv("X2_DUMPTEX") ? atoi(getenv("X2_DUMPTEX")) : 0;
-    if (dump_id > 0 && (u32)dump_id < MAX_IDS && texs[dump_id] && st_frames > 60) {
-        Tex *t = texs[dump_id];
-        GLuint fbo;
-        glGenFramebuffers(1, &fbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->tex, 0);
-        u8 *px = malloc((size_t)t->w * t->h * 4);
-        glReadPixels(0, 0, (GLsizei)t->w, (GLsizei)t->h, GL_RGBA, GL_UNSIGNED_BYTE, px);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDeleteFramebuffers(1, &fbo);
-        extern bool x2_write_png(const char *path, const u8 *rgba, u32 w, u32 h);
-        char path[256];
-        snprintf(path, sizeof path, "%s/tex%d.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : ".", dump_id);
-        x2_log("dumped texture %d (%ux%u fmt %u) to %s", dump_id, t->w, t->h, t->fmt, path);
-        x2_write_png(path, px, t->w, t->h);
-        free(px);
+    static u64 dump_at = 60;
+    if (dump_id < 0) {
+        const char *e = getenv("X2_DUMPTEX");
+        dump_id = e ? atoi(e) : 0;
+        if (e && strchr(e, '@')) dump_at = strtoull(strchr(e, '@') + 1, NULL, 10);
+    }
+    if (dump_id > 0 && (u32)dump_id < MAX_IDS && texs[dump_id] && frames_presented >= dump_at) {
+        gfx_gl_dump_texture((GfxId)dump_id);
         dump_id = 0;
     }
     /* the game renders into its backbuffer surface (a texture with an FBO) */

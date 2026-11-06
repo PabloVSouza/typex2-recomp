@@ -7,9 +7,6 @@
 
 #include "core.h"
 
-extern const X2FuncEntry x2_func_table[];
-extern const unsigned x2_func_count;
-extern const X2ImageInfo x2_image;
 
 int x2_log_level = 1;
 
@@ -53,20 +50,23 @@ u64 x2_time_ns(void) {
 
 /* ---- function lookup ----------------------------------------------------- */
 static X2Func *direct;  /* indexed by addr - text_start */
+static u32 text_start, text_end;
 
 static void build_direct(void) {
-    u32 n = x2_image.text_end - x2_image.text_start;
-    direct = calloc(n, sizeof *direct);
-    for (unsigned i = 0; i < x2_func_count; i++) {
-        u32 a = x2_func_table[i].addr;
-        if (a >= x2_image.text_start && a < x2_image.text_end) direct[a - x2_image.text_start] = x2_func_table[i].fn;
+    text_start = x2_game->image->text_start;
+    text_end = x2_game->image->text_end;
+    X2Func *d = calloc(text_end - text_start, sizeof *d);
+    for (unsigned i = 0; i < x2_game->nfuncs; i++) {
+        u32 a = x2_game->funcs[i].addr;
+        if (a >= text_start && a < text_end) d[a - text_start] = x2_game->funcs[i].fn;
     }
+    direct = d;
 }
 
 X2Func x2_lookup(u32 addr) {
     if (!direct) build_direct();
-    if (addr < x2_image.text_start || addr >= x2_image.text_end) return NULL;
-    return direct[addr - x2_image.text_start];
+    if (addr < text_start || addr >= text_end) return NULL;
+    return direct[addr - text_start];
 }
 
 /* ---- host thunks --------------------------------------------------------- */
@@ -114,7 +114,10 @@ static void run(X2Cpu *c, u32 target, bool tail) {
         if (x2_log_level >= 3) x2_log("-> %s from %08x (thread %u)", t->name, RD32(c->esp), x2_self ? x2_self->id : 0);
         bool held = x2_gil_on && x2_gil_held;
         if (held) { x2_gil_held = false; pthread_mutex_unlock(&x2_gil); }
+        const char *prev_fn = c->host_fn;
+        c->host_fn = t->name;
         t->fn(c);
+        c->host_fn = prev_fn;
         if (held) { pthread_mutex_lock(&x2_gil); x2_gil_held = true; }
         c->esp += 4 + (t->nargs > 0 ? 4 * (u32)t->nargs : 0);
         return;

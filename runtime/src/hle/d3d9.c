@@ -79,6 +79,8 @@ typedef struct Surface {
     u32 container;           /* guest texture object, if any */
     bool locked;
     u32 lock_x, lock_y, lock_w, lock_h;
+    u32 flushes;             /* uploads so far */
+    u8 *shadow;              /* host copy of the uploaded texels (relocked textures) */
 } Surface;
 
 typedef struct Texture {
@@ -179,10 +181,40 @@ static void S_LockRect(X2Cpu *c) {
     WR32(lr + 4, s->mem + off);
     RET(D3D_OK);
 }
+/* Push the locked rectangle to the renderer. Games often lock a whole texture to
+ * change a few texels (Scaleform's 1280x1280 glyph cache in KOF XII), so from a
+ * surface's second unlock on we keep a host copy of what was uploaded and send
+ * only the band of rows that changed, or nothing. Full re-uploads of large
+ * textures are costly on mobile GPUs (layout conversion in the driver). */
 static void surface_flush(Surface *s) {
-    u32 x = s->lock_x, y = s->lock_y;
-    u32 off = is_block(s->fmt) ? (y / 4) * s->pitch + (x / 4) * bpp(s->fmt) : y * s->pitch + x * bpp(s->fmt);
-    gfx_texture_upload(s->tex, s->level, x, y, s->lock_w, s->lock_h, X2P(s->mem + off), s->pitch);
+    u32 x = s->lock_x, y = s->lock_y, w = s->lock_w, h = s->lock_h;
+    bool blk = is_block(s->fmt);
+    u32 b = bpp(s->fmt);
+    u32 row0 = blk ? y / 4 : y, rows = blk ? (h + 3) / 4 : h;
+    u32 col = blk ? (x / 4) * b : x * b, span = blk ? (w + 3) / 4 * b : w * b;
+    u32 total_rows = blk ? (s->h + 3) / 4 : s->h;
+    if (s->tex && s->shadow) {
+        const u8 *g = X2P(s->mem);
+        u32 first = rows, last = 0;
+        for (u32 r = 0; r < rows; r++) {
+            size_t o = (size_t)(row0 + r) * s->pitch + col;
+            if (memcmp(g + o, s->shadow + o, span)) {
+                if (first == rows) first = r;
+                last = r;
+                memcpy(s->shadow + o, g + o, span);
+            }
+        }
+        if (first == rows) return; /* unchanged */
+        u32 uy = blk ? (row0 + first) * 4 : row0 + first, uh = blk ? (last - first + 1) * 4 : last - first + 1;
+        if (uy + uh > s->h) uh = s->h - uy;
+        gfx_texture_upload(s->tex, s->level, x, uy, w, uh, X2P(s->mem + (row0 + first) * s->pitch + col), s->pitch);
+        return;
+    }
+    gfx_texture_upload(s->tex, s->level, x, y, w, h, X2P(s->mem + row0 * s->pitch + col), s->pitch);
+    if (s->tex && s->flushes++ >= 1) { /* relocked: start tracking changes */
+        s->shadow = malloc((size_t)s->pitch * total_rows);
+        memcpy(s->shadow, X2P(s->mem), (size_t)s->pitch * total_rows);
+    }
 }
 static void S_UnlockRect(X2Cpu *c) {
     Surface *s = COM_THIS(Surface);
@@ -937,8 +969,8 @@ static void A_CreateDevice(X2Cpu *c) {
     if (!bw || !bh) { bw = g_width; bh = g_height; WR32(pp, bw); WR32(pp + 4, bh); }
     g_width = bw;
     g_height = bh;
-    x2_log("d3d9: CreateDevice %ux%u fmt %u windowed %u autodepth %u/%u interval %x", bw, bh, RD32(pp + 8),
-           RD32(pp + 32), RD32(pp + 36), RD32(pp + 40), RD32(pp + 52));
+    x2_log("d3d9: CreateDevice %ux%u fmt %u windowed %u autodepth %u/%u interval %x (called from %08x)", bw, bh, RD32(pp + 8),
+           RD32(pp + 32), RD32(pp + 36), RD32(pp + 40), RD32(pp + 52), RD32(c->esp));
     u32 dev = x2_com_wrap(&d->com, vt_device, "IDirect3DDevice9");
     /* default render state (only what differs from zero) */
     u32 *rs = d->st.rs;
