@@ -17,6 +17,7 @@
 #define MAX_IDS (1u << 20)
 
 void gfx_gl_bind_target(const GfxState *st);
+u32 gfx_gl_target_scale(const GfxState *st);
 GLuint gfx_gl_texture(GfxId id);
 GLuint gfx_gl_buffer(GfxId id);
 const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size);
@@ -343,11 +344,15 @@ static void draw_init(void) {
 
 static void apply_state(const GfxState *st) {
     const u32 *rs = st->rs;
-    glViewport((GLint)st->vp.x, (GLint)st->vp.y, (GLsizei)st->vp.w, (GLsizei)st->vp.h);
+    /* the target may be rendered at a multiple of the size the game sees (backbuffer upscaling) */
+    const float s = (float)gfx_gl_target_scale(st);
+    glViewport((GLint)(st->vp.x * s), (GLint)(st->vp.y * s), (GLsizei)(st->vp.w * s), (GLsizei)(st->vp.h * s));
     glDepthRangef(st->vp.minz, st->vp.maxz);
     if (rs[174]) {
         glEnable(GL_SCISSOR_TEST);
-        glScissor(st->scissor[0], st->scissor[1], st->scissor[2] - st->scissor[0], st->scissor[3] - st->scissor[1]);
+        const GLint si = (GLint)s;
+        glScissor(st->scissor[0] * si, st->scissor[1] * si, (st->scissor[2] - st->scissor[0]) * si,
+                  (st->scissor[3] - st->scissor[1]) * si);
     } else {
         glDisable(GL_SCISSOR_TEST);
     }
@@ -445,7 +450,7 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         if (pg->ps_c >= 0) glUniform4fv(pg->ps_c, GFX_PS_CONSTS, &psc[0][0]);
         pg->const_version = const_version;
     }
-    if (pg->vp_fix >= 0) glUniform4f(pg->vp_fix, 1.0f / st->vp.w, -1.0f / st->vp.h, 0, 0); /* D3D9 pixel centers: +0.5 px */
+    if (pg->vp_fix >= 0) glUniform4f(pg->vp_fix, 1.0f / st->vp.w, -1.0f / st->vp.h, 0, 0); /* D3D9 pixel centers: +0.5 px */ /* D3D9 pixel centers: +0.5 px */
     if (pg->alpha_func >= 0) glUniform1i(pg->alpha_func, st->rs[15] ? (GLint)st->rs[25] : 0);
     if (pg->alpha_ref >= 0) glUniform1f(pg->alpha_ref, (float)(st->rs[24] & 0xFF));
 

@@ -368,10 +368,10 @@ static void touch_recompute(void) {
                 if (ay > ax * 0.4142f) v |= dy < 0 ? JVS_UP : JVS_DOWN;
                 break;
             }
-            case TC_A: v |= JVS_B1; break;
-            case TC_B: v |= JVS_B2; break;
-            case TC_C: v |= JVS_B3; break;
-            case TC_D: v |= JVS_B4; break;
+            case TC_A: v |= X2_BTN_A; break;
+            case TC_B: v |= X2_BTN_B; break;
+            case TC_C: v |= X2_BTN_C; break;
+            case TC_D: v |= X2_BTN_D; break;
             case TC_START: v |= JVS_START; break;
             case TC_COIN: coin = true; break;
             case TC_TEST: test = true; break;
@@ -536,10 +536,10 @@ static void update_inputs(void) {
     if (k[SDL_SCANCODE_DOWN]) p1 |= JVS_DOWN;
     if (k[SDL_SCANCODE_LEFT]) p1 |= JVS_LEFT;
     if (k[SDL_SCANCODE_RIGHT]) p1 |= JVS_RIGHT;
-    if (k[SDL_SCANCODE_Z]) p1 |= JVS_B1;
-    if (k[SDL_SCANCODE_X]) p1 |= JVS_B2;
-    if (k[SDL_SCANCODE_C]) p1 |= JVS_B3;
-    if (k[SDL_SCANCODE_V]) p1 |= JVS_B4;
+    if (k[SDL_SCANCODE_Z]) p1 |= X2_BTN_A;
+    if (k[SDL_SCANCODE_X]) p1 |= X2_BTN_B;
+    if (k[SDL_SCANCODE_C]) p1 |= X2_BTN_C;
+    if (k[SDL_SCANCODE_V]) p1 |= X2_BTN_D;
     if (k[SDL_SCANCODE_1]) p1 |= JVS_START;
     if (k[SDL_SCANCODE_2]) p2 |= JVS_START;
     if (k[SDL_SCANCODE_F1]) p1 |= JVS_SERVICE;
@@ -554,43 +554,7 @@ static void update_inputs(void) {
     pad_test |= x2_padmap_hold_test(1, pads[1] && SDL_GetGamepadButton(pads[1], SDL_GAMEPAD_BUTTON_BACK));
     p1 &= (u16)~X2_PAD_TEST;
     p2 &= (u16)~X2_PAD_TEST;
-    /* X2_INPUT="frame:keys,frame:keys,..." scripted input for automated tests.
-     * keys: c=coin1 s=start1 u/d/l/r=directions a/b/x/y=buttons 1-4, '-' = release all.
-     * Each entry holds from its frame until the next entry. */
-    static const char *script;
-    static bool script_init;
-    if (!script_init) { script = getenv("X2_INPUT"); script_init = true; }
-    bool script_test = false;
-    if (script) {
-        u64 f = gfx_frame_count();
-        const char *active = NULL;
-        for (const char *p = script; p && *p;) {
-            u64 at = strtoull(p, NULL, 10);
-            if (at > f) break;
-            active = strchr(p, ':');
-            p = strchr(p, ',');
-            if (p) p++;
-        }
-        if (active) {
-            for (const char *q = active + 1; *q && *q != ','; q++) {
-                switch (*q) {
-                    case 'c': coin1 = true; break;
-                    case 's': p1 |= JVS_START; break;
-                    case 'u': p1 |= JVS_UP; break;
-                    case 'd': p1 |= JVS_DOWN; break;
-                    case 'l': p1 |= JVS_LEFT; break;
-                    case 'r': p1 |= JVS_RIGHT; break;
-                    case 'a': p1 |= JVS_B1; break;
-                    case 'b': p1 |= JVS_B2; break;
-                    case 'x': p1 |= JVS_B3; break;
-                    case 'y': p1 |= JVS_B4; break;
-                    case 't': script_test = true; break;
-                    case 'v': p1 |= JVS_SERVICE; break;
-                    case 'p': gfx_request_capture(); break; /* same as F9 */
-                }
-            }
-        }
-    }
+    bool script_test = x2_script_input(gfx_frame_count(), &p1, &coin1); /* X2_INPUT, see padmap.h */
     jvs_set_inputs(k[SDL_SCANCODE_F2] || script_test || touch_test || pad_test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 
@@ -626,7 +590,8 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
     fullscreen = start_fullscreen;
     win = SDL_CreateWindow("Type X2 recomp", 1280, 720,
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                               (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
+                               (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                               (getenv("X2_NOPRESENT") ? SDL_WINDOW_HIDDEN : 0));
     if (!win) x2_fatal("SDL_CreateWindow: %s", SDL_GetError());
     glc = SDL_GL_CreateContext(win);
     if (!glc) x2_fatal("SDL_GL_CreateContext: %s", SDL_GetError());

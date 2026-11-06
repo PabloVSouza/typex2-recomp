@@ -1,6 +1,6 @@
 // x2recomp: statically recompile a Type X2 game executable into C.
 //
-// usage: x2recomp <game.exe> <out_dir> [--entry 0xADDR]...
+// usage: x2recomp <game.exe> <out_dir> [--entry 0xADDR]... [--no-natives]
 //
 // Output (all in out_dir):
 //   funcs.h         prototypes for every recompiled function
@@ -27,12 +27,14 @@ using std::format;
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: x2recomp <game.exe> <out_dir> [--entry 0xADDR]...\n");
+        std::fprintf(stderr, "usage: x2recomp <game.exe> <out_dir> [--entry 0xADDR]... [--no-natives]\n");
         return 1;
     }
     std::vector<uint32_t> extra;
-    for (int i = 3; i + 1 < argc; i += 2)
-        if (std::string(argv[i]) == "--entry") extra.push_back((uint32_t)std::stoul(argv[i + 1], nullptr, 0));
+    for (int i = 3; i < argc; i++) {
+        if (std::string(argv[i]) == "--entry" && i + 1 < argc) extra.push_back((uint32_t)std::stoul(argv[++i], nullptr, 0));
+        else if (std::string(argv[i]) == "--no-natives") x2::lift_natives = false; // lift recognised routines too
+    }
 
     auto t0 = std::chrono::steady_clock::now();
     x2::Image img;
@@ -117,6 +119,8 @@ int main(int argc, char** argv) {
         for (auto& [e, fn] : disc.funcs) h << format("void f_{:08x}(X2Cpu *c);\n", e);
     }
 
+    lifter.analyze_flag_exports();
+    std::fprintf(stderr, "functions returning flags to their callers: %zu\n", lifter.flag_exporters.size());
     std::vector<std::string> sources;
     const size_t kChunkBytes = 3u << 20;
     std::ofstream chunk;

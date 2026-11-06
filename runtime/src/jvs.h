@@ -13,6 +13,11 @@ enum {
 };
 #define JVS_SYS_TEST 0x80
 
+/* Fighting-game buttons on the Type X2 panel (top row SHOT1-3, bottom SHOT4-6):
+ * A C on top, B D below. Checked in KOF XII (its I/O test names them) and
+ * KOF XIII / XIII Climax (order select); SHOT3 and SHOT6 are unused there. */
+enum { X2_BTN_A = JVS_B1, X2_BTN_C = JVS_B2, X2_BTN_B = JVS_B4, X2_BTN_D = JVS_B5 };
+
 void jvs_write(const uint8_t *b, uint32_t n);
 uint32_t jvs_read(uint8_t *out, uint32_t n);
 uint32_t jvs_pending(void);

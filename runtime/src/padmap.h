@@ -1,17 +1,21 @@
 /* Gamepad face/shoulder buttons → cabinet buttons, shared by both front ends.
  *
  * The default follows FinalBurn Neo's Neo Geo layout for the "Modern" RetroPad
- * (KOF on a pad): bottom row A B, top row C D, R2 A+B, R1 C+D, L2 A+B+C,
- * L1 B+C+D. L3 / R3 do nothing (frontends often use them as hotkeys). Coin
+ * (retro_input.cpp: Neo Geo "fire 1-4" on Y B X A, macros AB CD ABC BCD on
+ * R2 R1 L2 L1): left face A, bottom B, top C, right D, R2 A+B, R1 C+D,
+ * L2 A+B+C, L1 B+C+D, so a RetroArch remap made for FBNeo works unchanged.
+ * L3 / R3 do nothing (frontends often use them as hotkeys). Coin
  * (Select / Back) held for X2_PAD_HOLD_SECONDS presses the cabinet's Test
  * switch.
  *
  * X2_PAD overrides the map as "button=keys" pairs, e.g.
  *   X2_PAD=south=b,east=ab,west=d,north=cd,l1=c,r1=bcd,l2=a,r2=abc,l3=t
- * buttons: south east west north l1 r1 l2 r2 l3 r3; keys: any of a b c d 5 6,
- * t (Test), v (Service), or "-" for nothing. Positions are physical: south =
- * bottom face button (RetroPad B, Xbox A), east = right (RetroPad A), west =
- * left (RetroPad Y), north = top (RetroPad X). */
+ * buttons: south east west north l1 r1 l2 r2 l3 r3; keys: any of a b c d (the
+ * fight buttons), 3 6 (cabinet SHOT3 / SHOT6, unused by KOF), t (Test),
+ * v (Service), or "-" for nothing. Positions are physical: south = bottom
+ * face button (RetroPad B, Xbox A), east = right (RetroPad A), west = left
+ * (RetroPad Y), north = top (RetroPad X). The letters are KOF's A-D, which sit
+ * on cabinet SHOT1 (A), SHOT4 (B), SHOT2 (C), SHOT5 (D); see jvs.h. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,3 +33,8 @@ const uint16_t *x2_padmap(void);
 void x2_padmap_label(uint16_t bits, char out[16]);
 /* true once coin has been held long enough to mean Test (one slot per player) */
 bool x2_padmap_hold_test(int slot, bool coin_down);
+/* X2_INPUT="frame:keys,frame:keys,..." scripted input for automated tests; each
+ * entry holds from its frame until the next. keys: c coin 1, s start 1, u d l r,
+ * a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), v service, t test (returned),
+ * p draw capture, '-' nothing. Adds to *p1 / *coin1. */
+bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1);

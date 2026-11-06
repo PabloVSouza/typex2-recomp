@@ -42,6 +42,9 @@ typedef union X2Vec {
 typedef struct X2Cpu {
     u32 eax, ecx, edx, ebx, esp, ebp, esi, edi;
     u32 eflags;   /* only meaningful across pushfd/popfd boundaries */
+    /* arithmetic flags handed back by functions whose callers branch on them
+     * (hand-written CRT asm: "call _load_arg / jz special"); see SPILLF */
+    u8 fl_cf, fl_zf, fl_sf, fl_of, fl_af, fl_pfb;
     u32 fs_base;  /* guest address of this thread's TEB */
     /* x87 */
     f64 st[8];
@@ -79,6 +82,9 @@ extern u8 *x2_mem;
 void x2_dispatch_call(X2Cpu *c, u32 target);  /* return address already pushed */
 void x2_dispatch_jmp(X2Cpu *c, u32 target);   /* tail transfer */
 void x2_unimpl(X2Cpu *c, u32 va, const char *text) __attribute__((noreturn));
+/* native replacements x2recomp emits for recognised library routines (natives.c) */
+void x2n_inflate_fast(X2Cpu *c, u32 msg_far, u32 msg_dist, u32 msg_len);
+void x2n_fill8(X2Cpu *c);
 void x2_trap(X2Cpu *c, u32 va, const char *why);
 void x2_cpuid(X2Cpu *c);
 void x2_rdtsc(X2Cpu *c);
@@ -206,6 +212,10 @@ extern _Thread_local u32 x2_trace_pos;
 #define RELOAD()                                                                 \
     (eax = c->eax, ecx = c->ecx, edx = c->edx, ebx = c->ebx, esp = c->esp,       \
      ebp = c->ebp, esi = c->esi, edi = c->edi)
+/* flags across a call, for the few functions whose callers read them (x2recomp
+ * marks them): the callee saves them at ret, the caller reloads after the call */
+#define SPILLF() (c->fl_cf = (u8)cf, c->fl_zf = (u8)zf, c->fl_sf = (u8)sf, c->fl_of = (u8)of, c->fl_af = (u8)af, c->fl_pfb = pfb)
+#define RELOADF() (cf = c->fl_cf, zf = c->fl_zf, sf = c->fl_sf, of = c->fl_of, af = c->fl_af, pfb = c->fl_pfb)
 
 /* ---- EFLAGS -------------------------------------------------------------- */
 /* PF is derived lazily from the low byte of the last result */

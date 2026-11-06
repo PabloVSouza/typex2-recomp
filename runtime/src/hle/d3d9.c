@@ -131,7 +131,10 @@ static u32 vt_surface, vt_texture, vt_vb, vt_ib, vt_decl, vt_vs, vt_ps, vt_query
 static void init_vtables(void);
 
 /* ---- surfaces / textures ------------------------------------------------- */
+/* render scale for the next standalone surface (set while creating the backbuffer) */
+static u32 next_surface_scale = 1;
 static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, GfxId tex, u32 level, u32 container) {
+    if (!tex && (usage == 1 || usage == 2)) X2_TRACE("d3d9: %s surface %ux%u fmt %u", usage == 1 ? "render-target" : "depth", w, h, fmt);
     Surface *s = calloc(1, sizeof *s);
     s->dev = d;
     s->fmt = fmt;
@@ -145,7 +148,7 @@ static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, G
     s->container = container;
     if (!tex) {  /* standalone render target / depth / offscreen surface */
         tex = new_id();
-        gfx_texture_create(tex, gfx_fmt(fmt), w, h, 1, true);
+        gfx_texture_create_scaled(tex, gfx_fmt(fmt), w, h, 1, true, next_surface_scale);
     }
     s->tex = tex;
     return x2_com_wrap(&s->com, vt_surface, "IDirect3DSurface9");
@@ -296,6 +299,7 @@ static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt,
     t->id = new_id();
     t->com.destroy = texture_destroy;
     gfx_texture_create(t->id, gfx_fmt(fmt), w, h, levels, (usage & 3) != 0 /* RENDERTARGET|DEPTHSTENCIL */);
+    if (usage & 3) X2_TRACE("d3d9: %s texture %ux%u fmt %u", usage & 1 ? "render-target" : "depth", w, h, fmt);
     u32 g = x2_com_wrap(&t->com, vt_texture, "IDirect3DTexture9");
     for (u32 i = 0; i < levels; i++) {
         u32 lw = w >> i ? w >> i : 1, lh = h >> i ? h >> i : 1;
@@ -433,6 +437,7 @@ static void D_SetGammaRamp(X2Cpu *c) {}
 static void D_CreateTexture(X2Cpu *c) {
     DEV;
     u32 w = ARG(1), h = ARG(2), lv = ARG(3), usage = ARG(4), fmt = ARG(5), pool = ARG(6), out = ARG(7);
+    X2_TRACE("d3d9: CreateTexture %ux%u levels %u usage %x fmt %u pool %u (called from %08x)", w, h, lv, usage, fmt, pool, RD32(c->esp));
     WR32(out, make_texture(d, w, h, lv, usage, fmt, pool));
     RET(D3D_OK);
 }
@@ -461,7 +466,11 @@ static void D_CreateOffscreenPlainSurface(X2Cpu *c) {
     WR32(ARG(5), make_surface(d, ARG(3), ARG(1), ARG(2), 0, ARG(4), 0, 0, 0));
     RET(D3D_OK);
 }
-static void D_StretchRect(X2Cpu *c) { RET(D3D_OK); /* TODO: gfx blit */ }
+static void D_StretchRect(X2Cpu *c) {
+    static int n;
+    if (n++ < 20) X2_TRACE("d3d9: StretchRect(%08x, %08x, filter %u) ignored (called from %08x)", ARG(1), ARG(3), ARG(5), RD32(c->esp));
+    RET(D3D_OK); /* TODO: gfx blit */
+}
 /* copy a rect between two surfaces of the same format (CPU side), then upload */
 static void copy_surface_rect(Surface *s, u32 sx, u32 sy, u32 w, u32 h, Surface *d, u32 dx, u32 dy) {
     if (!s || !d || s->fmt != d->fmt) return;
@@ -993,6 +1002,15 @@ static void A_CreateDevice(X2Cpu *c) {
         d->st.samp[s][1] = d->st.samp[s][2] = d->st.samp[s][3] = 1; /* ADDRESSU/V/W wrap */
         d->st.samp[s][5] = d->st.samp[s][6] = 1;                    /* MAG/MIN point */
     }
+    /* Small backbuffers (KOF XIII Climax composes its 1280x720 scene into 640x480)
+     * are rendered at a multiple of their size: the game still sees bw x bh, the
+     * picture keeps the detail of its HD render targets. X2_BB_SCALE overrides. */
+    u32 scale = 1;
+    while (bw * (scale + 1) <= 1280 && bh * (scale + 1) <= 1024) scale++;
+    if (getenv("X2_BB_SCALE")) scale = (u32)atoi(getenv("X2_BB_SCALE"));
+    if (scale < 1 || scale > 4) scale = 1;
+    if (scale > 1) x2_log("d3d9: backbuffer rendered at %ux (%ux%u)", scale, bw * scale, bh * scale);
+    next_surface_scale = scale;
     d->backbuffer = make_surface(d, D3DFMT_A8R8G8B8, bw, bh, 1, 0, 0, 0, 0);
     d->rt_obj[0] = d->backbuffer;
     gfx_gl_set_backbuffer(surface_tex(d->backbuffer));
@@ -1002,6 +1020,7 @@ static void A_CreateDevice(X2Cpu *c) {
         d->ds_obj = d->auto_ds;
         d->st.ds = surface_tex(d->auto_ds);
     }
+    next_surface_scale = 1;
     d->st.vp = (GfxViewport){0, 0, (float)bw, (float)bh, 0, 1};
     d->st.scissor[2] = (s32)bw;
     d->st.scissor[3] = (s32)bh;

@@ -139,7 +139,152 @@ string Lifter::branch_to(uint32_t t, const Function& fn) const {
     return format("{} x2_dispatch_jmp(c,0x{:x}u); return;", SPILL, t);
 }
 
+// ------------------------------------------------------------ flags across calls
+// Flags are C locals, so they do not survive a call. Compiled code never needs
+// them to, but hand-written runtime asm does (MSVC's x87 math: "call _load_arg"
+// sets ZF, the caller branches on it). Find the callees whose flags are read
+// after the call and make them hand the flags back through X2Cpu.
+namespace {
+enum : unsigned { F_CF = 1, F_ZF = 2, F_SF = 4, F_OF = 8, F_PF = 16, F_AF = 32, F_ALL = 63 };
+struct FlagUse {
+    unsigned test = 0, write = 0;
+};
+FlagUse flag_use(const cs_insn& d) {
+    FlagUse u;
+    const cs_detail* det = d.detail;
+    bool fpu = false;
+    for (uint8_t g = 0; g < det->groups_count; g++) fpu |= det->groups[g] == X86_GRP_FPU;
+    if (fpu) {  // detail holds FPU flags instead of EFLAGS
+        std::string m = d.mnemonic;
+        if (m.rfind("fcomi", 0) == 0 || m.rfind("fucomi", 0) == 0) u.write = F_ZF | F_PF | F_CF;
+        if (m.rfind("fcmov", 0) == 0) u.test = F_CF | F_ZF | F_PF;
+        return u;
+    }
+    uint64_t e = det->x86.eflags;
+    struct { uint64_t test, mod, reset, set, undef; unsigned bit; } map[] = {
+        {X86_EFLAGS_TEST_CF, X86_EFLAGS_MODIFY_CF, X86_EFLAGS_RESET_CF, X86_EFLAGS_SET_CF, X86_EFLAGS_UNDEFINED_CF, F_CF},
+        {X86_EFLAGS_TEST_ZF, X86_EFLAGS_MODIFY_ZF, X86_EFLAGS_RESET_ZF, X86_EFLAGS_SET_ZF, X86_EFLAGS_UNDEFINED_ZF, F_ZF},
+        {X86_EFLAGS_TEST_SF, X86_EFLAGS_MODIFY_SF, X86_EFLAGS_RESET_SF, X86_EFLAGS_SET_SF, X86_EFLAGS_UNDEFINED_SF, F_SF},
+        {X86_EFLAGS_TEST_OF, X86_EFLAGS_MODIFY_OF, X86_EFLAGS_RESET_OF, X86_EFLAGS_SET_OF, X86_EFLAGS_UNDEFINED_OF, F_OF},
+        {X86_EFLAGS_TEST_PF, X86_EFLAGS_MODIFY_PF, X86_EFLAGS_RESET_PF, X86_EFLAGS_SET_PF, X86_EFLAGS_UNDEFINED_PF, F_PF},
+        {X86_EFLAGS_TEST_AF, X86_EFLAGS_MODIFY_AF, X86_EFLAGS_RESET_AF, X86_EFLAGS_SET_AF, X86_EFLAGS_UNDEFINED_AF, F_AF},
+    };
+    for (auto& f : map) {
+        if (e & f.test) u.test |= f.bit;
+        if (e & (f.mod | f.reset | f.set | f.undef)) u.write |= f.bit;
+    }
+    return u;
+}
+}  // namespace
+
+bool Lifter::decode(uint32_t va) {
+    const uint8_t* code = img_.ptr(va);
+    size_t n = std::min<size_t>(img_.avail(va), 16);
+    uint64_t a = va;
+    return code && n && cs_disasm_iter(cs_, &code, &n, &a, ci_);
+}
+
+void Lifter::analyze_flag_exports() {
+    // "F exports flags => T exports flags": F ends in "call T; ...; ret" with no
+    // flag writes in between, or tail-jumps to T
+    std::multimap<uint32_t, uint32_t> passes;
+    for (auto& [entry, fn] : disc_.funcs) {
+        std::map<uint32_t, const Insn*> insns;
+        for (auto& [s, b] : fn.blocks)
+            for (auto* i : b.insns) insns[i->addr] = i;
+        for (auto& [va, ins] : insns) {
+            if (ins->kind == Kind::Jmp && disc_.funcs.count(ins->target) && !fn.blocks.count(ins->target)) {
+                passes.insert({entry, ins->target});
+                continue;
+            }
+            if (ins->kind != Kind::Call) continue;
+            uint32_t t = ins->target, p = va + ins->size;
+            if (t == p || !disc_.funcs.count(t)) continue;
+            unsigned written = 0;
+            for (int k = 0; k < 32; k++) {
+                auto it = insns.find(p);
+                if (it == insns.end()) break;
+                const Insn* j = it->second;
+                if (j->kind == Kind::Ret) {
+                    passes.insert({entry, t});
+                    break;
+                }
+                if (!decode(p)) break;
+                FlagUse u = flag_use(*ci_);
+                if (u.test & ~written) {
+                    flag_exporters.insert(t);
+                    break;
+                }
+                written |= u.write;
+                if (written == F_ALL || (j->kind != Kind::Seq && j->kind != Kind::Jcc)) break;
+                p += j->size;
+            }
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (auto& [f, t] : passes)
+            if (flag_exporters.count(f) && flag_exporters.insert(t).second) changed = true;
+    }
+}
+
+// ---- native replacements ------------------------------------------------------
+// Hot statically linked library routines, recognised by their machine code, get
+// a body that calls a native implementation (runtime/src/natives.c) instead of
+// being lifted. Each signature is the routine's bytes; '..' bytes are skipped
+// (relocated addresses), and their values are passed to the native as arguments.
+bool lift_natives = true;
+namespace {
+struct NativeSig {
+    const char* name;
+    const char* call; // native function; arguments: c, then the u32s at `args`
+    vector<std::pair<uint32_t, string>> bytes; // offset, hex pattern
+    vector<uint32_t> args;                     // offsets of u32 operands passed through
+};
+const vector<NativeSig>& native_sigs() {
+    static const vector<NativeSig> sigs = {
+        // zlib 1.2.3 inflate_fast, MSVC /O2 (identical in KOF XII, XIII and XIII
+        // Climax apart from the three error-message addresses)
+        {"zlib inflate_fast", "x2n_inflate_fast",
+         {{0x000, "83ec3c535556578b4c24508b411c8b51048b58388b2983ed018d542afb895424148b710c8b49108bd12b54245483ee01"},
+          {0x41e, "c74118"}, {0x425, "c7021b000000"}, {0x431, "c74018"}, {0x44f, "c74018"}},
+         {0x421, 0x434, 0x452}},
+        // byte fill loop, unoptimised: for (; n; n--) *dst++ = *val (KOF XIII Climax)
+        {"byte fill", "x2n_fill8",
+         {{0x000, "558beceb128b450c83e80189450c8b4d0883c101894d08837d0c00760c8b55088b45108a08880aebdc5dc3"}},
+         {}},
+    };
+    return sigs;
+}
+} // namespace
+
+static bool match_hex(const Image& img, uint32_t va, const string& hex) {
+    if (img.avail(va) < hex.size() / 2) return false;
+    for (size_t i = 0; i < hex.size() / 2; i++)
+        if (img.u8(va + (uint32_t)i) != (uint8_t)std::stoul(hex.substr(i * 2, 2), nullptr, 16)) return false;
+    return true;
+}
+
+// the native body for a recognised routine at `entry`, or "" if none matches
+string native_body(const Image& img, uint32_t entry) {
+    if (!lift_natives) return "";
+    for (auto& s : native_sigs()) {
+        bool ok = true;
+        for (auto& [off, hex] : s.bytes) ok = ok && match_hex(img, entry + off, hex);
+        if (!ok) continue;
+        string args;
+        for (uint32_t off : s.args) args += format(", 0x{:x}u", img.u32(entry + off));
+        return format("void f_{:08x}(X2Cpu *c) {{ /* {}: native */\n  X2_ENTER(0x{:x}u);\n  {}(c{});\n}}\n", entry, s.name,
+                      entry, s.call, args);
+    }
+    return "";
+}
+
 string Lifter::lift_function(const Function& fn) {
+    if (string n = native_body(img_, fn.entry); !n.empty()) {
+        std::fprintf(stderr, "native replacement at 0x%x\n", fn.entry);
+        return n;
+    }
     std::map<uint32_t, const Insn*> insns;
     std::map<uint32_t, const vector<uint32_t>*> tables;
     std::set<uint32_t> labels{fn.entry};
@@ -223,7 +368,7 @@ Lifter::Out Lifter::lift(const Insn& ins, const Function& fn, const vector<uint3
     switch (ins.kind) {
         case Kind::Ret: {
             int64_t pop = x.op_count ? x.operands[0].imm : 0;
-            o.lines = {format("esp+={}; {} return;", 4 + pop, SPILL)};
+            o.lines = {format("esp+={}; {}{} return;", 4 + pop, flag_exporters.count(fn.entry) ? "SPILLF(); " : "", SPILL)};
             o.falls = false;
             return o;
         }
@@ -252,7 +397,8 @@ Lifter::Out Lifter::lift(const Insn& ins, const Function& fn, const vector<uint3
                 return o;
             }
             if (disc_.funcs.count(ins.target))
-                o.lines = {push, format("{} f_{:08x}(c); {}", SPILL, ins.target, RELOAD)};
+                o.lines = {push, format("{} f_{:08x}(c); {}{}", SPILL, ins.target, RELOAD,
+                                        flag_exporters.count(ins.target) ? " RELOADF();" : "")};
             else
                 o.lines = {push, format("{} x2_dispatch_call(c,0x{:x}u); {}", SPILL, ins.target, RELOAD)};
             return o;

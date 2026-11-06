@@ -19,3 +19,4 @@ void gfx_clock_tick(void);
 /* gfx.c-side statistics for overlays */
 uint64_t gfx_frame_count(void);
 double gfx_guest_work_ms(void);
+void gfx_pace_max(double *guest_ms, double *replay_ms);

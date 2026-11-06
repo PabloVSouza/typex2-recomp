@@ -122,11 +122,13 @@ Running:
   slow-motion work. No save states, rewind, run-ahead or reset.
 * One game per RetroArch session: guest threads cannot be torn down, so after
   closing content RetroArch must be restarted to load another game.
-* RetroPad: FinalBurn Neo's Neo Geo layout ("Modern" pad): B A = A B (bottom
-  row), Y X = C D (top row), R2 = A+B, R = C+D, L2 = A+B+C, L = B+C+D; Start =
+* RetroPad: FinalBurn Neo's Neo Geo layout ("Modern" pad): Y B X A = A B C D
+  (left, bottom, top, right), R2 = A+B, R = C+D, L2 = A+B+C, L = B+C+D; Start =
   start, Select = coin (hold 2 s: test menu). L3 / R3 are left free for
   RetroArch hotkeys. `X2_PAD` changes it (below);
-  RetroArch remaps apply on top.
+  RetroArch remaps apply on top, and work the same as with FBNeo: copy
+  `remaps/FinalBurn Neo/FinalBurn Neo.rmp` to `remaps/Type X2/Type X2.rmp`
+  (set `input_libretro_device_p1/p2 = "1"`) to share one layout.
 
 ## Debugging switches (environment variables)
 
@@ -137,17 +139,18 @@ Running:
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
-| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d 5 6, t test, v service, `-` for none); see `runtime/src/padmap.h` |
-| `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, abxy, t test, v service, p F9 capture) |
+| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d, 3 6 for the unused SHOT3/SHOT6, t test, v service, `-` for none); see `runtime/src/padmap.h` |
+| `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames |
-| `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture |
+| `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
 | `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames |
 | `X2_BT=<secs>` `X2_PEEK=addr,...` | periodic guest backtraces / memory peeks |
 | `X2_TRACE_READS=1` | log file reads (pipe offsets into `arc locate`) |
 | `X2_CALL="addr:args"` (+ `X2_POKE`, `X2_CALL_DELAY`) | call a guest function |
 | `X2_GIL=1` | serialize guest threads |
-| `X2_VSYNC=1` / `X2_NOPRESENT=1` | vsynced presentation / never present (headless runs) |
+| `X2_VSYNC=1` / `X2_NOPRESENT=1` | vsynced presentation / never present (headless runs, hidden window; add `SDL_AUDIO_DRIVER=dummy` for silence) |
+| `X2_BB_SCALE=n` | render the backbuffer at n× (default: the largest multiple fitting 1280×1024, so 640×480 games get 2×) |
 | `X2_NO_S3TC=1` | decode DXT textures on the CPU (default on GPUs without S3TC) |
 | `X2_FONT=file.ttc` | font for GDI text where CoreText is unavailable (default: Noto Sans CJK) |
 | `X2_AUDIOLOG=1` | audio peak level every 2 s |
@@ -164,9 +167,9 @@ Running:
 * KOF XII on macOS: the left credit counter shows "0" where the right shows
   "00"; with the stb_truetype font backend both show "00", so it comes from
   CoreText metrics.
-* KOF XIII Climax: some background elements flash and fire/electric hit
-  effects show stripes. It runs in its 640×480 mode (a 16:9 picture with
-  bars); both front ends crop to the 16:9 band, but the picture is SD.
+* KOF XIII Climax composes its 1280×720 scene into a 640×480 backbuffer (a
+  16:9 picture with bars). The backbuffer is rendered at 2× (1280×960) and both
+  front ends crop the 16:9 band, so the result is 1280×720.
 * GDI text with stb_truetype (Android): heavy weights are only emboldened by
   one pixel, so they look lighter than on macOS.
 * KOF XIII runs in Japanese by default; switch the language in the test menu

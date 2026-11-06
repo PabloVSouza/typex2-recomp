@@ -217,6 +217,7 @@ static void update_inputs(void) {
     bool test = ((p1 | p2) & X2_PAD_TEST) || held1 || held2;
     p1 &= (u16)~X2_PAD_TEST;
     p2 &= (u16)~X2_PAD_TEST;
+    test |= x2_script_input(gfx_frame_count(), &p1, &coin1); /* X2_INPUT (tests), see padmap.h */
     jvs_set_inputs(test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 
@@ -491,8 +492,12 @@ EXPORT void retro_run(void) {
         sum_run += run;
         if (run > max_run) max_run = run;
         if (++n == 120) {
-            x2_log("pace: retro_run interval %.2f-%.2f ms (%llu late), run avg %.2f max %.2f ms, guest work %.2f ms",
-                   min_dt / 1e6, max_dt / 1e6, (unsigned long long)late, sum_run / 1e6 / n, max_run / 1e6, gfx_guest_work_ms());
+            double gmax, rmax;
+            gfx_pace_max(&gmax, &rmax);
+            x2_log("pace: retro_run interval %.2f-%.2f ms (%llu late), run avg %.2f max %.2f ms, guest work %.2f max %.2f ms, "
+                   "replay max %.2f ms",
+                   min_dt / 1e6, max_dt / 1e6, (unsigned long long)late, sum_run / 1e6 / n, max_run / 1e6, gfx_guest_work_ms(),
+                   gmax, rmax);
             n = late = sum_run = max_run = max_dt = 0;
             min_dt = ~0ull;
         }

@@ -6,6 +6,7 @@ static uint64_t frames;
 
 void gfx_init(void) {}
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {}
+void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt, uint32_t s) {}
 void gfx_texture_upload(GfxId id, uint32_t level, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data,
                         uint32_t pitch) {}
 void gfx_texture_destroy(GfxId id) {}

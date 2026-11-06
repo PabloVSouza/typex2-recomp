@@ -5,6 +5,7 @@
  * Replay side (render thread): gfx_gl_run_frames() executes queued frames in
  * order (resource commands must never be dropped) and returns whether a new
  * image is ready to show. */
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
@@ -25,6 +26,7 @@ typedef struct Frame {
     u8 *data;
     size_t len, cap;
     struct Frame *next;
+    u32 refs; /* deferred texture uploads still pointing into data (replay side) */
 } Frame;
 
 static Frame *rec;                    /* being recorded (guest thread) */
@@ -35,8 +37,31 @@ static pthread_cond_t q_cond = PTHREAD_COND_INITIALIZER;
 static u64 frames_presented;
 static pthread_mutex_t rec_lock = PTHREAD_MUTEX_INITIALIZER; /* resources may be created off the render thread */
 
+/* Spent command buffers are kept for reuse: a fresh multi-MB allocation per
+ * frame is new memory the kernel has to fault in every time. */
+#define SPARE_MAX 4
+static struct { u8 *data; size_t cap; } spare[SPARE_MAX];
+static u32 nspare;
+static pthread_mutex_t spare_lock = PTHREAD_MUTEX_INITIALIZER;
+static void frame_free(Frame *f) {
+    pthread_mutex_lock(&spare_lock);
+    if (nspare < SPARE_MAX && f->cap <= (64u << 20)) {
+        spare[nspare].data = f->data;
+        spare[nspare++].cap = f->cap;
+        f->data = NULL;
+    }
+    pthread_mutex_unlock(&spare_lock);
+    free(f->data);
+    free(f);
+}
+
 static void *emit(u32 type, size_t payload) {
-    if (!rec) rec = calloc(1, sizeof *rec);
+    if (!rec) {
+        rec = calloc(1, sizeof *rec);
+        pthread_mutex_lock(&spare_lock);
+        if (nspare) { rec->data = spare[--nspare].data; rec->cap = spare[nspare].cap; }
+        pthread_mutex_unlock(&spare_lock);
+    }
     size_t need = (8 + payload + 7) & ~(size_t)7;
     if (rec->len + need > rec->cap) {
         rec->cap = (rec->cap + need) * 2;
@@ -50,8 +75,8 @@ static void *emit(u32 type, size_t payload) {
 }
 
 /* ---- recording API ------------------------------------------------------------ */
-typedef struct { GfxId id; u32 fmt, w, h, levels, rt; } TexCreate;
-typedef struct { GfxId id; u32 level, x, y, w, h, pitch, bytes; } TexUpload;
+typedef struct { GfxId id; u32 fmt, w, h, levels, rt, scale; } TexCreate;
+typedef struct { GfxId id; u32 level, x, y, w, h, pitch, bytes, fmt; } TexUpload;
 typedef struct { GfxId id; u32 size, index; } BufCreate;
 typedef struct { GfxId id; u32 offset, size; } BufUpload;
 typedef struct { GfxId id; u32 pixel, ntokens; } ShaderCreate;
@@ -79,20 +104,23 @@ static u32 fmt_block_bytes(u32 f, u32 *bw) {
 
 static u32 tex_fmt[1 << 20]; /* id -> format, for upload sizing (recording side) */
 
-void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {
+void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt, uint32_t scale) {
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
-    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, w, h, levels, rt};
+    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1};
     pthread_mutex_unlock(&rec_lock);
+}
+void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {
+    gfx_texture_create_scaled(id, fmt, w, h, levels, rt, 1);
 }
 void gfx_texture_upload(GfxId id, uint32_t level, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data,
                         uint32_t pitch) {
-    u32 bw, bb = fmt_block_bytes(id < (1u << 20) ? tex_fmt[id] : 0, &bw);
+    u32 fmt = id < (1u << 20) ? tex_fmt[id] : 0, bw, bb = fmt_block_bytes(fmt, &bw);
     u32 rows = (h + bw - 1) / bw, row = (w + bw - 1) / bw * bb;
     u32 bytes = rows * row;
     pthread_mutex_lock(&rec_lock);
     TexUpload *u = emit(C_TEX_UPLOAD, sizeof(TexUpload) + bytes);
-    *u = (TexUpload){id, level, x, y, w, h, row, bytes};
+    *u = (TexUpload){id, level, x, y, w, h, row, bytes, fmt};
     u8 *dst = (u8 *)(u + 1);
     for (u32 r = 0; r < rows; r++) memcpy(dst + r * row, (const u8 *)data + r * pitch, row);
     pthread_mutex_unlock(&rec_lock);
@@ -198,6 +226,12 @@ double gfx_guest_work_ms(void) {
     return n ? (double)acc / (double)n / 1e6 : 0;
 }
 static u64 last_work_ns; /* guest time from wake-up to this Present (X2_PACELOG) */
+static u64 guest_work_max_ns, replay_max_ns;
+/* longest guest frame and longest replay of queued frames since the last call (X2_PACELOG) */
+void gfx_pace_max(double *guest_ms, double *replay_ms) {
+    *guest_ms = (double)__atomic_exchange_n(&guest_work_max_ns, 0, __ATOMIC_RELAXED) / 1e6;
+    *replay_ms = (double)__atomic_exchange_n(&replay_max_ns, 0, __ATOMIC_RELAXED) / 1e6;
+}
 void gfx_present(void) {
     {
         u64 t = x2_time_ns();
@@ -205,6 +239,8 @@ void gfx_present(void) {
         if (guest_wake_ns) {
             __atomic_fetch_add(&guest_work_acc_ns, t - guest_wake_ns, __ATOMIC_RELAXED);
             __atomic_fetch_add(&guest_work_frames, 1, __ATOMIC_RELAXED);
+            if (t - guest_wake_ns > __atomic_load_n(&guest_work_max_ns, __ATOMIC_RELAXED))
+                __atomic_store_n(&guest_work_max_ns, t - guest_wake_ns, __ATOMIC_RELAXED);
         }
     }
     pthread_mutex_lock(&rec_lock);
@@ -270,9 +306,12 @@ uint64_t gfx_frame_count(void) { return frames_presented; }
 /* ---- replay side ---------------------------------------------------------------- */
 typedef struct {
     GLuint tex, fbo;
-    u32 fmt, w, h, levels;
+    u32 fmt, w, h, levels; /* w, h: allocated size (scale x the size the game sees) */
+    u32 scale;             /* render resolution multiplier (backbuffer upscaling) */
     bool depth;
     GLuint fbo_depth; /* depth texture currently attached to fbo (0 = none) */
+    u32 alloc;        /* levels with storage (bit per level); plain textures get it lazily */
+    struct Pending *pend; /* deferred uploads, oldest first */
 } Tex;
 typedef struct {
     GLuint buf;
@@ -384,33 +423,50 @@ static u8 *dxt_decode(u32 fmt, const u8 *src, u32 w, u32 h) {
     return out;
 }
 
-static void do_tex_create(const TexCreate *k) {
-    if (k->id >= MAX_IDS) return;
-    Tex *t = calloc(1, sizeof *t);
-    t->fmt = k->fmt; t->w = k->w; t->h = k->h; t->levels = k->levels;
-    t->depth = k->fmt == GFX_FMT_D24S8 || k->fmt == GFX_FMT_D16;
-    glGenTextures(1, &t->tex);
-    glBindTexture(GL_TEXTURE_2D, t->tex);
-    GLint ifmt; GLenum fmt, type; bool bgra;
-    gl_format(k->fmt, &ifmt, &fmt, &type, &bgra);
-    bool compressed = k->fmt == GFX_FMT_DXT1 || k->fmt == GFX_FMT_DXT3 || k->fmt == GFX_FMT_DXT5;
-    if (compressed && !have_s3tc) {
-        compressed = false;
-        ifmt = GL_RGBA8; fmt = GL_RGBA; type = GL_UNSIGNED_BYTE; /* decoded on upload */
-    }
-    for (u32 l = 0; l < k->levels; l++) {
-        u32 w = k->w >> l ? k->w >> l : 1, h = k->h >> l ? k->h >> l : 1;
-        if (compressed) {
-            GLenum cf = k->fmt == GFX_FMT_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-                      : k->fmt == GFX_FMT_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-            u32 size = ((w + 3) / 4) * ((h + 3) / 4) * (k->fmt == GFX_FMT_DXT1 ? 8 : 16);
+static bool is_dxt(u32 fmt) { return fmt == GFX_FMT_DXT1 || fmt == GFX_FMT_DXT3 || fmt == GFX_FMT_DXT5; }
+static GLenum dxt_gl(u32 fmt) {
+    return fmt == GFX_FMT_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
+         : fmt == GFX_FMT_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+}
+/* GL storage format of a texture (DXT without S3TC is kept as decoded RGBA8) */
+static void tex_gl_format(u32 gfmt, GLint *ifmt, GLenum *fmt, GLenum *type, bool *bgra, bool *native_dxt) {
+    gl_format(gfmt, ifmt, fmt, type, bgra);
+    *native_dxt = is_dxt(gfmt) && have_s3tc;
+    if (is_dxt(gfmt) && !have_s3tc) { *ifmt = GL_RGBA8; *fmt = GL_RGBA; *type = GL_UNSIGNED_BYTE; *bgra = false; }
+}
+static u32 level_dim(u32 v, u32 l) { return v >> l ? v >> l : 1; }
+
+/* give every level that has none an (undefined) storage, except `skip` */
+static void tex_alloc_levels(Tex *t, u32 skip) {
+    GLint ifmt; GLenum fmt, type; bool bgra, native;
+    tex_gl_format(t->fmt, &ifmt, &fmt, &type, &bgra, &native);
+    for (u32 l = 0; l < t->levels && l < 32; l++) {
+        if (l == skip || t->alloc >> l & 1) continue;
+        u32 w = level_dim(t->w, l), h = level_dim(t->h, l);
+        if (native) {
+            u32 size = ((w + 3) / 4) * ((h + 3) / 4) * (t->fmt == GFX_FMT_DXT1 ? 8 : 16);
             void *z = calloc(1, size);
-            glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)l, cf, (GLsizei)w, (GLsizei)h, 0, (GLsizei)size, z);
+            glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)l, dxt_gl(t->fmt), (GLsizei)w, (GLsizei)h, 0, (GLsizei)size, z);
             free(z);
         } else {
             glTexImage2D(GL_TEXTURE_2D, (GLint)l, ifmt, (GLsizei)w, (GLsizei)h, 0, fmt, type, NULL);
         }
+        t->alloc |= 1u << l;
     }
+}
+
+static void do_tex_create(const TexCreate *k) {
+    if (k->id >= MAX_IDS) return;
+    Tex *t = calloc(1, sizeof *t);
+    t->scale = k->scale ? k->scale : 1;
+    t->fmt = k->fmt; t->w = k->w * t->scale; t->h = k->h * t->scale; t->levels = k->levels;
+    t->depth = k->fmt == GFX_FMT_D24S8 || k->fmt == GFX_FMT_D16;
+    glGenTextures(1, &t->tex);
+    glBindTexture(GL_TEXTURE_2D, t->tex);
+    /* Plain textures get storage on their first upload: a whole-level upload
+     * then allocates once instead of twice (KOF XIII creates ~4000 sprite
+     * sheets at once when a fight loads). Render targets need it now. */
+    if (k->rt || t->depth) tex_alloc_levels(t, ~0u);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)k->levels - 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -429,63 +485,130 @@ static void do_tex_create(const TexCreate *k) {
 
 static void do_tex_upload(const TexUpload *k) {
     Tex *t = k->id < MAX_IDS ? texs[k->id] : NULL;
-    if (!t) return;
+    if (!t || k->level >= 32) return;
     {
         static int ul = -1;
         if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
         if (ul) x2_log("upload tex %u fmt %u level %u %ux%u at %u,%u (%u bytes)", k->id, t->fmt, k->level, k->w, k->h, k->x, k->y, k->bytes);
     }
     glBindTexture(GL_TEXTURE_2D, t->tex);
-    const u8 *data = (const u8 *)(k + 1);
-    bool compressed = t->fmt == GFX_FMT_DXT1 || t->fmt == GFX_FMT_DXT3 || t->fmt == GFX_FMT_DXT5;
-    if (compressed && !have_s3tc) {
-        u8 *rgba = dxt_decode(t->fmt, data, k->w, k->h);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, GL_RGBA,
-                        GL_UNSIGNED_BYTE, rgba);
-        free(rgba);
-        return;
-    }
-    if (compressed) {
-        GLenum cf = t->fmt == GFX_FMT_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
-                  : t->fmt == GFX_FMT_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-        glCompressedTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w,
-                                  (GLsizei)k->h, cf, (GLsizei)k->bytes, data);
-        return;
-    }
-    GLint ifmt; GLenum fmt, type; bool bgra;
-    gl_format(t->fmt, &ifmt, &fmt, &type, &bgra);
-    u32 bw, bpp = fmt_block_bytes(t->fmt, &bw);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(k->pitch / bpp));
+    GLint ifmt; GLenum fmt, type; bool bgra, native;
+    tex_gl_format(t->fmt, &ifmt, &fmt, &type, &bgra, &native);
     /* A whole-level update respecifies the level instead of patching it, so the
      * driver can hand out fresh storage rather than wait for the GPU to finish
      * with the old contents (Mali stalled ~300 ms on KOF XII's per-frame
-     * video texture). */
-    u32 lw = t->w >> k->level ? t->w >> k->level : 1, lh = t->h >> k->level ? t->h >> k->level : 1;
+     * video texture). It also gives a lazily created level its storage. */
+    u32 lw = level_dim(t->w, k->level), lh = level_dim(t->h, k->level);
     bool whole = k->x == 0 && k->y == 0 && k->w == lw && k->h == lh;
-    if (bgra) {
-        /* swap B and R into a temporary: GLES has no GL_BGRA upload */
-        u32 n = k->bytes / 4;
-        u32 *tmp = malloc(k->bytes);
-        const u32 *s = (const u32 *)data;
-        for (u32 i = 0; i < n; i++) tmp[i] = (s[i] & 0xFF00FF00u) | (s[i] >> 16 & 0xFF) | (s[i] & 0xFF) << 16;
-        if (whole) glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, tmp);
-        else glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt, type, tmp);
-        free(tmp);
-    } else if (whole) {
-        glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, data);
-    } else {
-        glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt,
-                        type, data);
+    tex_alloc_levels(t, whole ? k->level : ~0u); /* the rest of the chain, so the texture is complete */
+    t->alloc |= 1u << k->level;
+    const u8 *data = (const u8 *)(k + 1);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (native) {
+        if (whole) glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)k->level, dxt_gl(t->fmt), (GLsizei)lw, (GLsizei)lh, 0, (GLsizei)k->bytes, data);
+        else glCompressedTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h,
+                                       dxt_gl(t->fmt), (GLsizei)k->bytes, data);
+        return;
     }
+    u8 *tmp = NULL;
+    if (is_dxt(t->fmt)) {
+        data = tmp = dxt_decode(t->fmt, data, k->w, k->h);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    } else {
+        u32 bw, bpp = fmt_block_bytes(t->fmt, &bw);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(k->pitch / bpp));
+        if (bgra) {
+            /* swap B and R into a temporary: GLES has no GL_BGRA upload */
+            u32 n = k->bytes / 4;
+            u32 *sw = malloc(k->bytes);
+            const u32 *s = (const u32 *)data;
+            for (u32 i = 0; i < n; i++) sw[i] = (s[i] & 0xFF00FF00u) | (s[i] >> 16 & 0xFF) | (s[i] & 0xFF) << 16;
+            data = (const u8 *)(tmp = (u8 *)sw);
+        }
+    }
+    if (whole) glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, data);
+    else glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt, type, data);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    free(tmp);
+}
+
+/* ---- deferred texture uploads --------------------------------------------------
+ * A fight in KOF XIII loads ~4000 sprite sheets in one frame, but only a few
+ * dozen are drawn in the next seconds. On a GPU without S3TC every sheet is
+ * decoded and uploaded as RGBA8 (Mali: >1 s for the lot, one long stall). Once
+ * a frame has spent its upload budget, further uploads are kept (compressed)
+ * and applied when a draw first samples the texture, or in later frames'
+ * spare budget. Uploads to one texture stay in order. X2_UPLOAD_BUDGET_MS=0
+ * turns this off. */
+typedef struct Pending { struct Pending *next; const TexUpload *k; Frame *f; } Pending; /* k lives in f->data */
+static u64 up_budget_ns, frame_up_ns;
+static GfxId *pq;         /* textures with pending uploads, oldest first (may hold stale ids) */
+static u32 pq_head, pq_len, pq_cap;
+static u32 st_deferred;
+
+static Frame *cur_frame; /* being replayed */
+static void frame_unref(Frame *f) {
+    if (--f->refs == 0 && f != cur_frame) frame_free(f);
+}
+static void pend_free(Tex *t) {
+    for (Pending *p = t->pend, *n; p; p = n) { n = p->next; frame_unref(p->f); free(p); }
+    t->pend = NULL;
+}
+static void pend_add(Tex *t, const TexUpload *k) {
+    Pending *p = malloc(sizeof *p);
+    *p = (Pending){NULL, k, cur_frame};
+    cur_frame->refs++;
+    if (!t->pend) {
+        if (pq_head + pq_len == pq_cap) {
+            if (pq_head) { memmove(pq, pq + pq_head, pq_len * sizeof *pq); pq_head = 0; }
+            else { pq_cap = pq_cap ? pq_cap * 2 : 1024; pq = realloc(pq, pq_cap * sizeof *pq); }
+        }
+        pq[pq_head + pq_len++] = k->id;
+        t->pend = p;
+    } else {
+        Pending *e = t->pend;
+        while (e->next) e = e->next;
+        e->next = p;
+    }
+    st_deferred++;
+}
+static void pend_flush(Tex *t) {
+    u64 t0 = x2_time_ns();
+    for (Pending *p = t->pend, *n; p; p = n) {
+        n = p->next;
+        t->pend = n;
+        do_tex_upload(p->k);
+        frame_unref(p->f);
+        free(p);
+    }
+    frame_up_ns += x2_time_ns() - t0;
+}
+static void tex_upload_cmd(const TexUpload *k) {
+    Tex *t = k->id < MAX_IDS ? texs[k->id] : NULL;
+    if (!t) return;
+    if (t->pend || (up_budget_ns && frame_up_ns >= up_budget_ns && !t->fbo)) {
+        pend_add(t, k);
+        return;
+    }
+    u64 t0 = x2_time_ns();
+    do_tex_upload(k);
+    frame_up_ns += x2_time_ns() - t0;
+}
+/* end of a frame: spend what is left of the budget on the oldest pending textures */
+static void pend_trickle(void) {
+    while (pq_len && frame_up_ns < up_budget_ns) {
+        GfxId id = pq[pq_head++];
+        pq_len--;
+        Tex *t = id < MAX_IDS ? texs[id] : NULL;
+        if (t && t->pend) pend_flush(t);
+    }
+    if (!pq_len) pq_head = 0;
 }
 
 static void do_tex_destroy(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t) return;
+    pend_free(t);
     if (t->depth) /* GL may reuse the name: forget cached attachments of it */
         for (u32 i = 0; i < MAX_IDS; i++)
             if (texs[i] && texs[i]->fbo_depth == t->tex) texs[i]->fbo_depth = (GLuint)-1;
@@ -531,6 +654,10 @@ static void do_buf_destroy(GfxId id) {
 }
 
 /* render target binding: the first color target of the state, or the backbuffer */
+u32 gfx_gl_target_scale(const GfxState *st) {
+    Tex *t = st->rt[0] < MAX_IDS ? texs[st->rt[0]] : NULL;
+    return t && t->scale ? t->scale : 1;
+}
 static void bind_target(const GfxState *st) {
     Tex *t = st->rt[0] < MAX_IDS ? texs[st->rt[0]] : NULL;
     GLuint fbo = t && t->fbo ? t->fbo : backbuffer_fbo;
@@ -556,7 +683,8 @@ static void do_clear(const Clear *k) {
     bind_target(&k->st);
     const GfxViewport *vp = &k->st.vp;
     glEnable(GL_SCISSOR_TEST);
-    glScissor((GLint)vp->x, (GLint)vp->y, (GLsizei)vp->w, (GLsizei)vp->h);
+    float s = (float)gfx_gl_target_scale(&k->st);
+    glScissor((GLint)(vp->x * s), (GLint)(vp->y * s), (GLsizei)(vp->w * s), (GLsizei)(vp->h * s));
     GLbitfield m = 0;
     if (k->flags & 1) {
         glColorMask(1, 1, 1, 1);
@@ -586,7 +714,12 @@ void gfx_gl_shader_destroy(GfxId id);
 void gfx_gl_decl_create(GfxId id, const u8 *el, u32 count);
 void gfx_gl_consts(bool pixel, u32 start, const float *v, u32 count);
 void gfx_gl_bind_target(const GfxState *st) { bind_target(st); }
-GLuint gfx_gl_texture(GfxId id) { return id < MAX_IDS && texs[id] ? texs[id]->tex : 0; }
+GLuint gfx_gl_texture(GfxId id) {
+    Tex *t = id < MAX_IDS ? texs[id] : NULL;
+    if (!t) return 0;
+    if (t->pend) pend_flush(t); /* first use of a texture whose upload was deferred */
+    return t->tex;
+}
 bool gfx_gl_texture_size(GfxId id, u32 *w, u32 *h) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t) return false;
@@ -618,6 +751,7 @@ void gfx_request_capture(void) { capture_request = true; }
 static u64 glprof_ns[C_PRESENT + 1], glprof_n[C_PRESENT + 1], glprof_bytes;
 static int glprof = -1; /* X2_GLPROF=1: time spent per replayed command type */
 static void run_frame(Frame *f) {
+    frame_up_ns = 0;
     for (size_t off = 0; off < f->len;) {
         u32 type = ((u32 *)(f->data + off))[0], size = ((u32 *)(f->data + off))[1];
         const void *p = f->data + off + 8;
@@ -626,7 +760,11 @@ static void run_frame(Frame *f) {
         if (glprof && type == C_BUF_UPLOAD) glprof_bytes += ((const BufUpload *)p)->size;
         switch (type) {
             case C_TEX_CREATE: do_tex_create(p); break;
-            case C_TEX_UPLOAD: do_tex_upload(p); st_uploads++; break;
+            case C_TEX_UPLOAD: {
+                tex_upload_cmd(p);
+                st_uploads++;
+                break;
+            }
             case C_TEX_DESTROY: do_tex_destroy(*(const GfxId *)p); break;
             case C_BUF_CREATE: do_buf_create(p); break;
             case C_BUF_UPLOAD: do_buf_upload(p); break;
@@ -674,9 +812,9 @@ static void run_frame(Frame *f) {
                 if (capture_request) { capture_request = false; x2_log("---- F9 capture ----"); }
                 if (gfx_gl_drawlog) x2_log("---- frame %u ----", (u32)st_frames + 2);
                 if (++st_frames % 120 == 0) {
-                    x2_log("gfx: frame %u: %u draws, %u clears, %u texture uploads in the last 120 frames", st_frames, st_draws,
-                           st_clears, st_uploads);
-                    st_draws = st_clears = st_uploads = 0;
+                    x2_log("gfx: frame %u: %u draws, %u clears, %u texture uploads (%u deferred, %u pending) in the last 120 frames",
+                           st_frames, st_draws, st_clears, st_uploads, st_deferred, pq_len);
+                    st_draws = st_clears = st_uploads = st_deferred = 0;
                     if (glprof > 0) {
                         static const char *nm[C_PRESENT + 1] = {[C_TEX_CREATE] = "tex-create", [C_TEX_UPLOAD] = "tex-upload",
                                                                 [C_BUF_CREATE] = "buf-create", [C_BUF_UPLOAD] = "buf-upload",
@@ -703,6 +841,7 @@ static void run_frame(Frame *f) {
         }
         off += size;
     }
+    pend_trickle();
 }
 
 /* ---- render-thread entry points --------------------------------------------- */
@@ -720,6 +859,7 @@ void gfx_gl_init(u32 w, u32 h) {
     }
 #endif
     if (getenv("X2_NO_S3TC")) have_s3tc = false; /* test the CPU decoder on desktop */
+    up_budget_ns = (u64)((getenv("X2_UPLOAD_BUDGET_MS") ? atof(getenv("X2_UPLOAD_BUDGET_MS")) : 3.0) * 1e6);
     drawlog_frame = getenv("X2_DRAWLOG") ? (u32)atoi(getenv("X2_DRAWLOG")) : 0;
     drawlog_last = drawlog_frame;
     if (drawlog_frame && strchr(getenv("X2_DRAWLOG"), '-')) drawlog_last = (u32)atoi(strchr(getenv("X2_DRAWLOG"), '-') + 1);
@@ -761,7 +901,8 @@ void gfx_gl_dump_texture(GfxId id) {
 #endif
     extern bool x2_write_png(const char *path, const u8 *rgba, u32 w, u32 h);
     char path[256];
-    snprintf(path, sizeof path, "%s/tex%u.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : ".", id);
+    snprintf(path, sizeof path, "%s/tex%u-f%llu.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : ".", id,
+             (unsigned long long)frames_presented);
     x2_log("dumped texture %u (%ux%u fmt %u) to %s", id, t->w, t->h, t->fmt, path);
     x2_write_png(path, px, t->w, t->h);
     free(px);
@@ -784,13 +925,16 @@ bool gfx_gl_run_frames(u32 timeout_ms, GLuint *out_tex, u32 *out_w, u32 *out_h) 
     pthread_cond_broadcast(&q_cond);
     pthread_mutex_unlock(&q_lock);
     bool any = list != NULL;
+    u64 replay_t0 = x2_time_ns();
     while (list) {
         Frame *n = list->next;
+        cur_frame = list;
         run_frame(list);
-        free(list->data);
-        free(list);
+        cur_frame = NULL;
+        if (!list->refs) frame_free(list); /* else freed with its last deferred upload */
         list = n;
     }
+    if (x2_time_ns() - replay_t0 > replay_max_ns) replay_max_ns = x2_time_ns() - replay_t0;
     /* X2_DUMPTEX=<id>: save that texture's level 0 once it exists (debugging) */
     /* X2_DUMPTEX=<id>[@frame] */
     static int dump_id = -1;

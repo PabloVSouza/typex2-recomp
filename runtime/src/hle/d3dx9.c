@@ -439,6 +439,8 @@ static u32 create_from_memory(u32 dev, const u8 *data, size_t n, u32 w, u32 h, u
                n > 2 ? data[2] : 0, n > 3 ? data[3] : 0, n);
         return 0x88760B59u; /* D3DXERR_INVALIDDATA */
     }
+    X2_TRACE("d3dx9: image %ux%u fmt %u levels %u (%zu bytes, %s)", im.w, im.h, im.fmt, im.levels, n,
+             im.file_format == 4 ? "dds" : "png");
     write_info(info, &im);
     u32 tex = 0;
     u32 hr = texture_from_image(dev, &im, w, h, levels, usage, fmt, pool, colorkey, &tex);

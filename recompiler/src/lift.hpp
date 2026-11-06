@@ -33,6 +33,12 @@ public:
 
     std::map<std::string, int> unsupported;  // "mnemonic (reason)" -> count
 
+    // Functions whose callers read EFLAGS set by the callee (hand-written CRT asm:
+    // "call _load_arg / jz special"). They save the flags at ret (SPILLF) and
+    // their direct call sites reload them (RELOADF). Run before lift_function.
+    void analyze_flag_exports();
+    std::set<uint32_t> flag_exporters;
+
     // used by the vector/x87 helpers
     std::string rn(unsigned reg) const;
     std::string ea(const cs_x86_op& op, bool with_seg = true) const;
@@ -51,6 +57,7 @@ private:
     bool lift_vec(const std::string& m, const cs_insn& d, std::vector<std::string>& L);
     std::vector<std::string> lift_x87(const cs_insn& d, const uint8_t* b, int opi);
     std::string branch_to(uint32_t target, const Function& fn) const;
+    bool decode(uint32_t va);  // into ci_
 
     const Image& img_;
     Discovery& disc_;
@@ -58,5 +65,8 @@ private:
     cs_insn* ci_ = nullptr;
     mutable uint32_t cur_addr_ = 0;  // instruction being lifted (back-edge detection)
 };
+
+// lift routines x2recomp would otherwise replace with natives (--no-natives)
+extern bool lift_natives;
 
 }  // namespace x2

@@ -335,7 +335,7 @@ static void run_x2_calls(X2Thread *t) {
                 case 2: r = x2_guest_call(c, fn, 2, args[0], args[1]); break;
                 default: r = x2_guest_call(c, fn, 3, args[0], args[1], args[2]); break;
             }
-            x2_log("call %08x -> edx:eax = %08x:%08x", fn, c->edx, r);
+            x2_log("call %08x -> edx:eax = %08x:%08x st0 %.9g", fn, c->edx, r, c->st[c->ftop & 7]);
         }
         const char *pk = getenv("X2_PEEK");
         for (const char *p = pk; p && *p;) {

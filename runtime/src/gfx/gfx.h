@@ -58,6 +58,9 @@ typedef struct {
 
 void gfx_init(void);
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool render_target);
+/* render target allocated at scale x (w, h); viewports and scissors on it are scaled to match */
+void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool render_target,
+                               uint32_t scale);
 void gfx_texture_upload(GfxId id, uint32_t level, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data,
                         uint32_t pitch);
 void gfx_texture_destroy(GfxId id);
@@ -82,3 +85,4 @@ void gfx_gl_set_backbuffer(GfxId id); /* texture that Present() shows */
 uint64_t gfx_frame_count(void);
 void gfx_request_capture(void); /* log every draw of the next replayed frame */
 double gfx_guest_work_ms(void); /* mean guest ms per frame since the last call */
+void gfx_pace_max(double *guest_ms, double *replay_ms);
