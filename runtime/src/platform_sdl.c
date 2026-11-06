@@ -592,6 +592,11 @@ static void open_pads(void) {
     for (int i = 0; i < 2; i++) {
         if (pads[i]) { SDL_CloseGamepad(pads[i]); pads[i] = NULL; }
         if (i < n) pads[i] = SDL_OpenGamepad(ids[i]);
+        if (pads[i]) {
+            char *m = SDL_GetGamepadMapping(pads[i]);
+            x2_log("pad %d: %s (%s)", i, SDL_GetGamepadName(pads[i]), m ? m : "no mapping");
+            SDL_free(m);
+        }
     }
     SDL_free(ids);
 }
@@ -649,7 +654,8 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_EVENT_QUIT) running = false;
             else if (e.type == SDL_EVENT_KEY_DOWN) {
-                if (e.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
+                if (e.key.scancode == SDL_SCANCODE_ESCAPE || e.key.scancode == SDL_SCANCODE_AC_BACK)
+                    running = false; /* Esc, or Android back (button / gesture) */
                 if (e.key.scancode == SDL_SCANCODE_F11) {
                     fullscreen = !fullscreen;
                     SDL_SetWindowFullscreen(win, fullscreen);
