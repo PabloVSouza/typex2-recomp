@@ -44,6 +44,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "x2recomp: %s\n", e.what());
         return 1;
     }
+    x2::apply_byte_patches(img); // before discovery: patches can change control flow
     x2::Discovery disc(img);
     disc.run(extra);
     auto cov = disc.covered();

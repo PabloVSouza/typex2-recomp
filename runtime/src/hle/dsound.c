@@ -120,7 +120,19 @@ void x2_dsound_mix(float *out, u32 frames, u32 rate) {
             u32 off = frame * b->block;
             if (off + b->block > b->size) off = 0;
             float l, r;
-            if (b->bits == 16) {
+            if (b->bits == 16 && b->channels >= 4) {
+                /* WAVE channel order FL FR [C LFE] BL BR...: fold to stereo (SSF4 AE mixes into 5.1) */
+                s16 ch[8] = {0};
+                memcpy(ch, base + off, (b->channels < 8 ? b->channels : 8) * 2);
+                const float k = 0.7071f;
+                if (b->channels == 4) {
+                    l = (ch[0] + k * ch[2]) / 32768.f;
+                    r = (ch[1] + k * ch[3]) / 32768.f;
+                } else {
+                    l = (ch[0] + k * ch[2] + k * ch[4]) / 32768.f;
+                    r = (ch[1] + k * ch[2] + k * ch[5]) / 32768.f;
+                }
+            } else if (b->bits == 16) {
                 s16 s0, s1;
                 memcpy(&s0, base + off, 2);
                 s1 = s0;

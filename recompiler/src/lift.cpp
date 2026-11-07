@@ -258,6 +258,49 @@ const vector<NativeSig>& native_sigs() {
 }
 } // namespace
 
+// ---- byte patches ----------------------------------------------------------------
+// Code patched before discovery, found by a unique byte pattern (exec sections).
+// Each fixes a behaviour that is wrong under the runtime, not the game logic.
+namespace {
+struct BytePatch {
+    const char* name;
+    const char* pattern; // hex
+    uint32_t offset;     // into the pattern
+    const char* bytes;   // hex, replaces bytes at offset
+};
+const BytePatch kPatches[] = {
+    // SSF4 AE frame limiter (0x611280): spins Sleep(0)/QueryPerformanceCounter
+    // until 1/60 s has passed since its last frame. The runtime already paces
+    // the game to the display; two clocks beating against each other lose a
+    // frame whenever the spin overruns the frontend's tick. jbe -> jmp skips
+    // the spin and keeps the lateness bookkeeping after it.
+    {"SSF4 AE frame limiter spin",
+     "f30f108eac010000f30f109eb00100000f2fd90f82b60000000f2f4424107668" "6a00ff15", 0x1e, "eb"},
+};
+} // namespace
+
+int apply_byte_patches(Image& img) {
+    if (!lift_natives) return 0;
+    int n = 0;
+    for (auto& p : kPatches) {
+        string pat = p.pattern;
+        std::vector<uint8_t> want(pat.size() / 2);
+        for (size_t i = 0; i < want.size(); i++) want[i] = (uint8_t)std::stoul(pat.substr(i * 2, 2), nullptr, 16);
+        for (auto& s : img.sections) {
+            if (!s.exec) continue;
+            for (uint32_t va = s.start; va + want.size() <= s.end; va++) {
+                if (std::memcmp(img.ptr(va), want.data(), want.size())) continue;
+                string b = p.bytes;
+                for (size_t i = 0; i < b.size() / 2; i++)
+                    img.mem[va - img.base + p.offset + i] = (uint8_t)std::stoul(b.substr(i * 2, 2), nullptr, 16);
+                std::fprintf(stderr, "patched %s at 0x%x\n", p.name, va + p.offset);
+                n++;
+            }
+        }
+    }
+    return n;
+}
+
 static bool match_hex(const Image& img, uint32_t va, const string& hex) {
     if (img.avail(va) < hex.size() / 2) return false;
     for (size_t i = 0; i < hex.size() / 2; i++)

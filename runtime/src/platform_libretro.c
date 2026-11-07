@@ -7,7 +7,7 @@
  * Threads: the guest runs on its own threads as in the standalone build. The
  * frontend thread replays recorded frames inside retro_run() on the frontend's
  * GL context (OpenGL 3.3 core / GLES 3.2), then hands back the image. The guest
- * is clocked by retro_run (gfx_clock_tick), so frontend pause, fast-forward and
+ * is clocked by retro_run (gfx_clock_release), so frontend pause, fast-forward and
  * slow-motion drive the game directly.
  *
  * Limits: no save states, no reset, and one game per process (the guest cannot
@@ -351,6 +351,11 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         return false;
     }
     x2_log("libretro: game %s", game->name);
+    {
+        const char *sd = NULL;
+        if (!environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &sd) || !sd) environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sd);
+        gfx_gl_set_cache_dir(sd, game->name);
+    }
 
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
@@ -412,6 +417,8 @@ EXPORT void retro_unload_game(void) {
 
 EXPORT void retro_reset(void) { msg("Type X2: reset is not supported", 180); }
 
+static int pace_ab;     /* X2_AB half of this call */
+static u64 repeats;     /* calls that showed the previous image again (X2_PACELOG) */
 EXPORT void retro_run(void) {
     if (!running) return;
     u64 run_t0 = x2_time_ns();
@@ -421,7 +428,40 @@ EXPORT void retro_run(void) {
         pending_msg = NULL;
     }
     update_inputs();
-    gfx_clock_tick(); /* release the guest for its next frame */
+    {
+        /* X2_STALL=<frame>:<ms>: block this thread once at that guest frame (tests
+         * how the game and the frontend recover from a long frame) */
+        static long stall_at = -1, stall_ms;
+        if (stall_at < 0) {
+            const char *e = getenv("X2_STALL");
+            stall_at = e ? atol(e) : 0;
+            stall_ms = e && strchr(e, ':') ? atol(strchr(e, ':') + 1) : 0;
+        }
+        if (stall_at > 0 && gfx_frame_count() >= (u64)stall_at) {
+            x2_log("stall: %ld ms at frame %llu", stall_ms, (unsigned long long)gfx_frame_count());
+            usleep((useconds_t)stall_ms * 1000);
+            stall_at = 0;
+        }
+    }
+    {
+        /* One frame in flight: the guest computes frame N+1 while this call
+         * replays frame N, so the GPU starts at the top of the interval instead
+         * of after the guest's work. Lockstep needs guest + replay + GPU to fit
+         * one interval: SSF4's select screen and heavy stages were late on 37-59
+         * of 60 frames on a Mali-G57, against 7-9 (the frontend's own jitter)
+         * with one frame in flight. D3D9 on the original board queued frames
+         * ahead of the GPU too. X2_PIPELINE=0: lockstep, one frame less latency. */
+        static int pipeline = -1;
+        if (pipeline < 0) {
+            pipeline = !getenv("X2_PIPELINE") || atoi(getenv("X2_PIPELINE")) != 0;
+            x2_log("libretro: %s", pipeline ? "one frame in flight (X2_PIPELINE=0 for lockstep)" : "lockstep");
+        }
+        extern int gfx_gl_ab; /* X2_AB=<frames> X2_AB_TEST=pipeline: alternate with lockstep */
+        static int ab_pipe = -1;
+        if (ab_pipe < 0) ab_pipe = getenv("X2_AB_TEST") && !strcmp(getenv("X2_AB_TEST"), "pipeline");
+        pace_ab = gfx_gl_ab;
+        gfx_clock_release(pipeline && !(ab_pipe && gfx_gl_ab) ? 1 : 0); /* release the guest for its next frame */
+    }
 
     GLuint tex = last_tex;
     u32 w = last_w, h = last_h;
@@ -429,7 +469,8 @@ EXPORT void retro_run(void) {
         gfx_gl_unbind_textures(); /* the frontend may have touched bindings */
         /* wait a little for the guest's frame so we stay in lockstep; a slow
          * frame (loading) just repeats the previous image */
-        if (gfx_gl_run_frames(50, &tex, &w, &h)) {
+        if (!gfx_gl_run_frames(50, &tex, &w, &h)) repeats++;
+        else {
             last_tex = tex;
             last_w = w;
             last_h = h;
@@ -478,7 +519,7 @@ EXPORT void retro_run(void) {
 
     /* X2_PACELOG=1: frontend frame interval, replay+blit time and guest work every 120 frames */
     static int pl = -1;
-    static u64 last, n, late, sum_run, max_run, min_dt = ~0ull, max_dt;
+    static u64 last, n, late, sum_run, max_run, min_dt = ~0ull, max_dt, ab_n[2], ab_late[2], ab_rep[2], rep0;
     if (pl < 0) pl = getenv("X2_PACELOG") != NULL;
     if (pl) {
         u64 now = x2_time_ns(), run = now - run_t0;
@@ -487,6 +528,10 @@ EXPORT void retro_run(void) {
             if (dt < min_dt) min_dt = dt;
             if (dt > max_dt) max_dt = dt;
             if (dt > 18000000ull) late++;
+            ab_n[pace_ab]++;
+            ab_late[pace_ab] += dt > 18000000ull;
+            ab_rep[pace_ab] += repeats != rep0;
+            rep0 = repeats;
         }
         last = run_t0;
         sum_run += run;
@@ -498,6 +543,11 @@ EXPORT void retro_run(void) {
                    "replay max %.2f ms",
                    min_dt / 1e6, max_dt / 1e6, (unsigned long long)late, sum_run / 1e6 / n, max_run / 1e6, gfx_guest_work_ms(),
                    gmax, rmax);
+            if (ab_n[0] && ab_n[1])
+                x2_log("pace: A/B late %llu/%llu vs %llu/%llu, repeated %llu vs %llu", (unsigned long long)ab_late[0],
+                       (unsigned long long)ab_n[0], (unsigned long long)ab_late[1], (unsigned long long)ab_n[1],
+                       (unsigned long long)ab_rep[0], (unsigned long long)ab_rep[1]);
+            memset(ab_n, 0, sizeof ab_n); memset(ab_late, 0, sizeof ab_late); memset(ab_rep, 0, sizeof ab_rep);
             n = late = sum_run = max_run = max_dt = 0;
             min_dt = ~0ull;
         }

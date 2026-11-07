@@ -105,6 +105,8 @@ static const X2HleModule hle_modules[] = {
     {"advapi32.dll", x2_hle_advapi32}, {"ole32.dll", x2_hle_ole32},     {"winmm.dll", x2_hle_winmm},
     {"shlwapi.dll", x2_hle_shlwapi},   {"d3d9.dll", x2_hle_d3d9},       {"d3dx9_35.dll", x2_hle_d3dx9},
     {"d3dx9_37.dll", x2_hle_d3dx9},    {"shell32.dll", x2_hle_shell32}, {"imm32.dll", x2_hle_imm32},
+    {"d3dx9_41.dll", x2_hle_d3dx9},    {"dsound.dll", x2_hle_dsound},   {"oleaut32.dll", x2_hle_oleaut32},
+    {"ws2_32.dll", x2_hle_ws2_32},     {"iphlpapi.dll", x2_hle_iphlpapi}, {"dinput8.dll", x2_hle_dinput8},
 };
 
 const X2Hle *x2_hle_find(const char *dll, const char *name) {

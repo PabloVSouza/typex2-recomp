@@ -8,8 +8,10 @@ namespace x2 {
 
 namespace {
 
+// RaiseException is not here: it returns when a handler or debugger continues
+// (MSVC's SetThreadName raises 0x406D1388 and carries on, which we emulate)
 const std::set<std::string> kNoreturnImports = {
-    "ExitProcess", "ExitThread", "TerminateProcess", "RaiseException",
+    "ExitProcess", "ExitThread", "TerminateProcess",
     "FatalAppExitA", "FreeLibraryAndExitThread",
 };
 

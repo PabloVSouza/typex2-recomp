@@ -152,6 +152,7 @@ static char *float_literals(const char *s) {
 bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, char **out, Sm3Info *info, char *err,
                   size_t errlen) {
     memset(info, 0, sizeof *info);
+    info->const_count = pixel ? 224 : 256; /* not tracked for HLSL: upload them all */
     info->pixel = pixel;
     info->major = 2;
     const char *P = pixel ? "ps" : "vs";
@@ -338,13 +339,13 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
         else sf(&body, "  x_%d_%d = %s(%s%s);\n", q->usage, q->index, ctor, q->name, pad);
     }
     if (pixel) {
-        sf(&body, "  if (u_alpha_func != 0) {\n"
+        sf(&body, "#ifdef X2_ATEST\n  if (u_alpha_func != 0) {\n"
                   "    float a_ = floor(oC0.a * 255.0 + 0.5), r_ = u_alpha_ref;\n"
                   "    bool pass_ = u_alpha_func == 1 ? false : u_alpha_func == 2 ? a_ < r_ : u_alpha_func == 3 ? a_ == r_ :\n"
                   "                 u_alpha_func == 4 ? a_ <= r_ : u_alpha_func == 5 ? a_ > r_ : u_alpha_func == 6 ? a_ != r_ :\n"
                   "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
                   "    if (!pass_) discard;\n"
-                  "  }\n");
+                  "  }\n#endif\n");
     } else {
         sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n"
                   "  gl_Position.y = -gl_Position.y;\n"

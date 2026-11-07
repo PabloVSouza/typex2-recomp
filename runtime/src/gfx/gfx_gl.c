@@ -75,7 +75,7 @@ static void *emit(u32 type, size_t payload) {
 }
 
 /* ---- recording API ------------------------------------------------------------ */
-typedef struct { GfxId id; u32 fmt, w, h, levels, rt, scale; } TexCreate;
+typedef struct { GfxId id; u32 fmt, w, h, levels, rt, scale, cube; } TexCreate;
 typedef struct { GfxId id; u32 level, x, y, w, h, pitch, bytes, fmt; } TexUpload;
 typedef struct { GfxId id; u32 size, index; } BufCreate;
 typedef struct { GfxId id; u32 offset, size; } BufUpload;
@@ -107,7 +107,14 @@ static u32 tex_fmt[1 << 20]; /* id -> format, for upload sizing (recording side)
 void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt, uint32_t scale) {
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
-    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1};
+    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1, 0};
+    pthread_mutex_unlock(&rec_lock);
+}
+/* cube map: uploads address face f, level l as level (f << 4 | l) */
+void gfx_texture_create_cube(GfxId id, enum GfxFormat fmt, uint32_t size, uint32_t levels) {
+    pthread_mutex_lock(&rec_lock);
+    if (id < (1u << 20)) tex_fmt[id] = fmt;
+    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, size, size, levels, 0, 1, 1};
     pthread_mutex_unlock(&rec_lock);
 }
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {
@@ -166,6 +173,15 @@ void gfx_decl_create(GfxId id, const void *el, uint32_t count) {
     memcpy(d + 1, el, count * 8);
     pthread_mutex_unlock(&rec_lock);
 }
+/* integer (ivec4) or boolean shader constants: Consts.pixel bit 1 = int, bit 2 = bool */
+void gfx_set_consts_ib(bool pixel, bool boolean, uint32_t start, const int32_t *v, uint32_t count) {
+    pthread_mutex_lock(&rec_lock);
+    uint32_t bytes = boolean ? count * 4 : count * 16;
+    Consts *k = emit(C_CONSTS, sizeof(Consts) + bytes);
+    *k = (Consts){(u32)pixel | (boolean ? 4u : 2u), start, count};
+    memcpy(k + 1, v, bytes);
+    pthread_mutex_unlock(&rec_lock);
+}
 void gfx_set_consts(bool pixel, uint32_t start, const float *v, uint32_t count4) {
     pthread_mutex_lock(&rec_lock);
     Consts *k = emit(C_CONSTS, sizeof(Consts) + count4 * 16);
@@ -204,17 +220,19 @@ static u64 next_vsync;
 static u64 guest_wake_ns, guest_work_acc_ns, guest_work_frames;
 
 /* External clock (libretro): instead of its own 60 Hz timer, the guest waits in
- * Present for a credit from gfx_clock_tick(), called once per front-end frame.
- * Credits are capped so a stall (loading, paused frontend) does not turn into a
- * burst of unpaced frames afterwards. */
+ * Present until the front end allows its next frame: gfx_clock_release(lead),
+ * once per front-end frame, lets it present up to <frames replayed> + 1 + lead.
+ * Counting from what was shown keeps the lead fixed: a stall (loading, paused
+ * frontend) neither turns into a burst of unpaced frames nor eats the lead. */
 static bool ext_clock;
-static u32 ext_credit;
+static u64 ext_allowed, frames_replayed;
 static pthread_mutex_t ext_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t ext_cond = PTHREAD_COND_INITIALIZER;
 void gfx_set_external_clock(bool on) { ext_clock = on; }
-void gfx_clock_tick(void) {
+void gfx_clock_release(uint32_t lead) {
     pthread_mutex_lock(&ext_lock);
-    if (ext_credit < 2) ext_credit++;
+    u64 a = __atomic_load_n(&frames_replayed, __ATOMIC_ACQUIRE) + 1 + lead;
+    if (a > ext_allowed) ext_allowed = a; /* a smaller lead drains, nothing is taken back */
     pthread_cond_broadcast(&ext_cond);
     pthread_mutex_unlock(&ext_lock);
 }
@@ -261,8 +279,7 @@ void gfx_present(void) {
 
     if (ext_clock) { /* the front end's frame callback releases the guest */
         pthread_mutex_lock(&ext_lock);
-        while (!ext_credit) pthread_cond_wait(&ext_cond, &ext_lock);
-        ext_credit--;
+        while (frames_presented >= ext_allowed) pthread_cond_wait(&ext_cond, &ext_lock);
         pthread_mutex_unlock(&ext_lock);
         guest_wake_ns = x2_time_ns();
         return;
@@ -310,8 +327,13 @@ typedef struct {
     u32 scale;             /* render resolution multiplier (backbuffer upscaling) */
     bool depth;
     GLuint fbo_depth; /* depth texture currently attached to fbo (0 = none) */
+    GLuint fbo_color[3]; /* textures attached as color 1-3 (multiple render targets) */
+    u32 fbo_nbuf;        /* draw buffers enabled on fbo */
     u32 alloc;        /* levels with storage (bit per level); plain textures get it lazily */
     struct Pending *pend; /* deferred uploads, oldest first */
+    bool cube;        /* GL_TEXTURE_CUBE_MAP: levels per face */
+    bool rgb565;      /* DXT1 without punch-through alpha, decoded to 16 bits (no S3TC) */
+    bool dxt_seen;    /* storage for a CPU-decoded DXT1 texture has been chosen */
 } Tex;
 typedef struct {
     GLuint buf;
@@ -350,17 +372,17 @@ static void gl_format(u32 f, GLint *ifmt, GLenum *fmt, GLenum *type, bool *swizz
     }
 }
 
-static void apply_swizzle(u32 f) {
+static void apply_swizzle(GLenum target, u32 f) {
     /* D3D samples A8 as (0,0,0,a), L8 as (l,l,l,1), A8L8 as (l,l,l,a); BGRA is swapped on upload */
     GLint sw[4] = {GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA};
     if (f == GFX_FMT_A8) { sw[0] = sw[1] = sw[2] = GL_ZERO; sw[3] = GL_RED; }
     if (f == GFX_FMT_L8) { sw[0] = sw[1] = sw[2] = GL_RED; sw[3] = GL_ONE; }
     if (f == GFX_FMT_A8L8) { sw[0] = sw[1] = sw[2] = GL_RED; sw[3] = GL_GREEN; }
     if (f == GFX_FMT_BGRX8) sw[3] = GL_ONE;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, sw[0]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, sw[1]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, sw[2]);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, sw[3]);
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, sw[0]);
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_G, sw[1]);
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_B, sw[2]);
+    glTexParameteri(target, GL_TEXTURE_SWIZZLE_A, sw[3]);
 }
 
 /* ---- DXT (S3TC) fallback -----------------------------------------------------
@@ -429,27 +451,57 @@ static GLenum dxt_gl(u32 fmt) {
          : fmt == GFX_FMT_DXT3 ? GL_COMPRESSED_RGBA_S3TC_DXT3_EXT : GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
 }
 /* GL storage format of a texture (DXT without S3TC is kept as decoded RGBA8) */
-static void tex_gl_format(u32 gfmt, GLint *ifmt, GLenum *fmt, GLenum *type, bool *bgra, bool *native_dxt) {
+static void tex_gl_format(const Tex *t, GLint *ifmt, GLenum *fmt, GLenum *type, bool *bgra, bool *native_dxt) {
+    u32 gfmt = t->fmt;
     gl_format(gfmt, ifmt, fmt, type, bgra);
     *native_dxt = is_dxt(gfmt) && have_s3tc;
     if (is_dxt(gfmt) && !have_s3tc) { *ifmt = GL_RGBA8; *fmt = GL_RGBA; *type = GL_UNSIGNED_BYTE; *bgra = false; }
+    if (t->rgb565 && !have_s3tc) { *ifmt = GL_RGB565; *fmt = GL_RGB; *type = GL_UNSIGNED_SHORT_5_6_5; }
+}
+/* Without S3TC, DXT1 textures whose blocks never use the transparent index
+ * are stored as RGB565 instead of RGBA8: their colors are 5:6:5 to begin with,
+ * and half the size halves upload time and sampling bandwidth (Mali-G57).
+ * X2_DXT565=0 keeps RGBA8. */
+static bool dxt1_has_alpha(const u8 *b, u32 bytes) {
+    for (u32 o = 0; o + 8 <= bytes; o += 8) {
+        u32 c0 = b[o] | b[o + 1] << 8, c1 = b[o + 2] | b[o + 3] << 8;
+        if (c0 > c1) continue;
+        u32 idx = b[o + 4] | b[o + 5] << 8 | b[o + 6] << 16 | (u32)b[o + 7] << 24;
+        for (int i = 0; i < 16; i++)
+            if ((idx >> (2 * i) & 3) == 3) return true;
+    }
+    return false;
+}
+static u8 *rgba_to_565(u8 *rgba, u32 n) { /* in place: the result fits the first half */
+    u16 *o = (u16 *)rgba;
+    for (u32 i = 0; i < n; i++) {
+        const u8 *p = rgba + i * 4;
+        o[i] = (u16)((p[0] * 31 + 127) / 255 << 11 | (p[1] * 63 + 127) / 255 << 5 | (p[2] * 31 + 127) / 255);
+    }
+    return rgba;
 }
 static u32 level_dim(u32 v, u32 l) { return v >> l ? v >> l : 1; }
 
-/* give every level that has none an (undefined) storage, except `skip` */
+static GLenum tex_target(const Tex *t) { return t->cube ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D; }
+
+/* give every level that has none an (undefined) storage, except `skip`; for a
+ * cube map, all six faces of the level */
 static void tex_alloc_levels(Tex *t, u32 skip) {
     GLint ifmt; GLenum fmt, type; bool bgra, native;
-    tex_gl_format(t->fmt, &ifmt, &fmt, &type, &bgra, &native);
-    for (u32 l = 0; l < t->levels && l < 32; l++) {
+    tex_gl_format(t, &ifmt, &fmt, &type, &bgra, &native);
+    for (u32 l = 0; l < t->levels && l < 16; l++) {
         if (l == skip || t->alloc >> l & 1) continue;
         u32 w = level_dim(t->w, l), h = level_dim(t->h, l);
-        if (native) {
-            u32 size = ((w + 3) / 4) * ((h + 3) / 4) * (t->fmt == GFX_FMT_DXT1 ? 8 : 16);
-            void *z = calloc(1, size);
-            glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)l, dxt_gl(t->fmt), (GLsizei)w, (GLsizei)h, 0, (GLsizei)size, z);
-            free(z);
-        } else {
-            glTexImage2D(GL_TEXTURE_2D, (GLint)l, ifmt, (GLsizei)w, (GLsizei)h, 0, fmt, type, NULL);
+        for (u32 f = 0; f < (t->cube ? 6u : 1u); f++) {
+            GLenum tg = t->cube ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + f : GL_TEXTURE_2D;
+            if (native) {
+                u32 size = ((w + 3) / 4) * ((h + 3) / 4) * (t->fmt == GFX_FMT_DXT1 ? 8 : 16);
+                void *z = calloc(1, size);
+                glCompressedTexImage2D(tg, (GLint)l, dxt_gl(t->fmt), (GLsizei)w, (GLsizei)h, 0, (GLsizei)size, z);
+                free(z);
+            } else {
+                glTexImage2D(tg, (GLint)l, ifmt, (GLsizei)w, (GLsizei)h, 0, fmt, type, NULL);
+            }
         }
         t->alloc |= 1u << l;
     }
@@ -461,18 +513,22 @@ static void do_tex_create(const TexCreate *k) {
     t->scale = k->scale ? k->scale : 1;
     t->fmt = k->fmt; t->w = k->w * t->scale; t->h = k->h * t->scale; t->levels = k->levels;
     t->depth = k->fmt == GFX_FMT_D24S8 || k->fmt == GFX_FMT_D16;
+    t->cube = k->cube != 0;
+    GLenum target = tex_target(t);
     glGenTextures(1, &t->tex);
-    glBindTexture(GL_TEXTURE_2D, t->tex);
+    glBindTexture(target, t->tex);
     /* Plain textures get storage on their first upload: a whole-level upload
      * then allocates once instead of twice (KOF XIII creates ~4000 sprite
-     * sheets at once when a fight loads). Render targets need it now. */
-    if (k->rt || t->depth) tex_alloc_levels(t, ~0u);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)k->levels - 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    apply_swizzle(k->fmt);
+     * sheets at once when a fight loads). Render targets need it now, and cube
+     * maps (whose faces arrive one by one) get it up front. */
+    if (k->rt || t->depth || t->cube) tex_alloc_levels(t, ~0u);
+    glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)k->levels - 1);
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    apply_swizzle(target, k->fmt);
     if (k->rt) {
         glGenFramebuffers(1, &t->fbo);
+        t->fbo_nbuf = 1;
         glBindFramebuffer(GL_FRAMEBUFFER, t->fbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER,
                                t->depth ? (k->fmt == GFX_FMT_D24S8 ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT)
@@ -485,34 +541,47 @@ static void do_tex_create(const TexCreate *k) {
 
 static void do_tex_upload(const TexUpload *k) {
     Tex *t = k->id < MAX_IDS ? texs[k->id] : NULL;
-    if (!t || k->level >= 32) return;
+    if (!t) return;
+    u32 level = t->cube ? (k->level & 15) : k->level, face = t->cube ? k->level >> 4 : 0;
+    if (level >= 16 || face >= 6) return;
     {
         static int ul = -1;
         if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
         if (ul) x2_log("upload tex %u fmt %u level %u %ux%u at %u,%u (%u bytes)", k->id, t->fmt, k->level, k->w, k->h, k->x, k->y, k->bytes);
     }
-    glBindTexture(GL_TEXTURE_2D, t->tex);
+    glBindTexture(tex_target(t), t->tex);
+    GLenum tg = t->cube ? GL_TEXTURE_CUBE_MAP_POSITIVE_X + face : GL_TEXTURE_2D;
     GLint ifmt; GLenum fmt, type; bool bgra, native;
-    tex_gl_format(t->fmt, &ifmt, &fmt, &type, &bgra, &native);
+    tex_gl_format(t, &ifmt, &fmt, &type, &bgra, &native);
     /* A whole-level update respecifies the level instead of patching it, so the
      * driver can hand out fresh storage rather than wait for the GPU to finish
      * with the old contents (Mali stalled ~300 ms on KOF XII's per-frame
      * video texture). It also gives a lazily created level its storage. */
-    u32 lw = level_dim(t->w, k->level), lh = level_dim(t->h, k->level);
+    u32 lw = level_dim(t->w, level), lh = level_dim(t->h, level);
     bool whole = k->x == 0 && k->y == 0 && k->w == lw && k->h == lh;
-    tex_alloc_levels(t, whole ? k->level : ~0u); /* the rest of the chain, so the texture is complete */
-    t->alloc |= 1u << k->level;
+    if (t->fmt == GFX_FMT_DXT1 && !native && !t->dxt_seen) {
+        static int on = -1;
+        if (on < 0) on = !getenv("X2_DXT565") || atoi(getenv("X2_DXT565")) != 0;
+        t->dxt_seen = true;
+        if (on && !t->alloc && !t->cube && !dxt1_has_alpha((const u8 *)(k + 1), k->bytes)) {
+            t->rgb565 = true;
+            tex_gl_format(t, &ifmt, &fmt, &type, &bgra, &native);
+        }
+    }
+    tex_alloc_levels(t, whole && !t->cube ? level : ~0u); /* the rest of the chain, so the texture is complete */
+    t->alloc |= 1u << level;
     const u8 *data = (const u8 *)(k + 1);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     if (native) {
-        if (whole) glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)k->level, dxt_gl(t->fmt), (GLsizei)lw, (GLsizei)lh, 0, (GLsizei)k->bytes, data);
-        else glCompressedTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h,
+        if (whole) glCompressedTexImage2D(tg, (GLint)level, dxt_gl(t->fmt), (GLsizei)lw, (GLsizei)lh, 0, (GLsizei)k->bytes, data);
+        else glCompressedTexSubImage2D(tg, (GLint)level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h,
                                        dxt_gl(t->fmt), (GLsizei)k->bytes, data);
         return;
     }
     u8 *tmp = NULL;
     if (is_dxt(t->fmt)) {
         data = tmp = dxt_decode(t->fmt, data, k->w, k->h);
+        if (t->rgb565) rgba_to_565(tmp, k->w * k->h);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     } else {
         u32 bw, bpp = fmt_block_bytes(t->fmt, &bw);
@@ -526,8 +595,8 @@ static void do_tex_upload(const TexUpload *k) {
             data = (const u8 *)(tmp = (u8 *)sw);
         }
     }
-    if (whole) glTexImage2D(GL_TEXTURE_2D, (GLint)k->level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, data);
-    else glTexSubImage2D(GL_TEXTURE_2D, (GLint)k->level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt, type, data);
+    if (whole) glTexImage2D(tg, (GLint)level, ifmt, (GLsizei)lw, (GLsizei)lh, 0, fmt, type, data);
+    else glTexSubImage2D(tg, (GLint)level, (GLint)k->x, (GLint)k->y, (GLsizei)k->w, (GLsizei)k->h, fmt, type, data);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     free(tmp);
 }
@@ -609,9 +678,13 @@ static void do_tex_destroy(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t) return;
     pend_free(t);
-    if (t->depth) /* GL may reuse the name: forget cached attachments of it */
-        for (u32 i = 0; i < MAX_IDS; i++)
-            if (texs[i] && texs[i]->fbo_depth == t->tex) texs[i]->fbo_depth = (GLuint)-1;
+    if (t->fbo) /* GL may reuse the name: forget cached attachments of it */
+        for (u32 i = 0; i < MAX_IDS; i++) {
+            if (!texs[i]) continue;
+            if (texs[i]->fbo_depth == t->tex) texs[i]->fbo_depth = (GLuint)-1;
+            for (int c = 0; c < 3; c++)
+                if (texs[i]->fbo_color[c] == t->tex) texs[i]->fbo_color[c] = (GLuint)-1;
+        }
     glDeleteTextures(1, &t->tex);
     if (t->fbo) glDeleteFramebuffers(1, &t->fbo);
     free(t);
@@ -676,6 +749,23 @@ static void bind_target(const GfxState *st) {
             }
             t->fbo_depth = want;
         }
+        /* multiple render targets: D3D9 RT1-3 (same size as RT0) as color 1-3 */
+        u32 nbuf = 1;
+        for (int i = 1; i < 4; i++) {
+            Tex *c = st->rt[i] < MAX_IDS ? texs[st->rt[i]] : NULL;
+            GLuint w = c && c->fbo && !c->depth && c->w == t->w && c->h == t->h ? c->tex : 0;
+            if (w) nbuf = (u32)i + 1;
+            if (w != t->fbo_color[i - 1]) {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D, w, 0);
+                t->fbo_color[i - 1] = w;
+            }
+        }
+        if (nbuf != t->fbo_nbuf) {
+            GLenum b[4];
+            for (u32 i = 0; i < nbuf; i++) b[i] = i == 0 || t->fbo_color[i - 1] ? GL_COLOR_ATTACHMENT0 + i : GL_NONE;
+            glDrawBuffers((GLsizei)nbuf, b);
+            t->fbo_nbuf = nbuf;
+        }
     }
 }
 
@@ -713,12 +803,17 @@ void gfx_gl_shader_create(GfxId id, bool pixel, const u32 *tokens, u32 n);
 void gfx_gl_shader_destroy(GfxId id);
 void gfx_gl_decl_create(GfxId id, const u8 *el, u32 count);
 void gfx_gl_consts(bool pixel, u32 start, const float *v, u32 count);
+void gfx_gl_consts_ib(bool pixel, bool boolean, u32 start, const int32_t *v, u32 count);
 void gfx_gl_bind_target(const GfxState *st) { bind_target(st); }
 GLuint gfx_gl_texture(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t) return 0;
     if (t->pend) pend_flush(t); /* first use of a texture whose upload was deferred */
     return t->tex;
+}
+GLenum gfx_gl_texture_target(GfxId id) {
+    Tex *t = id < MAX_IDS ? texs[id] : NULL;
+    return t ? tex_target(t) : GL_TEXTURE_2D;
 }
 bool gfx_gl_texture_size(GfxId id, u32 *w, u32 *h) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
@@ -750,8 +845,125 @@ void gfx_request_capture(void) { capture_request = true; }
 /* Execute one frame; returns the texture the frame presented. */
 static u64 glprof_ns[C_PRESENT + 1], glprof_n[C_PRESENT + 1], glprof_bytes;
 static int glprof = -1; /* X2_GLPROF=1: time spent per replayed command type */
+/* X2_GPUTIME=1: GPU time per replayed frame (GL_TIME_ELAPSED queries, read a few
+ * frames later so they never stall), logged as average / max every 120 frames */
+#define GPUQ 8
+/* X2_GPUTIME=2: time each render pass (run of draws to one target) instead, summed
+ * per target and logged with its size/format every 120 frames */
+#define PASSQ 512
+static GLuint passq[PASSQ];
+static GfxId passq_rt[PASSQ];
+static u32 passq_head, passq_tail;
+static GfxId pass_rt = (GfxId)-1;
+static bool pass_open;
+static struct { GfxId rt; u64 ns; u32 passes; } pass_sum[64];
+static u32 pass_frames;
+static int gputime = -1;
+static GLuint gpuq[GPUQ];
+static u32 gpuq_head, gpuq_tail; /* issued, read */
+static u64 gpu_sum, gpu_max, gpu_n;
+/* X2_AB=<frames>: the experiment named by X2_AB_TEST (pipeline, mediump) switches
+ * on and off every <frames>
+ * frames (gfx_gl_ab); X2_GPUTIME=1 then reports both halves, measured on the same scenes */
+int gfx_gl_ab;
+static u32 ab_period, ab_frame;
+static u8 gpuq_ab[GPUQ];
+static u64 ab_sum[2], ab_n[2];
+static void pass_close(void) {
+    if (!pass_open) return;
+    glEndQuery(0x88BF);
+    passq_head++;
+    pass_open = false;
+}
+/* before a draw or clear into rt: start a new timed pass when the target changes */
+static void gpu_pass(GfxId rt) {
+    if (gputime != 2 || rt == pass_rt) return;
+    pass_close();
+    pass_rt = rt;
+    if (passq_head - passq_tail >= PASSQ) return;
+    passq_rt[passq_head % PASSQ] = rt;
+    glBeginQuery(0x88BF, passq[passq_head % PASSQ]);
+    pass_open = true;
+}
+static void pass_frame_end(void) {
+    pass_close();
+    pass_rt = (GfxId)-1;
+    while (passq_tail != passq_head) {
+        GLuint q = passq[passq_tail % PASSQ], avail = 0, ns = 0;
+        glGetQueryObjectuiv(q, GL_QUERY_RESULT_AVAILABLE, &avail);
+        if (!avail) break;
+        glGetQueryObjectuiv(q, GL_QUERY_RESULT, &ns);
+        GfxId rt = passq_rt[passq_tail % PASSQ];
+        passq_tail++;
+        int i = 0;
+        while (i < 64 && pass_sum[i].passes && pass_sum[i].rt != rt) i++;
+        if (i < 64) { pass_sum[i].rt = rt; pass_sum[i].ns += ns; pass_sum[i].passes++; }
+    }
+    if (++pass_frames < 120) return;
+    extern void gfx_gl_texture_info(GfxId id, u32 *fmt, u32 *w, u32 *h, u32 *levels);
+    char line[1024];
+    int len = snprintf(line, sizeof line, "gpu passes (ms/frame):");
+    for (int k = 0; k < 10; k++) { /* biggest first */
+        int best = -1;
+        for (int i = 0; i < 64; i++)
+            if (pass_sum[i].passes && (best < 0 || pass_sum[i].ns > pass_sum[best].ns)) best = i;
+        if (best < 0) break;
+        u32 f = 0, w = 0, h = 0, lv = 0;
+        gfx_gl_texture_info(pass_sum[best].rt, &f, &w, &h, &lv);
+        len += snprintf(line + len, sizeof line - (size_t)len, " rt%u %ux%u f%u %.2f (%u);", pass_sum[best].rt, w, h, f,
+                        pass_sum[best].ns / 1e6 / 120, pass_sum[best].passes / 120);
+        pass_sum[best].passes = 0;
+    }
+    x2_log("%s", line);
+    memset(pass_sum, 0, sizeof pass_sum);
+    pass_frames = 0;
+}
+
+static void gputime_begin(void) {
+    if (gputime < 0) {
+        gputime = getenv("X2_GPUTIME") ? atoi(getenv("X2_GPUTIME")) : 0;
+        if (gputime == 2) glGenQueries(PASSQ, passq);
+        if (gputime) glGenQueries(GPUQ, gpuq);
+        ab_period = getenv("X2_AB") ? (u32)atoi(getenv("X2_AB")) : 0;
+    }
+    if (ab_period) gfx_gl_ab = (int)(ab_frame++ / ab_period & 1);
+    if (gputime != 1 || gpuq_head - gpuq_tail >= GPUQ) return;
+    gpuq_ab[gpuq_head % GPUQ] = (u8)gfx_gl_ab;
+    glBeginQuery(0x88BF /* GL_TIME_ELAPSED */, gpuq[gpuq_head % GPUQ]);
+}
+static void gputime_end(void) {
+    if (gputime == 2) { pass_frame_end(); return; }
+    if (!gputime) return;
+    if (gpuq_head - gpuq_tail < GPUQ) {
+        glEndQuery(0x88BF);
+        gpuq_head++;
+    }
+    while (gpuq_tail != gpuq_head) {
+        GLuint q = gpuq[gpuq_tail % GPUQ], avail = 0, ns = 0;
+        glGetQueryObjectuiv(q, GL_QUERY_RESULT_AVAILABLE, &avail);
+        if (!avail) break;
+        glGetQueryObjectuiv(q, GL_QUERY_RESULT, &ns);
+        u8 ab = gpuq_ab[gpuq_tail % GPUQ];
+        gpuq_tail++;
+        gpu_sum += ns;
+        ab_sum[ab] += ns;
+        ab_n[ab]++;
+        if (ns > gpu_max) gpu_max = ns;
+        if (++gpu_n == 120) {
+            x2_log("gpu: frame time avg %.2f max %.2f ms", gpu_sum / 1e6 / 120, gpu_max / 1e6);
+            if (ab_period && ab_n[0] && ab_n[1]) {
+                x2_log("gpu: A/B avg %.2f / %.2f ms (%+.1f%%)", ab_sum[0] / 1e6 / ab_n[0], ab_sum[1] / 1e6 / ab_n[1],
+                       100.0 * ((double)ab_sum[1] / ab_n[1] / ((double)ab_sum[0] / ab_n[0]) - 1));
+                ab_sum[0] = ab_sum[1] = ab_n[0] = ab_n[1] = 0;
+            }
+            gpu_sum = gpu_max = gpu_n = 0;
+        }
+    }
+}
+
 static void run_frame(Frame *f) {
     frame_up_ns = 0;
+    gputime_begin();
     for (size_t off = 0; off < f->len;) {
         u32 type = ((u32 *)(f->data + off))[0], size = ((u32 *)(f->data + off))[1];
         const void *p = f->data + off + 8;
@@ -782,19 +994,23 @@ static void run_frame(Frame *f) {
             }
             case C_CONSTS: {
                 const Consts *k = p;
-                gfx_gl_consts(k->pixel, k->start, (const float *)(k + 1), k->count);
+                if (k->pixel & 6) gfx_gl_consts_ib(k->pixel & 1, (k->pixel & 4) != 0, k->start, (const int32_t *)(k + 1), k->count);
+                else gfx_gl_consts(k->pixel, k->start, (const float *)(k + 1), k->count);
                 break;
             }
             case C_CLEAR:
+                gpu_pass(((const Clear *)p)->st.rt[0]);
                 if (gfx_gl_drawlog) {
                     const Clear *k = p;
-                    x2_log("clear flags %x color %08x rt0 %u", k->flags, k->color, k->st.rt[0]);
+                    x2_log("clear flags %x color %08x rt0 %u ds %u vp %.0f,%.0f %.0fx%.0f", k->flags, k->color, k->st.rt[0], k->st.ds, k->st.vp.x,
+                           k->st.vp.y, k->st.vp.w, k->st.vp.h);
                 }
                 do_clear(p);
                 st_clears++;
                 break;
             case C_DRAW: {
                 const Draw *k = p;
+                gpu_pass(k->st.rt[0]);
                 last_rt0 = k->st.rt[0];
                 st_draws++;
                 gfx_gl_draw(&k->st, k->prim, k->start, k->count, k->indexed, k->base, NULL, 0, NULL, 0);
@@ -803,6 +1019,7 @@ static void run_frame(Frame *f) {
             case C_DRAW_UP: {
                 const DrawUp *k = p;
                 const u8 *v = (const u8 *)(k + 1);
+                gpu_pass(k->st.rt[0]);
                 gfx_gl_draw(&k->st, k->prim, 0, k->count, k->ibytes != 0, 0, v, k->stride, k->ibytes ? v + k->vbytes : NULL,
                             k->isz);
                 break;
@@ -811,6 +1028,7 @@ static void run_frame(Frame *f) {
                 gfx_gl_drawlog = (drawlog_frame && st_frames + 2 >= drawlog_frame && st_frames + 2 <= drawlog_last) || capture_request;
                 if (capture_request) { capture_request = false; x2_log("---- F9 capture ----"); }
                 if (gfx_gl_drawlog) x2_log("---- frame %u ----", (u32)st_frames + 2);
+                __atomic_fetch_add(&frames_replayed, 1, __ATOMIC_RELEASE);
                 if (++st_frames % 120 == 0) {
                     x2_log("gfx: frame %u: %u draws, %u clears, %u texture uploads (%u deferred, %u pending) in the last 120 frames",
                            st_frames, st_draws, st_clears, st_uploads, st_deferred, pq_len);
@@ -842,6 +1060,7 @@ static void run_frame(Frame *f) {
         off += size;
     }
     pend_trickle();
+    gputime_end();
 }
 
 /* ---- render-thread entry points --------------------------------------------- */
@@ -880,16 +1099,30 @@ void gfx_gl_texture_info(GfxId id, u32 *fmt, u32 *w, u32 *h, u32 *levels) {
     *fmt = t->fmt; *w = t->w; *h = t->h; *levels = t->levels;
 }
 
-/* Save a texture's level 0 as <X2_DUMPDIR or .>/tex<id>.png (debugging) */
+/* Save a texture's level 0 as <X2_DUMPDIR, else $TMPDIR or /tmp: never the game folder>/tex<id>.png (debugging) */
 void gfx_gl_dump_texture(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     if (!t || t->depth) return;
+    if (t->cube || !(t->alloc & 1)) return;
+    if (t->pend) pend_flush(t);
     u8 *px = malloc((size_t)t->w * t->h * 4);
 #ifndef X2_GLES
-    /* works for compressed textures too (they cannot be FBO attachments) */
     glBindTexture(GL_TEXTURE_2D, t->tex);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    GLint native = 0;
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_COMPRESSED, &native);
+    if (native && is_dxt(t->fmt)) {
+        /* raw blocks, decoded here: macOS's own S3TC decompression for
+         * glGetTexImage writes past the destination buffer */
+        size_t n = (size_t)((t->w + 3) / 4) * ((t->h + 3) / 4) * (t->fmt == GFX_FMT_DXT1 ? 8 : 16);
+        u8 *blocks = malloc(n);
+        glGetCompressedTexImage(GL_TEXTURE_2D, 0, blocks);
+        free(px);
+        px = dxt_decode(t->fmt, blocks, t->w, t->h);
+        free(blocks);
+    } else {
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    }
 #else
     GLuint fbo;
     glGenFramebuffers(1, &fbo);
@@ -901,7 +1134,7 @@ void gfx_gl_dump_texture(GfxId id) {
 #endif
     extern bool x2_write_png(const char *path, const u8 *rgba, u32 w, u32 h);
     char path[256];
-    snprintf(path, sizeof path, "%s/tex%u-f%llu.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : ".", id,
+    snprintf(path, sizeof path, "%s/tex%u-f%llu.png", getenv("X2_DUMPDIR") ? getenv("X2_DUMPDIR") : getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp", id,
              (unsigned long long)frames_presented);
     x2_log("dumped texture %u (%ux%u fmt %u) to %s", id, t->w, t->h, t->fmt, path);
     x2_write_png(path, px, t->w, t->h);

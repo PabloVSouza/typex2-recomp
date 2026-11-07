@@ -1,11 +1,13 @@
 # typex2-recomp
 
-Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII) to native
+Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII, Capcom's Super Street Fighter IV Arcade Edition) to native
 code, so they run on macOS and Android: as standalone apps (launched by ES-DE)
 or as a RetroArch/libretro core.
 
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
-Android (arm64, GLES 3.2), standalone or in RetroArch. Rendering is D3D9 →
+Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
+Arcade Edition (`games/ssf4ae`) runs from boot through attract mode, coin,
+character select and fights, on macOS and in RetroArch on Android. Rendering is D3D9 →
 OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode and runtime HLSL both translated
 to GLSL).
 
@@ -145,6 +147,16 @@ Running:
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
 | `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames |
+| `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries) |
+| `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |
+| `X2_PROF=<secs>` `X2_PROF_OUT=file` | sampling profiler of the runtime's threads (1 ms); offsets resolve against the unstripped `typex2_libretro_android.so.sym` |
+| `X2_CSPROF=1` | critical sections threads wait on longest, with what the owner was doing |
+| `X2_PIPELINE=0` | libretro: strict lockstep instead of one frame in flight (one frame less latency, drops when guest + replay + GPU exceed a frame) |
+| `X2_PS_MEDIUMP=0` | GLES: full-precision pixel shaders (default fp16) |
+| `X2_DXT565=0` | without S3TC, decode opaque DXT1 to RGBA8 instead of RGB565 |
+| `X2_PRIO=0` | ignore the game's SetThreadPriority (default: HIGHEST / TIME_CRITICAL threads get the fast cores) |
+| `X2_WORKERS=little` | keep other guest threads on the little cores |
+| CMake `-DX2_ASAN=ON` | AddressSanitizer on the runtime |
 | `X2_BT=<secs>` `X2_PEEK=addr,...` | periodic guest backtraces / memory peeks |
 | `X2_TRACE_READS=1` | log file reads (pipe offsets into `arc locate`) |
 | `X2_CALL="addr:args"` (+ `X2_POKE`, `X2_CALL_DELAY`) | call a guest function |
@@ -160,6 +172,12 @@ Running:
 
 ## Known gaps
 
+* SSF4 AE: link play is off (Winsock reports the network down; the build is the
+  "stand-alone" one). Its six buttons are cabinet SHOT1-3 (LP MP HP) and SHOT4-6
+  (LK MK HK); on an 8-button stick whose rows are L1 Y X R1 / L2 B A R2 use
+  `X2_PAD=l1=a,west=c,north=3,r1=-,l2=b,south=d,east=6,r2=-`
+  in its `x2.env` (letters a-d are KOF's A-D, see `runtime/src/padmap.h`). The
+  opening movie's separate English audio track is missing from the dump.
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
 * Guest threads run truly parallel. On ARM, shared (non-stack) guest stores
   are release (and loads acquire, with `X2_TSO=1`) so x86 TSO-dependent code

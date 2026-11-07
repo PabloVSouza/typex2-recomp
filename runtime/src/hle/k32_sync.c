@@ -5,6 +5,7 @@
  * broadcasts, and waiters re-check their objects. Simple and correct for
  * WaitForMultipleObjects; the game uses only a handful of threads. */
 #include <errno.h>
+#include <sched.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -84,9 +85,52 @@ static void DeleteCriticalSection(X2Cpu *c) {
     }
     pthread_mutex_unlock(&cs_alloc_lock);
 }
+/* X2_CSPROF=1: log the critical sections threads wait on longest (every 5 s) */
+static int csprof = -1;
+static struct { u32 cs, caller, owner, waiter, n, owner_start; u64 ns, max; const char *act[4]; u32 actn[4]; } csp[64];
+static pthread_mutex_t csp_lock = PTHREAD_MUTEX_INITIALIZER;
+static void csprof_wait(X2Cpu *c, u32 cs, pthread_mutex_t *m) {
+    u32 owner = RD32(cs + 0x0C), caller = RD32(c->esp), ostart = 0;
+    extern const char *x2_thread_activity(u32 id, u32 *start);
+    const char *act = x2_thread_activity(owner, &ostart); /* what the holder is doing now */
+    u64 t0 = x2_time_ns();
+    pthread_mutex_lock(m);
+    u64 dt = x2_time_ns() - t0;
+    static u64 last;
+    pthread_mutex_lock(&csp_lock);
+    int i = 0;
+    while (i < 64 && csp[i].n && !(csp[i].cs == cs && csp[i].caller == caller)) i++;
+    if (i < 64) {
+        csp[i].cs = cs; csp[i].caller = caller; csp[i].owner = owner; csp[i].waiter = x2_self->id;
+        csp[i].n++; csp[i].ns += dt; csp[i].owner_start = ostart;
+        for (int a = 0; a < 4; a++)
+            if (!csp[i].act[a] || csp[i].act[a] == act) { csp[i].act[a] = act; csp[i].actn[a]++; break; }
+        if (dt > csp[i].max) csp[i].max = dt;
+    }
+    u64 now = x2_time_ns();
+    if (now - last > 5000000000ull) {
+        last = now;
+        for (int k = 0; k < 6; k++) {
+            int b = -1;
+            for (int j = 0; j < 64; j++)
+                if (csp[j].n && (b < 0 || csp[j].ns > csp[b].ns)) b = j;
+            if (b < 0) break;
+            x2_log("csprof: cs %08x from %08x thread %u waited %u times %.2f ms (max %.2f), owner %u (start %08x) in %s:%u %s:%u %s:%u",
+                   csp[b].cs, csp[b].caller, csp[b].waiter, csp[b].n, csp[b].ns / 1e6, csp[b].max / 1e6, csp[b].owner,
+                   csp[b].owner_start, csp[b].act[0] ? csp[b].act[0] : "-", csp[b].actn[0], csp[b].act[1] ? csp[b].act[1] : "-",
+                   csp[b].actn[1], csp[b].act[2] ? csp[b].act[2] : "-", csp[b].actn[2]);
+            csp[b].n = 0;
+        }
+        memset(csp, 0, sizeof csp);
+    }
+    pthread_mutex_unlock(&csp_lock);
+}
 static void EnterCriticalSection(X2Cpu *c) {
     u32 cs = ARG(0);
-    pthread_mutex_lock(cs_get(cs));
+    pthread_mutex_t *m = cs_get(cs);
+    if (csprof < 0) csprof = getenv("X2_CSPROF") != NULL;
+    if (!csprof) pthread_mutex_lock(m);
+    else if (pthread_mutex_trylock(m)) csprof_wait(c, cs, m); /* contended */
     WR32(cs + 0x0C, x2_self->id);  /* OwningThread, some code peeks at it */
     WR32(cs + 0x08, RD32(cs + 0x08) + 1);
 }
@@ -141,6 +185,20 @@ bool x2_event_set(u32 handle) {
     return true;
 }
 static void ResetEvent(X2Cpu *c) { set_event(c, false); }
+/* wake whoever waits now, then reset (waiters that are not yet blocked may miss it, as on Windows) */
+static void PulseEvent(X2Cpu *c) {
+    X2Handle *h = x2_handle_get(ARG(0), H_EVENT);
+    if (!h) { RET(0); return; }
+    pthread_mutex_lock(&sync_lock);
+    ((Event *)h->obj)->signaled = true;
+    pthread_cond_broadcast(&sync_cond);
+    pthread_mutex_unlock(&sync_lock);
+    sched_yield();
+    pthread_mutex_lock(&sync_lock);
+    ((Event *)h->obj)->signaled = false;
+    pthread_mutex_unlock(&sync_lock);
+    RET(1);
+}
 
 static void CreateMutexA(X2Cpu *c) {
     Mutex *m = calloc(1, sizeof *m);
@@ -150,6 +208,7 @@ static void CreateMutexA(X2Cpu *c) {
     }
     RET(x2_handle_new(H_MUTEX, m, free_obj));
 }
+static void CreateMutexW(X2Cpu *c) { CreateMutexA(c); } /* names are not shared: one process */
 static void ReleaseMutex(X2Cpu *c) {
     X2Handle *h = x2_handle_get(ARG(0), H_MUTEX);
     if (!h) { RET(0); return; }
@@ -297,6 +356,16 @@ bool x2_run_apcs(X2Cpu *c) {
     return ran;
 }
 
+/* for user32 MsgWaitForMultipleObjects */
+u32 x2_wait_many(u32 n, const u32 *hs, bool all, u32 ms) { return wait_many(n, hs, all, ms); }
+static void WaitForMultipleObjects(X2Cpu *c) {
+    u32 n = ARG(0);
+    if (n > 64) { RET(WAIT_FAILED); return; }
+    u32 hs[64];
+    for (u32 i = 0; i < n; i++) hs[i] = RD32(ARG(1) + 4 * i);
+    RET(wait_many(n, hs, ARG(2) != 0, ARG(3)));
+}
+static void SetThreadIdealProcessor(X2Cpu *c) { RET(0); }
 static void WaitForMultipleObjectsEx(X2Cpu *c) {
     u32 n = ARG(0);
     if (ARG(4) && x2_run_apcs(c)) { RET(WAIT_IO_COMPLETION); return; }
@@ -359,8 +428,17 @@ static void SuspendThread(X2Cpu *c) {
 }
 static void GetCurrentThread(X2Cpu *c) { RET(0xFFFFFFFEu); }
 static void GetCurrentThreadId(X2Cpu *c) { RET(x2_self->id); }
-static void SetThreadPriority(X2Cpu *c) { RET(1); }
-static void GetThreadPriority(X2Cpu *c) { RET(0); }
+static void SetThreadPriority(X2Cpu *c) {
+    X2Thread *t = thread_of(ARG(0));
+    if (!t) { RET(0); return; }
+    if ((int)ARG(1) != t->priority) x2_log("SetThreadPriority(thread %u, %d)", t->id, (int)ARG(1));
+    x2_thread_set_priority(t, (int)ARG(1));
+    RET(1);
+}
+static void GetThreadPriority(X2Cpu *c) {
+    X2Thread *t = thread_of(ARG(0));
+    RET(t ? (u32)t->priority : 0);
+}
 static void SetThreadAffinityMask(X2Cpu *c) { RET(1); }
 static void GetExitCodeThread(X2Cpu *c) {
     X2Thread *t = thread_of(ARG(0));
@@ -424,6 +502,10 @@ const X2Hle x2_hle_k32_sync[] = {
     {"SetEvent", SetEvent, 1},
     {"ResetEvent", ResetEvent, 1},
     {"CreateMutexA", CreateMutexA, 3},
+    {"CreateMutexW", CreateMutexW, 3},
+    {"PulseEvent", PulseEvent, 1},
+    {"WaitForMultipleObjects", WaitForMultipleObjects, 4},
+    {"SetThreadIdealProcessor", SetThreadIdealProcessor, 2},
     {"ReleaseMutex", ReleaseMutex, 1},
     {"CreateSemaphoreA", CreateSemaphoreA, 4},
     {"ReleaseSemaphore", ReleaseSemaphore, 3},

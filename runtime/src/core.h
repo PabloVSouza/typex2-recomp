@@ -34,6 +34,12 @@ u32 x2_process_heap(void);
 /* convenience: allocate guest memory from the process heap */
 u32 x2_galloc(u32 size);
 u32 x2_gstrdup(const char *s);
+/* UTF-16 guest string -> UTF-8 (NULL -> "") */
+void x2_wstr_utf8(const u16 *w, char *out, size_t n);
+/* UTF-8 -> UTF-16 into guest memory at g, at most cap units with the terminator;
+ * returns the length in units without it */
+u32 x2_put_wstr(u32 g, const char *s, u32 cap);
+u32 x2_wait_many(u32 n, const u32 *hs, bool all, u32 ms); /* WaitForMultipleObjects */
 
 /* ---- host functions callable from guest code (imports, COM vtables) ---- */
 /* stdcall: the dispatcher pops the return address plus 4*nargs bytes after the
@@ -89,7 +95,11 @@ typedef struct X2Thread {
     /* queued user APCs (ReadFileEx completions): routine, err, bytes, overlapped */
     u32 apc[64][4];
     u32 apc_head, apc_tail;
+    long host_tid; /* kernel thread id (Linux), 0 until the thread runs */
+    int priority;  /* SetThreadPriority value */
 } X2Thread;
+/* SetThreadPriority: HIGHEST and TIME_CRITICAL threads also get the fast cores */
+void x2_thread_set_priority(X2Thread *t, int priority);
 
 /* queue a completion routine for an alertable wait on thread t */
 void x2_queue_apc(X2Thread *t, u32 routine, u32 err, u32 bytes, u32 ov);
@@ -105,6 +115,7 @@ void x2_thread_resume(X2Thread *t);
 X2Thread *x2_start_main(void);  /* guest main thread; host main stays with the platform */
 void x2_sync_broadcast(void);   /* wake waiters after a waitable object changed */
 bool x2_event_set(u32 handle);  /* host-side SetEvent */
+bool x2_event_reset(u32 handle); /* host-side ResetEvent */
 extern pthread_mutex_t x2_gil;
 extern bool x2_gil_on;
 #define X2_GIL_ENTER() do { if (x2_gil_on) pthread_mutex_lock(&x2_gil); } while (0)
@@ -136,7 +147,8 @@ typedef struct {
     const X2Hle *funcs;
 } X2HleModule;
 extern const X2Hle x2_hle_kernel32[], x2_hle_k32_sync[], x2_hle_k32_file[], x2_hle_user32[], x2_hle_gdi32[], x2_hle_advapi32[], x2_hle_ole32[],
-    x2_hle_winmm[], x2_hle_shlwapi[], x2_hle_d3d9[], x2_hle_d3dx9[], x2_hle_shell32[], x2_hle_imm32[];
+    x2_hle_winmm[], x2_hle_shlwapi[], x2_hle_d3d9[], x2_hle_d3dx9[], x2_hle_shell32[], x2_hle_imm32[], x2_hle_dsound[],
+    x2_hle_oleaut32[], x2_hle_ws2_32[], x2_hle_iphlpapi[], x2_hle_dinput8[];
 const X2Hle *x2_hle_find(const char *dll, const char *name);
 
 /* ---- diagnostics ------------------------------------------------------ */

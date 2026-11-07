@@ -68,5 +68,7 @@ private:
 
 // lift routines x2recomp would otherwise replace with natives (--no-natives)
 extern bool lift_natives;
+// apply the built-in byte patches (lift.cpp kPatches) to the image; returns how many
+int apply_byte_patches(Image& img);
 
 }  // namespace x2

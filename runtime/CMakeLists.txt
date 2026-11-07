@@ -60,14 +60,23 @@ add_library(x2rt_common OBJECT
   src/txac.c
   src/hle/dshow.c
   src/hle/gdi32.c
+  src/hle/net.c
   src/hle/pending.c
   src/gfx/gfx_gl.c
   src/gfx/gfx_gl_draw.c
   src/gfx/sm3_glsl.c
+  src/gfx/d3dasm.c
+  src/prof.c
   src/gfx/hlsl_glsl.c)
 set_target_properties(x2rt_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(x2rt_common PUBLIC include)
 target_compile_options(x2rt_common PRIVATE -Wall -Wextra -Wno-unused-parameter)
+# X2_ASAN=ON: AddressSanitizer on the runtime only (the generated code stays uninstrumented)
+option(X2_ASAN "AddressSanitizer for the runtime" OFF)
+if(X2_ASAN)
+  target_compile_options(x2rt_common PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+  target_link_options(x2rt_common PUBLIC -fsanitize=address)
+endif()
 
 find_package(Threads REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -169,6 +178,8 @@ function(x2_add_game target gen_dir)
     set(label "The King of Fighters XIII")
   elseif(game STREQUAL "kof13cl")
     set(label "The King of Fighters XIII Climax")
+  elseif(game STREQUAL "ssf4ae")
+    set(label "Super Street Fighter IV Arcade Edition")
   endif()
   set_property(GLOBAL APPEND PROPERTY X2_GAMES_BUILT ${game})
   set_property(GLOBAL PROPERTY X2_GAME_LABEL_${game} "${label}")
@@ -253,7 +264,8 @@ function(x2_add_libretro_core)
     file(WRITE ${vs} "{ global: retro_*; local: *; };\n")
     target_link_options(typex2_libretro PRIVATE "LINKER:--version-script=${vs}" "LINKER:-Bsymbolic" "LINKER:--gc-sections")
     if(ANDROID AND CMAKE_STRIP) # debug info is ~90% of the file; RetroArch installs copy it
-      add_custom_command(TARGET typex2_libretro POST_BUILD COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:typex2_libretro> VERBATIM)
+      add_custom_command(TARGET typex2_libretro POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:typex2_libretro> $<TARGET_FILE:typex2_libretro>.sym
+                         COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:typex2_libretro> VERBATIM)
     endif()
   endif()
 endfunction()

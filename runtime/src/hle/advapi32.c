@@ -158,6 +158,14 @@ static void CryptAcquireContextA(X2Cpu *c) {
     WR32(ARG(0), x2_handle_new(H_CRYPT, NULL, NULL));
     RET(1);
 }
+static void CryptAcquireContextW(X2Cpu *c) {
+    char prov[256] = "(default)";
+    if (ARG(2)) x2_wstr_utf8(GWSTR(ARG(2)), prov, sizeof prov);
+    base_provider = !ARG(2) || strstr(prov, "Base") != NULL;
+    x2_log("CryptAcquireContextW(provider \"%s\", type %u, flags %x)", prov, ARG(3), ARG(4));
+    WR32(ARG(0), x2_handle_new(H_CRYPT, NULL, NULL));
+    RET(1);
+}
 static void CryptReleaseContext(X2Cpu *c) { RET(x2_handle_close(ARG(0))); }
 
 static void free_obj(X2Handle *h) { free(h->obj); }
@@ -389,6 +397,7 @@ u32 x2_ttx_pipe_read(u32 h, u8 *dst, u32 n) {
 
 const X2Hle x2_hle_advapi32[] = {
     {"CryptAcquireContextA", CryptAcquireContextA, 5},
+    {"CryptAcquireContextW", CryptAcquireContextW, 5},
     {"CryptReleaseContext", CryptReleaseContext, 2},
     {"CryptCreateHash", CryptCreateHash, 5},
     {"CryptHashData", CryptHashData, 4},

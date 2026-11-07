@@ -129,8 +129,10 @@ static void reg_name(Ctx *c, int type, int num, uint32_t rel, char *out, size_t 
                 float *d = c->defs[base];
                 snprintf(out, n, "vec4(%.9g,%.9g,%.9g,%.9g)", d[0], d[1], d[2], d[3]);
             } else if (rel) {
+                c->info->const_count = c->pixel ? 224 : 256; /* any register */
                 snprintf(out, n, "%s_c[int(%s%d)]", P(c), relexpr, base);
             } else {
+                if (base + 1 > c->info->const_count) c->info->const_count = base + 1;
                 snprintf(out, n, "%s_c[%d]", P(c), base);
             }
             return;
@@ -537,7 +539,14 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
     while (c->pos < n && tok[c->pos] != 0x0000FFFFu && !c->failed) translate_ins(c);
 
     Str s = {0};
-    sf(&s, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
+    /* pixel shaders compile with or without X2_MEDIUMP (gfx_gl_draw.c): fp16
+     * maths, twice the ALU rate on Mali; inputs other than colours stay highp */
+    const char *hp = c->pixel ? "X2_HP " : "";
+    if (!gles) sf(&s, c->pixel ? "#version 330 core\n#define X2_HP\n" : "#version 330 core\n");
+    else if (c->pixel)
+        sf(&s, "#version 300 es\n#ifdef X2_MEDIUMP\nprecision mediump float;\n#define X2_HP highp\n#else\n"
+               "precision highp float;\n#define X2_HP\n#endif\nprecision highp int;\n");
+    else sf(&s, "#version 300 es\nprecision highp float;\nprecision highp int;\n");
     sf(&s, "%s", prelude_common);
     const char *p = P(c);
     sf(&s, "uniform vec4 %s_c[%d];\nuniform ivec4 %s_i[16];\nuniform int %s_b[16];\n", p, c->pixel ? 224 : 256, p, p);
@@ -554,16 +563,16 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
                 info->ps_in_usage[i] = c->in_usage[i];
                 info->ps_in_index[i] = c->in_index[i];
                 if (c->in_usage[i] == 5 || c->in_usage[i] == 10)
-                    sf(&s, "in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", c->in_usage[i], c->in_index[i], i, c->in_usage[i],
+                    sf(&s, "in %svec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", c->in_usage[i] == 5 ? hp : "", c->in_usage[i], c->in_index[i], i, c->in_usage[i],
                        c->in_index[i]);
                 else
-                    sf(&s, "in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", c->in_usage[i], c->in_index[i], i, c->in_usage[i],
+                    sf(&s, "in %svec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n", hp, c->in_usage[i], c->in_index[i], i, c->in_usage[i],
                        c->in_index[i]);
                 info->ps_in_mask |= 1u << i;
             }
         } else {
             for (int i = 0; i < 8; i++)
-                if (c->tex_used[i] || info->ps_in_mask & (1u << i)) sf(&s, "in vec4 x_5_%d;\n", i);
+                if (c->tex_used[i] || info->ps_in_mask & (1u << i)) sf(&s, "in %svec4 x_5_%d;\n", hp, i);
             for (int i = 0; i < 2; i++)
                 if (info->ps_in_mask & (1u << (16 + i))) sf(&s, "in vec4 x_10_%d;\n", i);
         }
@@ -642,13 +651,13 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
                "  gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;\n");
     } else {
         /* alpha test (D3DRS_ALPHATESTENABLE emulation): func 0 = disabled */
-        sf(&s, "  if (u_alpha_func != 0) {\n"
+        sf(&s, "#ifdef X2_ATEST\n  if (u_alpha_func != 0) {\n"
                "    float a_ = floor(oC0.a * 255.0 + 0.5), r_ = u_alpha_ref;\n"
                "    bool pass_ = u_alpha_func == 1 ? false : u_alpha_func == 2 ? a_ < r_ : u_alpha_func == 3 ? a_ == r_ :\n"
                "                 u_alpha_func == 4 ? a_ <= r_ : u_alpha_func == 5 ? a_ > r_ : u_alpha_func == 6 ? a_ != r_ :\n"
                "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
                "    if (!pass_) discard;\n"
-               "  }\n");
+               "  }\n#endif\n");
         if (c->depth_out) sf(&s, "  gl_FragDepth = o_depth;\n");
     }
     sf(&s, "}\n");

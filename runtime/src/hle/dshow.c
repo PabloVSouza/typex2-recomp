@@ -72,6 +72,7 @@ static void G_QueryInterface(X2Cpu *c) {
         case 0x56a868b1u: ret_iface(c, g->control, out); return;   /* IMediaControl */
         case 0x56a868b6u: case 0x56a868c0u: ret_iface(c, g->event, out); return; /* IMediaEvent(Ex) */
         case 0x56a868b2u: ret_iface(c, g->position, out); return;  /* IMediaPosition */
+        case 0x36b73880u: ret_iface(c, g->seeking, out); return;   /* IMediaSeeking */
         case 0x56a868b3u: ret_iface(c, g->audio, out); return;     /* IBasicAudio */
         case 0x56a868b5u: case 0x329bb360u: ret_iface(c, g->basic_video, out); return; /* IBasicVideo(2) */
         case 0xe46a9787u: ret_iface(c, g->step, out); return;      /* IVideoFrameStep */
@@ -226,6 +227,44 @@ static void MP_get_CurrentPosition(X2Cpu *c) {
 static void MP_get_Double(X2Cpu *c) { WRF64(ARG(1), 0.0); RET(S_OK); }
 static void MP_get_Rate(X2Cpu *c) { WRF64(ARG(1), 1.0); RET(S_OK); }
 static void MP_Can(X2Cpu *c) { WR32(ARG(1), 0xFFFFFFFFu); RET(S_OK); }
+
+/* ---- IMediaSeeking (REFERENCE_TIME: 100 ns units, as two dwords when by value) ---- */
+static const u8 time_format_media_time[16] = {0x74, 0x55, 0x78, 0x7b, 0x82, 0x8c, 0xcf, 0x11,
+                                              0xbc, 0x0c, 0x00, 0xaa, 0x00, 0xac, 0x74, 0xf6};
+static double seek_now(Graph *g) { return g->video ? x2_video_position(g->video) : g->position_s; }
+static void MS_GetCapabilities(X2Cpu *c) { WR32(ARG(1), 0x1FF); RET(S_OK); } /* every AM_SEEKING_* capability */
+static void MS_TimeFormat(X2Cpu *c) { memcpy(X2P(ARG(1)), time_format_media_time, 16); RET(S_OK); }
+static void MS_GetDuration(X2Cpu *c) { WR64(ARG(1), (u64)(graph_of(ARG(0))->duration * 1e7)); RET(S_OK); }
+static void MS_GetCurrentPosition(X2Cpu *c) { WR64(ARG(1), (u64)(seek_now(graph_of(ARG(0))) * 1e7)); RET(S_OK); }
+/* ConvertTimeFormat(this, *target, target format, source (2 dwords), source format): one format only */
+static void MS_ConvertTimeFormat(X2Cpu *c) { WR32(ARG(1), ARG(3)); WR32(ARG(1) + 4, ARG(4)); RET(S_OK); }
+/* SetPositions(this, *current, current flags, *stop, stop flags) */
+static void MS_SetPositions(X2Cpu *c) {
+    Graph *g = graph_of(ARG(0));
+    if (ARG(1) && (ARG(2) & 3) == 1) { /* AM_SEEKING_AbsolutePositioning */
+        double v = (double)(s64)RD64(ARG(1)) / 1e7;
+        g->position_s = v;
+        if (g->video) {
+            x2_video_seek(g->video, v);
+            g->completed = false;
+        }
+    }
+    RET(S_OK);
+}
+static void MS_GetPositions(X2Cpu *c) {
+    Graph *g = graph_of(ARG(0));
+    if (ARG(1)) WR64(ARG(1), (u64)(seek_now(g) * 1e7));
+    if (ARG(2)) WR64(ARG(2), (u64)(g->duration * 1e7));
+    RET(S_OK);
+}
+static void MS_GetAvailable(X2Cpu *c) {
+    if (ARG(1)) WR64(ARG(1), 0);
+    if (ARG(2)) WR64(ARG(2), (u64)(graph_of(ARG(0))->duration * 1e7));
+    RET(S_OK);
+}
+static void MS_GetRate(X2Cpu *c) { WRF64(ARG(1), 1.0); RET(S_OK); }
+static void MS_GetPreroll(X2Cpu *c) { WR64(ARG(1), 0); RET(S_OK); }
+static u32 vt_seeking;
 
 /* ---- IBasicAudio ----------------------------------------------------------------------- */
 static void BA_put_Volume(X2Cpu *c) {
@@ -554,6 +593,16 @@ static void init_vtables(void) {
         M(CanSeekBackward, MP_Can, 2),
     };
     vt_position = x2_com_vtable("IMediaPosition", mp, sizeof mp / sizeof *mp);
+    static const X2Method ms[] = {
+        TEAR_IUNKNOWN, M(GetCapabilities, MS_GetCapabilities, 2), M(CheckCapabilities, Ok, 2),
+        M(IsFormatSupported, Ok, 2), M(QueryPreferredFormat, MS_TimeFormat, 2), M(GetTimeFormat, MS_TimeFormat, 2),
+        M(IsUsingTimeFormat, Ok, 2), M(SetTimeFormat, Ok, 2), M(GetDuration, MS_GetDuration, 2),
+        M(GetStopPosition, MS_GetDuration, 2), M(GetCurrentPosition, MS_GetCurrentPosition, 2),
+        M(ConvertTimeFormat, MS_ConvertTimeFormat, 6), M(SetPositions, MS_SetPositions, 5),
+        M(GetPositions, MS_GetPositions, 3), M(GetAvailable, MS_GetAvailable, 3), M(SetRate, Ok, 3),
+        M(GetRate, MS_GetRate, 2), M(GetPreroll, MS_GetPreroll, 2),
+    };
+    vt_seeking = x2_com_vtable("IMediaSeeking", ms, sizeof ms / sizeof *ms);
     static const X2Method ba[] = {
         TEAR_IUNKNOWN, IDISPATCH, M(put_Volume, BA_put_Volume, 2), M(get_Volume, BA_get_Volume, 2),
         M(put_Balance, Ok, 2), M(get_Balance, BA_get_Balance, 2),
@@ -606,6 +655,7 @@ u32 x2_dshow_create_graph(void) {
     g->control = tear(g, vt_control, "IMediaControl");
     g->event = tear(g, vt_event, "IMediaEventEx");
     g->position = tear(g, vt_position, "IMediaPosition");
+    g->seeking = tear(g, vt_seeking, "IMediaSeeking");
     g->audio = tear(g, vt_audio, "IBasicAudio");
     g->basic_video = tear(g, vt_video, "IBasicVideo");
     g->step = tear(g, vt_step, "IVideoFrameStep");

@@ -621,9 +621,120 @@ static void RtlUnwind(X2Cpu *c) {
     RET(ARG(3));
 }
 
+
+/* ---- wide-character variants and small helpers (SSF4 AE) ------------------- */
+static void LoadLibraryW(X2Cpu *c) {
+    char name[256];
+    x2_wstr_utf8(GWSTR(ARG(0)), name, sizeof name);
+    u32 h = module_handle(name);
+    x2_log("LoadLibraryW(\"%s\") -> %08x", name, h);
+    if (!h) x2_set_last_error(126);
+    RET(h);
+}
+static void GetModuleFileNameW(X2Cpu *c) {
+    u32 cap = ARG(2);
+    if (!cap) { RET(0); return; }
+    RET(x2_put_wstr(ARG(1), "C:\\game\\game.exe", cap));
+}
+static void GetVersionExW(X2Cpu *c) {
+    u32 p = ARG(0), sz = RD32(p);
+    memset(X2P(p + 4), 0, sz > 4 ? sz - 4 : 0);
+    WR32(p + 4, 5); /* Windows XP SP3, as GetVersionExA */
+    WR32(p + 8, 1);
+    WR32(p + 12, 2600);
+    WR32(p + 16, 2);
+    x2_put_wstr(p + 20, "Service Pack 3", 128);
+    if (sz >= 284) { /* OSVERSIONINFOEXW */
+        WR16(p + 276, 3);
+        WR8(p + 282, 1);
+    }
+    RET(1);
+}
+static void GlobalAlloc(X2Cpu *c) {
+    /* GMEM_MOVEABLE handles are returned as plain pointers (GlobalLock is the identity) */
+    u32 p = x2_heap_alloc(0, ARG(1) ? ARG(1) : 1, (ARG(0) & 0x40) != 0);
+    RET(p);
+}
+static void MulDiv(X2Cpu *c) {
+    s32 a = (s32)ARG(0), b = (s32)ARG(1), d = (s32)ARG(2);
+    if (!d) { RET(-1); return; }
+    s64 r = (s64)a * b;
+    r = r >= 0 ? (r + (d > 0 ? d : -d) / 2) / d : (r - (d > 0 ? d : -d) / 2) / d; /* rounds half away from zero */
+    RET(r > INT32_MAX || r < INT32_MIN ? -1 : (s32)r);
+}
+static void lstrcmpW(X2Cpu *c) {
+    u32 a = ARG(0), b = ARG(1);
+    for (u32 i = 0;; i++) {
+        u16 x = a ? RD16(a + 2 * i) : 0, y = b ? RD16(b + 2 * i) : 0;
+        if (x != y) { RET(x < y ? -1 : 1); return; }
+        if (!x) { RET(0); return; }
+    }
+}
+static void DisconnectNamedPipe(X2Cpu *c) { RET(1); }
+static void SetNamedPipeHandleState(X2Cpu *c) { RET(1); }
+
+/* ---- resources (the executable's .rsrc, mapped with the image) -------------- */
+static u32 rsrc_root(void) {
+    u32 b = x2_module.base, pe = b + RD32(b + 0x3c);
+    u32 rva = RD32(pe + 0x18 + 0x60 + 2 * 8); /* data directory 2: resources */
+    return rva ? b + rva : 0;
+}
+static bool rsrc_name_eq(u32 str, u32 name) { /* IMAGE_RESOURCE_DIR_STRING_U vs a guest wide string */
+    u16 n = RD16(str);
+    for (u16 i = 0; i < n; i++) {
+        u16 a = RD16(str + 2 + 2 * i), b = RD16(name + 2 * i);
+        if (a >= 'a' && a <= 'z') a -= 32;
+        if (b >= 'a' && b <= 'z') b -= 32;
+        if (a != b || !b) return false;
+    }
+    return RD16(name + 2 * n) == 0;
+}
+/* entry of directory `dir` matching an id (< 0x10000) or wide name; first entry if any == true */
+static u32 rsrc_find(u32 root, u32 dir, u32 key, bool any) {
+    u16 named = RD16(dir + 12), ids = RD16(dir + 14);
+    for (u32 i = 0; i < (u32)named + ids; i++) {
+        u32 e = dir + 16 + 8 * i, nm = RD32(e), off = RD32(e + 4);
+        bool hit = any;
+        if (!hit && key < 0x10000) hit = !(nm & 0x80000000u) && (nm & 0xFFFF) == key;
+        else if (!hit) hit = (nm & 0x80000000u) && rsrc_name_eq(root + (nm & 0x7FFFFFFF), key);
+        if (hit) return off;
+    }
+    return 0xFFFFFFFFu;
+}
+static void FindResourceW(X2Cpu *c) {
+    u32 root = rsrc_root(), name = ARG(1), type = ARG(2);
+    if (!root) { RET(0); return; }
+    u32 t = rsrc_find(root, root, type, false);
+    if (t == 0xFFFFFFFFu || !(t & 0x80000000u)) goto miss;
+    u32 n = rsrc_find(root, root + (t & 0x7FFFFFFF), name, false);
+    if (n == 0xFFFFFFFFu || !(n & 0x80000000u)) goto miss;
+    u32 l = rsrc_find(root, root + (n & 0x7FFFFFFF), 0, true); /* any language */
+    if (l == 0xFFFFFFFFu || (l & 0x80000000u)) goto miss;
+    RET(root + l); /* HRSRC: the IMAGE_RESOURCE_DATA_ENTRY */
+    return;
+miss:
+    x2_set_last_error(1814); /* ERROR_RESOURCE_NAME_NOT_FOUND */
+    RET(0);
+}
+static void LoadResource(X2Cpu *c) { RET(ARG(1) ? x2_module.base + RD32(ARG(1)) : 0); }
+static void LockResource(X2Cpu *c) { RET(ARG(0)); }
+static void SizeofResource(X2Cpu *c) { RET(ARG(1) ? RD32(ARG(1) + 4) : 0); }
+
 const X2Hle x2_hle_kernel32[] = {
     {"GetModuleHandleA", GetModuleHandleA, 1},
     {"LoadLibraryA", LoadLibraryA, 1},
+    {"LoadLibraryW", LoadLibraryW, 1},
+    {"GetModuleFileNameW", GetModuleFileNameW, 3},
+    {"GetVersionExW", GetVersionExW, 1},
+    {"GlobalAlloc", GlobalAlloc, 2},
+    {"MulDiv", MulDiv, 3},
+    {"lstrcmpW", lstrcmpW, 2},
+    {"DisconnectNamedPipe", DisconnectNamedPipe, 1},
+    {"SetNamedPipeHandleState", SetNamedPipeHandleState, 4},
+    {"FindResourceW", FindResourceW, 3},
+    {"LoadResource", LoadResource, 2},
+    {"LockResource", LockResource, 1},
+    {"SizeofResource", SizeofResource, 2},
     {"FreeLibrary", FreeLibrary, 1},
     {"GetProcAddress", GetProcAddress, 2},
     {"GetModuleFileNameA", GetModuleFileNameA, 3},
@@ -702,8 +813,65 @@ const X2Hle x2_hle_kernel32[] = {
     {NULL, NULL, 0},
 };
 
+/* timeSetEvent: each timer is a guest thread running a host loop that calls the
+ * guest's TIMECALLBACK(uTimerID, uMsg, dwUser, dw1, dw2) (stdcall) on schedule */
+typedef struct {
+    u32 delay, cb, user;
+    bool periodic;
+    volatile bool used, killed;
+    u32 event_mode; /* TIME_CALLBACK_EVENT_SET (0x10) / _PULSE (0x20): cb is an event handle */
+} MmTimer;
+static MmTimer mm_timers[16];
+static void mm_timer_thread(X2Cpu *c) {
+    u32 id = ARG(0);
+    MmTimer *t = &mm_timers[id - 1];
+    u64 next = x2_time_ns() + (u64)t->delay * 1000000ull;
+    while (!t->killed) {
+        u64 now = x2_time_ns();
+        if (now < next) { usleep((useconds_t)((next - now) / 1000)); continue; }
+        if (t->event_mode) {
+            x2_event_set(t->cb);
+            if (t->event_mode == 0x20) { usleep(1000); x2_event_reset(t->cb); } /* pulse */
+        } else {
+            x2_guest_call(c, t->cb, 5, id, 0, t->user, 0, 0);
+        }
+        if (!t->periodic) break;
+        next += (u64)(t->delay ? t->delay : 1) * 1000000ull;
+        if (x2_time_ns() > next + 100000000ull) next = x2_time_ns(); /* fell far behind: don't burst */
+    }
+    t->used = false;
+    RET(0);
+}
+static void timeSetEvent(X2Cpu *c) {
+    static u32 thunk;
+    if (!thunk) thunk = x2_thunk_new("winmm.dll!<timer thread>", mm_timer_thread, 1);
+    for (u32 i = 0; i < 16; i++) {
+        MmTimer *t = &mm_timers[i];
+        if (t->used) continue;
+        *t = (MmTimer){ARG(0), ARG(2), ARG(3), (ARG(4) & 1) != 0, true, false, ARG(4) & 0x30}; /* TIME_PERIODIC */
+        x2_thread_create(thunk, i + 1, 0, false);
+        RET(i + 1);
+        return;
+    }
+    RET(0);
+}
+static void timeKillEvent(X2Cpu *c) {
+    u32 id = ARG(0);
+    if (!id || id > 16 || !mm_timers[id - 1].used) { RET(97); return; } /* MMSYSERR_INVALPARAM */
+    mm_timers[id - 1].killed = true;
+    RET(0);
+}
+static void timeBeginPeriod(X2Cpu *c) { RET(0); }
+static void timeEndPeriod(X2Cpu *c) { RET(0); }
+static void PlaySoundW(X2Cpu *c) { RET(1); } /* system sounds: silent */
+
 const X2Hle x2_hle_winmm[] = {
     {"timeGetTime", timeGetTime, 0},
+    {"timeSetEvent", timeSetEvent, 5},
+    {"timeKillEvent", timeKillEvent, 1},
+    {"timeBeginPeriod", timeBeginPeriod, 1},
+    {"timeEndPeriod", timeEndPeriod, 1},
+    {"PlaySoundW", PlaySoundW, 3},
     {NULL, NULL, 0},
 };
 

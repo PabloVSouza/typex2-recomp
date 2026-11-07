@@ -3,6 +3,8 @@
  * HWND and the messages we choose to deliver. */
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "../core.h"
 #include "dsound.h"
@@ -21,6 +23,7 @@
 static u32 class_wndproc, wnd_proc;
 static u32 window_long[32];
 static bool window_created;
+static u32 window_thread; /* creator of the window: receives its messages */
 
 typedef struct {
     u32 hwnd, msg, wparam, lparam;
@@ -29,12 +32,14 @@ typedef struct {
 static Msg queue[QSIZE];
 static u32 qhead, qtail;
 static pthread_mutex_t qlock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t qcond = PTHREAD_COND_INITIALIZER; /* a message was posted */
 static bool quit_posted;
 static u32 quit_code;
 
 void x2_post_message(u32 msg, u32 wparam, u32 lparam) {
     pthread_mutex_lock(&qlock);
     if (qtail - qhead < QSIZE) queue[qtail++ % QSIZE] = (Msg){HWND_MAIN, msg, wparam, lparam};
+    pthread_cond_broadcast(&qcond);
     pthread_mutex_unlock(&qlock);
 }
 
@@ -56,6 +61,7 @@ static void CreateWindowExA(X2Cpu *c) {
     x2_log("CreateWindowExA(\"%s\", style %08x, %d,%d %ux%u)", ARG(2) ? GSTR(ARG(2)) : "", ARG(3), (s32)x, (s32)y, w, h);
     wnd_proc = class_wndproc;
     window_created = true;
+    window_thread = x2_self->id;
     /* CREATESTRUCTA on the guest stack area of a heap block */
     u32 cs = x2_galloc(48);
     WR32(cs, ARG(11));      /* lpCreateParams */
@@ -134,6 +140,183 @@ static void PostQuitMessage(X2Cpu *c) {
     quit_code = ARG(0);
 }
 
+
+/* ---- thread message queues (PostThreadMessage / GetMessage) ---------------- */
+typedef struct {
+    u32 tid;
+    Msg q[64];
+    u32 head, tail;
+} TQueue;
+static TQueue tqs[32];
+static u32 ntqs;
+
+static TQueue *tqueue(u32 tid, bool create) { /* under qlock */
+    for (u32 i = 0; i < ntqs; i++)
+        if (tqs[i].tid == tid) return &tqs[i];
+    if (!create || ntqs == 32) return NULL;
+    tqs[ntqs].tid = tid;
+    return &tqs[ntqs++];
+}
+/* next message for the calling thread: its own queue, then (window thread) the window's */
+static bool take_message(Msg *m, bool remove) { /* under qlock */
+    TQueue *t = tqueue(x2_self->id, false);
+    if (t && t->head != t->tail) {
+        *m = t->q[t->head % 64];
+        if (remove) t->head++;
+        return true;
+    }
+    if ((!window_thread || window_thread == x2_self->id) && qhead != qtail) {
+        *m = queue[qhead % QSIZE];
+        if (remove) qhead++;
+        return true;
+    }
+    return false;
+}
+static void write_msg(u32 out, const Msg *m) {
+    memset(X2P(out), 0, 28);
+    WR32(out, m->hwnd);
+    WR32(out + 4, m->msg);
+    WR32(out + 8, m->wparam);
+    WR32(out + 12, m->lparam);
+    WR32(out + 16, (u32)(x2_time_ns() / 1000000ull));
+}
+static void PostThreadMessageW(X2Cpu *c) {
+    pthread_mutex_lock(&qlock);
+    TQueue *t = tqueue(ARG(0), true);
+    bool ok = t && t->tail - t->head < 64;
+    if (ok) t->q[t->tail++ % 64] = (Msg){0, ARG(1), ARG(2), ARG(3)};
+    pthread_cond_broadcast(&qcond);
+    pthread_mutex_unlock(&qlock);
+    RET(ok);
+}
+static void GetMessageW(X2Cpu *c) {
+    Msg m;
+    pthread_mutex_lock(&qlock);
+    for (;;) {
+        if (take_message(&m, true)) break;
+        if (quit_posted && (!window_thread || window_thread == x2_self->id)) { m = (Msg){0, WM_QUIT, quit_code, 0}; break; }
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_nsec += 10000000L; /* window messages from the platform do not signal: poll */
+        if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+        pthread_cond_timedwait(&qcond, &qlock, &ts);
+    }
+    pthread_mutex_unlock(&qlock);
+    write_msg(ARG(0), &m);
+    RET(m.msg != WM_QUIT);
+}
+static void GetQueueStatus(X2Cpu *c) {
+    Msg m;
+    pthread_mutex_lock(&qlock);
+    bool have = take_message(&m, false);
+    pthread_mutex_unlock(&qlock);
+    RET(have ? 0x00080008u : 0); /* QS_POSTMESSAGE */
+}
+/* wait for the handles, or for a message to arrive (index n) */
+static void MsgWaitForMultipleObjects(X2Cpu *c) {
+    u32 n = ARG(0), ms = ARG(3), hs[64];
+    if (n > 64) { RET(0xFFFFFFFFu); return; }
+    for (u32 i = 0; i < n; i++) hs[i] = RD32(ARG(1) + 4 * i);
+    u64 end = x2_time_ns() + (u64)ms * 1000000ull;
+    for (;;) {
+        Msg m;
+        pthread_mutex_lock(&qlock);
+        bool have = take_message(&m, false);
+        pthread_mutex_unlock(&qlock);
+        if (have) { RET(n); return; }
+        u64 now = x2_time_ns();
+        u32 slice = ms == 0xFFFFFFFFu ? 10 : now >= end ? 0 : (u32)((end - now) / 1000000ull);
+        if (slice > 10) slice = 10;
+        u32 r = n ? x2_wait_many(n, hs, ARG(2) != 0, slice) : (usleep(slice * 1000), 0x102u);
+        if (r != 0x102u) { RET(r); return; }
+        if (ms != 0xFFFFFFFFu && x2_time_ns() >= end) { RET(0x102u); return; }
+    }
+}
+
+static void RegisterClassW(X2Cpu *c) { /* WNDCLASSW: style, lpfnWndProc, ... */
+    class_wndproc = RD32(ARG(0) + 4);
+    x2_log("RegisterClassW wndproc %08x", class_wndproc);
+    RET(0xC002);
+}
+static void AdjustWindowRect(X2Cpu *c) { RET(1); }
+static void CharNextExA(X2Cpu *c) { RET(RD8(ARG(1)) ? ARG(1) + 1 : ARG(1)); }
+static void CharPrevExA(X2Cpu *c) { RET(ARG(2) > ARG(1) ? ARG(2) - 1 : ARG(1)); }
+static void FindWindowW(X2Cpu *c) { RET(0); } /* no other instance */
+static void GetCursorPos(X2Cpu *c) { WR32(ARG(0), 0); WR32(ARG(0) + 4, 0); RET(1); }
+static void LoadImageW(X2Cpu *c) { RET(0x00030030u); } /* cursor / icon: never drawn */
+static void RegisterWindowMessageW(X2Cpu *c) { static u32 next = 0xC100; RET(next++); }
+static void SetCursor(X2Cpu *c) { RET(0); }
+static void SetForegroundWindow(X2Cpu *c) { RET(1); }
+static void SetRect(X2Cpu *c) {
+    for (int i = 0; i < 4; i++) WR32(ARG(0) + 4 * i, ARG(1 + i));
+    RET(1);
+}
+static void ShowWindow(X2Cpu *c) { RET(0); }
+
+/* wsprintfW(buf, fmt, ...), cdecl: %[-][0][width][.prec][h|l]{c C d i u x X s S p} */
+static void wsprintfW(X2Cpu *c) {
+    u32 out = ARG(0), f = ARG(1), ai = 2, k = 0;
+    const u32 cap = 1024; /* wsprintf's documented limit */
+    for (u32 i = 0; RD16(f + 2 * i) && k + 1 < cap; i++) {
+        u16 ch = RD16(f + 2 * i);
+        if (ch != '%') { WR16(out + 2 * k++, ch); continue; }
+        ch = RD16(f + 2 * ++i);
+        if (ch == '%') { WR16(out + 2 * k++, '%'); continue; }
+        bool left = false, zero = false, hmod = false, lmod = false;
+        if (ch == '-') { left = true; ch = RD16(f + 2 * ++i); }
+        if (ch == '0') { zero = true; ch = RD16(f + 2 * ++i); }
+        u32 width = 0, prec = 0xFFFFFFFFu;
+        while (ch >= '0' && ch <= '9') { width = width * 10 + (ch - '0'); ch = RD16(f + 2 * ++i); }
+        if (ch == '.') {
+            prec = 0;
+            ch = RD16(f + 2 * ++i);
+            while (ch >= '0' && ch <= '9') { prec = prec * 10 + (ch - '0'); ch = RD16(f + 2 * ++i); }
+        }
+        if (ch == 'h') { hmod = true; ch = RD16(f + 2 * ++i); }
+        else if (ch == 'l') { lmod = true; ch = RD16(f + 2 * ++i); }
+        u16 tmp[64];
+        u32 n = 0, src = 0;
+        bool wide_src = false;
+        u32 v = ARG(ai++);
+        switch (ch) {
+            case 'd': case 'i': case 'u': case 'x': case 'X': case 'p': {
+                char s[32];
+                snprintf(s, sizeof s, ch == 'd' || ch == 'i' ? "%d" : ch == 'u' ? "%u" : ch == 'x' ? "%x" : ch == 'p' ? "%08X" : "%X", v);
+                for (u32 j = 0; s[j] && n < 64; j++) tmp[n++] = (u8)s[j];
+                break;
+            }
+            case 'c': tmp[n++] = (u16)(hmod ? (u8)v : v); break;
+            case 'C': tmp[n++] = (u16)(lmod ? v : (u8)v); break;
+            case 's': src = v; wide_src = !hmod; break;
+            case 'S': src = v; wide_src = lmod; break;
+            default: ai--; tmp[n++] = ch; break; /* unknown: copied */
+        }
+        if (ch == 's' || ch == 'S') { /* strings: measure, then pad around them */
+            if (!src) { src = 0; }
+            u32 len = 0;
+            while (src && (wide_src ? RD16(src + 2 * len) : RD8(src + len)) && len < prec) len++;
+            u32 pad = width > len ? width - len : 0;
+            if (!left) while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
+            for (u32 j = 0; j < len && k + 1 < cap; j++) WR16(out + 2 * k++, wide_src ? RD16(src + 2 * j) : RD8(src + j));
+            while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
+            continue;
+        }
+        if (prec != 0xFFFFFFFFu && n < prec && ch != 'c' && ch != 'C') { /* minimum digits */
+            u32 neg = tmp[0] == '-';
+            u32 pz = prec - (n - neg);
+            memmove(tmp + neg + pz, tmp + neg, (n - neg) * 2);
+            for (u32 j = 0; j < pz; j++) tmp[neg + j] = '0';
+            n += pz;
+        }
+        u32 pad = width > n ? width - n : 0;
+        if (!left) while (pad && k + 1 < cap) { WR16(out + 2 * k++, zero ? '0' : ' '); pad--; }
+        for (u32 j = 0; j < n && k + 1 < cap; j++) WR16(out + 2 * k++, tmp[j]);
+        while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
+    }
+    WR16(out + 2 * k, 0);
+    RET(k);
+}
+
 const X2Hle x2_hle_user32[] = {
     {"RegisterClassExA", RegisterClassExA, 1},
     {"CreateWindowExA", CreateWindowExA, 12},
@@ -163,6 +346,23 @@ const X2Hle x2_hle_user32[] = {
     {"SetWindowPos", ValidateRect, 7},
     {"SetWindowTextW", ValidateRect, 2},
     {"UnregisterClassW", ValidateRect, 2},
+    {"PostThreadMessageW", PostThreadMessageW, 4},
+    {"GetMessageW", GetMessageW, 4},
+    {"GetQueueStatus", GetQueueStatus, 1},
+    {"MsgWaitForMultipleObjects", MsgWaitForMultipleObjects, 5},
+    {"RegisterClassW", RegisterClassW, 1},
+    {"AdjustWindowRect", AdjustWindowRect, 3},
+    {"CharNextExA", CharNextExA, 3},
+    {"CharPrevExA", CharPrevExA, 4},
+    {"FindWindowW", FindWindowW, 2},
+    {"GetCursorPos", GetCursorPos, 1},
+    {"LoadImageW", LoadImageW, 6},
+    {"RegisterWindowMessageW", RegisterWindowMessageW, 1},
+    {"SetCursor", SetCursor, 1},
+    {"SetForegroundWindow", SetForegroundWindow, 1},
+    {"SetRect", SetRect, 5},
+    {"ShowWindow", ShowWindow, 2},
+    {"wsprintfW", wsprintfW, -1},
     {NULL, NULL, 0},
 };
 
@@ -196,10 +396,39 @@ static void CoCreateInstance(X2Cpu *c) {
     RET(0x80040154u);
 }
 
+static void CoInitialize(X2Cpu *c) { RET(0); }
+static void CoFreeUnusedLibraries(X2Cpu *c) {}
+static void CoTaskMemAlloc(X2Cpu *c) { RET(x2_heap_alloc(0, ARG(0) ? ARG(0) : 1, false)); }
+
 const X2Hle x2_hle_ole32[] = {
+    {"CoInitialize", CoInitialize, 1},
+    {"CoFreeUnusedLibraries", CoFreeUnusedLibraries, 0},
+    {"CoTaskMemAlloc", CoTaskMemAlloc, 1},
     {"CoInitializeEx", CoInitializeEx, 2},
     {"CoUninitialize", CoUninitialize, 0},
     {"CoCreateInstance", CoCreateInstance, 5},
     {"CoTaskMemFree", CoTaskMemFree, 1},
+    {NULL, NULL, 0},
+};
+
+/* ---- oleaut32 (by ordinal) ---------------------------------------------------- */
+static void VariantInit(X2Cpu *c) { WR16(ARG(0), 0); } /* VT_EMPTY */
+
+const X2Hle x2_hle_oleaut32[] = {
+    {"#8", VariantInit, 1},
+    {NULL, NULL, 0},
+};
+
+/* ---- dsound (by ordinal) -------------------------------------------------------- */
+/* DirectSoundCreate8(device guid, IDirectSound8 **out, outer): the same object
+ * CoCreateInstance(CLSID_DirectSound8) gives */
+static void DirectSoundCreate8(X2Cpu *c) {
+    WR32(ARG(1), x2_dsound_create());
+    RET(0);
+}
+
+const X2Hle x2_hle_dsound[] = {
+    {"#11", DirectSoundCreate8, 3},
+    {"DirectSoundCreate8", DirectSoundCreate8, 3},
     {NULL, NULL, 0},
 };

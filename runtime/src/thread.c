@@ -56,6 +56,19 @@ void x2_trace_dump(X2Thread *t, int n);
 static X2Thread *all_threads[256];
 static int nthreads;
 
+/* what a guest thread is doing (diagnostics): its start address and the import it is in, if any */
+const char *x2_thread_activity(u32 id, u32 *start) {
+    for (int i = 0; i < nthreads; i++) {
+        X2Thread *t = all_threads[i];
+        if (!t || t->id != id) continue;
+        if (start) *start = t->start;
+        const char *f = t->cpu.host_fn;
+        return f ? f : "(guest code)";
+    }
+    if (start) *start = 0;
+    return "?";
+}
+
 /* Heuristic guest backtrace: stack words that point just past a CALL in .text.
  * Uses the spilled esp, so it reflects the last call into the runtime. */
 void x2_backtrace_all(void) {
@@ -182,23 +195,13 @@ void x2_trace_dump(X2Thread *t, int n);
  * schedule a thread that sleeps every frame onto little cores, where a frame can
  * take 3x longer; `critical` threads (guest main, renderer) are pinned to the
  * cores with the highest max clock and given a higher priority. */
-void x2_thread_perf(const char *name, bool critical) {
-#ifdef __APPLE__
-    pthread_setname_np(name);
-    pthread_set_qos_class_self_np(critical ? QOS_CLASS_USER_INTERACTIVE : QOS_CLASS_USER_INITIATED, 0);
-#elif defined(__linux__)
-    pthread_setname_np(pthread_self(), name);
-    if (!critical) {
-        /* threads inherit their creator's affinity: give workers every core back */
-        cpu_set_t all;
-        CPU_ZERO(&all);
-        int ncpu = (int)sysconf(_SC_NPROCESSORS_CONF);
-        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++) CPU_SET(i, &all);
-        sched_setaffinity(0, sizeof all, &all);
-        return;
-    }
-    static cpu_set_t big;
-    static int nbig = -1;
+#ifdef __linux__
+/* cores with the highest max clock (the big cluster); nbig 0 if all cores are alike */
+static cpu_set_t big_cores, little_cores;
+static int nbig = -1;
+static void find_big_cores(void) {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&lock);
     if (nbig < 0) {
         long maxf[CPU_SETSIZE] = {0}, top = 0;
         int ncpu = (int)sysconf(_SC_NPROCESSORS_CONF);
@@ -212,17 +215,49 @@ void x2_thread_perf(const char *name, bool critical) {
             }
             if (maxf[i] > top) top = maxf[i];
         }
-        CPU_ZERO(&big);
-        nbig = 0;
-        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++)
-            if (top && maxf[i] == top) {
-                CPU_SET(i, &big);
-                nbig++;
-            }
-        if (nbig == ncpu) nbig = 0; /* uniform cores: leave scheduling alone */
-        if (nbig) x2_log("cpu: %d fast core(s) at %ld MHz for the guest and renderer threads", nbig, top / 1000);
+        CPU_ZERO(&big_cores);
+        CPU_ZERO(&little_cores);
+        int n = 0;
+        for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++) {
+            if (top && maxf[i] == top) { CPU_SET(i, &big_cores); n++; }
+            else CPU_SET(i, &little_cores);
+        }
+        if (n == ncpu) n = 0; /* uniform cores: leave scheduling alone */
+        if (n) x2_log("cpu: %d fast core(s) at %ld MHz for the guest and renderer threads, %d for workers", n, top / 1000,
+                      ncpu - n);
+        nbig = n;
     }
-    if (nbig) sched_setaffinity(0, sizeof big, &big);
+    pthread_mutex_unlock(&lock);
+}
+#endif
+
+void x2_thread_perf(const char *name, bool critical) {
+    extern void x2_prof_register(const char *name);
+    x2_prof_register(name);
+#ifdef __APPLE__
+    pthread_setname_np(name);
+    pthread_set_qos_class_self_np(critical ? QOS_CLASS_USER_INTERACTIVE : QOS_CLASS_USER_INITIATED, 0);
+#elif defined(__linux__)
+    pthread_setname_np(pthread_self(), name);
+    find_big_cores();
+    if (!critical) {
+        /* Workers may use any core. X2_WORKERS=little keeps them off the big
+         * cores, but that is slower in SSF4 AE (44.6 vs 56.5 fps on a Helio G99):
+         * some workers do work the main thread waits for. */
+        const char *w = getenv("X2_WORKERS");
+        if (nbig && w && !strcmp(w, "little")) {
+            sched_setaffinity(0, sizeof little_cores, &little_cores);
+        } else {
+            /* threads inherit their creator's affinity: give workers every core back */
+            cpu_set_t all;
+            CPU_ZERO(&all);
+            int ncpu = (int)sysconf(_SC_NPROCESSORS_CONF);
+            for (int i = 0; i < ncpu && i < CPU_SETSIZE; i++) CPU_SET(i, &all);
+            sched_setaffinity(0, sizeof all, &all);
+        }
+        return;
+    }
+    if (nbig) sched_setaffinity(0, sizeof big_cores, &big_cores);
     setpriority(PRIO_PROCESS, (id_t)gettid(), -8); /* may be refused; harmless */
 #else
     (void)name;
@@ -230,10 +265,44 @@ void x2_thread_perf(const char *name, bool critical) {
 #endif
 }
 
+/* A worker the game raised to HIGHEST or TIME_CRITICAL (SSF4's audio mixer) gets
+ * the fast cores like the guest main thread: the main thread waits on locks it
+ * holds while mixing, up to 11 ms per mix on a Helio G99's little cores.
+ * X2_PRIO=0 ignores SetThreadPriority. */
+static void apply_priority(X2Thread *t) {
+#ifdef __linux__
+    static int on = -1;
+    if (on < 0) on = !getenv("X2_PRIO") || atoi(getenv("X2_PRIO")) != 0;
+    find_big_cores();
+    if (!on || !t->host_tid || t->priority < 2 /* THREAD_PRIORITY_HIGHEST */) return;
+    if (nbig) sched_setaffinity((pid_t)t->host_tid, sizeof big_cores, &big_cores);
+    setpriority(PRIO_PROCESS, (id_t)t->host_tid, -8);
+    x2_log("thread %u: priority %d, on the fast cores", t->id, t->priority);
+#else
+    (void)t;
+#endif
+}
+void x2_thread_set_priority(X2Thread *t, int priority) {
+    pthread_mutex_lock(&t->lock);
+    bool changed = t->priority != priority;
+    t->priority = priority;
+    if (changed) apply_priority(t); /* not started yet: thread_started applies it */
+    pthread_mutex_unlock(&t->lock);
+}
+static void thread_started(X2Thread *t) {
+    pthread_mutex_lock(&t->lock);
+#ifdef __linux__
+    t->host_tid = (long)gettid();
+#endif
+    apply_priority(t);
+    pthread_mutex_unlock(&t->lock);
+}
+
 static void *thread_main(void *p) {
     x2_thread_perf("x2-worker", false);
     X2Thread *t = p;
     x2_self = t;
+    thread_started(t);
     x2_trace_register(t);
     pthread_mutex_lock(&t->lock);
     while (t->suspend > 0) pthread_cond_wait(&t->cond, &t->lock);
@@ -354,6 +423,9 @@ static void *guest_main(void *p) {
     x2_thread_perf("x2-guest", true);
     X2Thread *t = p;
     x2_self = t;
+#ifdef __linux__
+    t->host_tid = (long)gettid();
+#endif
     x2_trace_register(t);
     if (!getenv("X2_CALL_DELAY")) run_x2_calls(t);
     if (getenv("X2_TEST_STRCHR")) {

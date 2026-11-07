@@ -269,7 +269,25 @@ static void GetGlyphOutlineW(X2Cpu *c) {
     RET(need);
 }
 
+/* the screen is a 1920x1080, 32-bit, 96 dpi, 60 Hz display */
+static void GetDeviceCaps(X2Cpu *c) {
+    switch (ARG(1)) {
+        case 8: RET(1920); break;   /* HORZRES */
+        case 10: RET(1080); break;  /* VERTRES */
+        case 12: RET(32); break;    /* BITSPIXEL */
+        case 14: RET(1); break;     /* PLANES */
+        case 88: case 90: RET(96); break; /* LOGPIXELSX/Y */
+        case 116: RET(60); break;   /* VREFRESH */
+        case 117: RET(1920); break; /* DESKTOPHORZRES */
+        case 118: RET(1080); break; /* DESKTOPVERTRES */
+        default: RET(0); break;
+    }
+}
+static void GetStockObject(X2Cpu *c) { RET(0x00040000u + ARG(0)); }
+
 const X2Hle x2_hle_gdi32[] = {
+    {"GetDeviceCaps", GetDeviceCaps, 2},
+    {"GetStockObject", GetStockObject, 1},
     {"EnumFontFamiliesExW", EnumFontFamiliesExW, 5},
     {"CreateFontW", CreateFontW, 14},
     {"SelectObject", SelectObject, 2},

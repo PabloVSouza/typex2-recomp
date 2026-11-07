@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "../com.h"
+#include "../gfx/d3dasm.h"
 #include "../image.h"
 
 static inline u32 RD32_HOST(const u8 *p) { u32 v; memcpy(&v, p, 4); return v; }
@@ -73,6 +74,26 @@ static void D3DXCompileShader(X2Cpu *c) {
         WR32(pp_ctab, 0);
     }
     X2_TRACE("d3dx9: D3DXCompileShader(%s, %u bytes HLSL)", prof, len);
+    RET(0);
+}
+
+/* D3DXAssembleShader(src, len, defines, include, flags, **shader, **errors) */
+static void D3DXAssembleShader(X2Cpu *c) {
+    char err[256];
+    uint32_t tmp[4096];
+    int n = x2_d3d_assemble(GSTR(ARG(0)), ARG(1), tmp, 4096, err, sizeof err);
+    if (n < 0 || n > 4096) {
+        x2_log("d3dx9: D3DXAssembleShader failed: %s", n < 0 ? err : "too long");
+        if (ARG(5)) WR32(ARG(5), 0);
+        if (ARG(6)) WR32(ARG(6), 0);
+        RET(0x80004005u); /* E_FAIL */
+        return;
+    }
+    u32 buf = make_xbuf((u32)n * 4);
+    memcpy(X2P(((XBuf *)x2_com_get(buf))->data), tmp, (size_t)n * 4);
+    WR32(ARG(5), buf);
+    if (ARG(6)) WR32(ARG(6), 0);
+    X2_TRACE("d3dx9: D3DXAssembleShader: %d tokens", n);
     RET(0);
 }
 
@@ -304,6 +325,8 @@ typedef struct {
     u32 w, h, levels, fmt, file_format; /* D3DXIFF_*: PNG 3, DDS 4 */
     const u8 *level_data[16];
     u32 level_pitch[16];
+    u32 faces;                  /* 6 for a DDS cube map */
+    const u8 *face_data[6][16]; /* per face (DDS) */
     u8 *owned; /* decoded pixels to free */
 } Image;
 
@@ -334,14 +357,19 @@ static bool parse_dds(const u8 *p, size_t n, Image *im) {
     if (!f) { x2_log("d3dx9: unsupported DDS pixel format (flags %x fourcc %08x bits %u)", pff, fourcc, bits); return false; }
     if (!mips) mips = 1;
     if (mips > 16) mips = 16;
+    /* a cube map stores six faces (+X -X +Y -Y +Z -Z), each with its mip chain */
+    u32 faces = RD32_HOST(p + 112) & 0x200 ? 6 : 1;
     const u8 *d = p + 128;
-    for (u32 l = 0; l < mips; l++) {
-        u32 sz = fmt_pitch(f, lv(w, l)) * fmt_rows(f, lv(h, l));
-        if (d + sz > p + n) { mips = l; break; }
-        im->level_data[l] = d;
-        im->level_pitch[l] = fmt_pitch(f, lv(w, l));
-        d += sz;
-    }
+    for (u32 fc = 0; fc < faces; fc++)
+        for (u32 l = 0; l < mips; l++) {
+            u32 sz = fmt_pitch(f, lv(w, l)) * fmt_rows(f, lv(h, l));
+            if (d + sz > p + n) { mips = l; break; }
+            im->face_data[fc][l] = d;
+            if (fc == 0) im->level_data[l] = d;
+            im->level_pitch[l] = fmt_pitch(f, lv(w, l));
+            d += sz;
+        }
+    im->faces = faces;
     im->w = w; im->h = h; im->levels = mips ? mips : 1; im->fmt = f; im->file_format = 4;
     return mips > 0;
 }
@@ -455,6 +483,57 @@ static void D3DXCreateTextureFromFileInMemoryEx(X2Cpu *c) {
     RET(create_from_memory(ARG(0), X2P(ARG(1)), ARG(2), ARG(3), ARG(4), ARG(5), ARG(6), ARG(7), ARG(8), ARG(11), ARG(12),
                            ARG(14)));
 }
+u32 x2_d3d9_create_cube(u32 dev, u32 size, u32 levels, u32 usage, u32 fmt, u32 pool);
+u32 x2_d3d9_cube_level(u32 tex, u32 face, u32 level);
+
+/* (pDevice, pSrcData, SrcDataSize, Size, MipLevels, Usage, Format, Pool, Filter,
+ *  MipFilter, ColorKey, pSrcInfo, pPalette, ppCubeTexture). A 2D image fills
+ * all six faces. */
+static void D3DXCreateCubeTextureFromFileInMemoryEx(X2Cpu *c) {
+    Image im = {0};
+    const u8 *data = X2P(ARG(1));
+    size_t n = ARG(2);
+    if (!parse_dds(data, n, &im) && !parse_png(data, n, &im)) {
+        x2_log("d3dx9: unsupported cube image file (%zu bytes)", n);
+        RET(0x88760B59u);
+        return;
+    }
+    u32 size = ARG(3), levels = ARG(4), fmt = ARG(6);
+    if (size == 0 || size >= D3DX_FROM_FILE) size = im.w;
+    if (fmt == 0 || fmt == D3DX_FROM_FILE) fmt = im.fmt;
+    bool block_src = im.fmt == F_DXT1 || im.fmt == F_DXT3 || im.fmt == F_DXT5;
+    bool block_dst = fmt == F_DXT1 || fmt == F_DXT3 || fmt == F_DXT5;
+    if (block_dst != block_src || (block_src && fmt != im.fmt)) fmt = im.fmt;
+    u32 max_levels = 1;
+    for (u32 m = size; m > 1; m >>= 1) max_levels++;
+    if (levels == 0 || levels == D3DX_DEFAULT || levels == D3DX_FROM_FILE)
+        levels = levels == D3DX_FROM_FILE || block_src ? im.levels : max_levels;
+    if (levels > max_levels) levels = max_levels;
+    if (block_src && levels > im.levels) levels = im.levels;
+    X2_TRACE("d3dx9: cube image %u fmt %u levels %u faces %u", im.w, im.fmt, im.levels, im.faces);
+    u32 tex = x2_d3d9_create_cube(ARG(0), size, levels, ARG(5), fmt, ARG(7));
+    if (!tex) { free(im.owned); RET(0x8876086Cu); return; }
+    for (u32 f = 0; f < 6; f++)
+        for (u32 l = 0; l < levels; l++) {
+            u32 surf = x2_d3d9_cube_level(tex, f, l);
+            u32 sf, sw, sh, mem, pitch;
+            if (!x2_d3d9_surface_info(surf, &sf, &sw, &sh, &mem, &pitch)) continue;
+            u32 sl = 0;
+            while (sl + 1 < im.levels && lv(im.w, sl) > sw) sl++;
+            const u8 *src = im.faces == 6 ? im.face_data[f][sl] : im.level_data[sl];
+            if (!x2_blit(sf, X2P(mem), pitch, sw, sh, im.fmt, src, im.level_pitch[sl], lv(im.w, sl), lv(im.h, sl), ARG(10)))
+                x2_log("d3dx9: cannot convert cube texture %08x -> %08x", im.fmt, sf);
+            x2_d3d9_surface_upload(surf, 0, 0, sw, sh);
+        }
+    if (ARG(11)) {
+        write_info(ARG(11), &im);
+        WR32(ARG(11) + 20, 5); /* D3DRTYPE_CUBETEXTURE */
+    }
+    free(im.owned);
+    WR32(ARG(13), tex);
+    RET(0);
+}
+
 /* (pDevice, pSrcFile, Width, Height, MipLevels, Usage, Format, Pool, Filter,
  *  MipFilter, ColorKey, pSrcInfo, pPalette, ppTexture) */
 static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
@@ -481,6 +560,8 @@ const X2Hle x2_hle_d3dx9[] = {
     {"D3DXCreateTextureFromFileExA", D3DXCreateTextureFromFileExA, 14},
     {"D3DXLoadSurfaceFromMemory", D3DXLoadSurfaceFromMemory, 10},
     {"D3DXCompileShader", D3DXCompileShader, 10},
+    {"D3DXAssembleShader", D3DXAssembleShader, 7},
+    {"D3DXCreateCubeTextureFromFileInMemoryEx", D3DXCreateCubeTextureFromFileInMemoryEx, 14},
     {"D3DXMatrixMultiply", D3DXMatrixMultiply, 3},
     {"D3DXVec4Transform", D3DXVec4Transform, 3},
     {"D3DXMatrixScaling", D3DXMatrixScaling, 4},

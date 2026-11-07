@@ -309,6 +309,89 @@ static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt,
     return g;
 }
 
+
+/* ---- cube textures ------------------------------------------------------------
+ * Laid out like Texture up to `id` (SetTexture reads it through Texture). Face
+ * surfaces carry level = face << 4 | level, which is how gfx addresses cube
+ * faces in uploads. */
+typedef struct {
+    X2ComObj com;
+    Device *dev;
+    u32 fmt, w, h, levels, usage, pool;
+    GfxId id;
+    u32 surf[6][16];
+} CubeTexture;
+static u32 vt_cube;
+
+static void C_GetLevelDesc(X2Cpu *c) {
+    CubeTexture *t = COM_THIS(CubeTexture);
+    if (ARG(1) >= t->levels) { RET(D3DERR_INVALIDCALL); return; }
+    Surface *s = (Surface *)x2_com_get(t->surf[0][ARG(1)]);
+    u32 p = ARG(2);
+    WR32(p, s->fmt); WR32(p + 4, 1); WR32(p + 8, s->usage); WR32(p + 12, s->pool);
+    WR32(p + 16, 0); WR32(p + 20, 0); WR32(p + 24, s->w); WR32(p + 28, s->h);
+    RET(D3D_OK);
+}
+static void C_GetCubeMapSurface(X2Cpu *c) { /* (face, level, **surface) */
+    CubeTexture *t = COM_THIS(CubeTexture);
+    if (ARG(1) >= 6 || ARG(2) >= t->levels) { RET(D3DERR_INVALIDCALL); return; }
+    x2_com_get(t->surf[ARG(1)][ARG(2)])->refs++;
+    WR32(ARG(3), t->surf[ARG(1)][ARG(2)]);
+    RET(D3D_OK);
+}
+static void C_LockRect(X2Cpu *c) { /* (face, level, pLockedRect, pRect, flags) -> surface LockRect */
+    CubeTexture *t = COM_THIS(CubeTexture);
+    if (ARG(1) >= 6 || ARG(2) >= t->levels) { RET(D3DERR_INVALIDCALL); return; }
+    u32 save[4];
+    for (int i = 0; i < 4; i++) save[i] = RD32(c->esp + 4 + 4 * i);
+    WR32(c->esp + 4, t->surf[ARG(1)][ARG(2)]);
+    WR32(c->esp + 8, save[3]);           /* pLockedRect */
+    WR32(c->esp + 12, RD32(c->esp + 20)); /* pRect */
+    WR32(c->esp + 16, RD32(c->esp + 24)); /* flags */
+    S_LockRect(c);
+    for (int i = 0; i < 4; i++) WR32(c->esp + 4 + 4 * i, save[i]);
+}
+static void C_UnlockRect(X2Cpu *c) {
+    CubeTexture *t = COM_THIS(CubeTexture);
+    if (ARG(1) >= 6 || ARG(2) >= t->levels) { RET(D3DERR_INVALIDCALL); return; }
+    Surface *s = (Surface *)x2_com_get(t->surf[ARG(1)][ARG(2)]);
+    if (s->locked) surface_flush(s);
+    s->locked = false;
+    RET(D3D_OK);
+}
+static void C_GetType(X2Cpu *c) { RET(5); /* D3DRTYPE_CUBETEXTURE */ }
+static void cube_destroy(X2ComObj *o) {
+    CubeTexture *t = (CubeTexture *)o;
+    gfx_texture_destroy(t->id);
+    free(t);
+}
+static u32 make_cube(Device *d, u32 size, u32 levels, u32 usage, u32 fmt, u32 pool) {
+    u32 max_levels = 1;
+    for (u32 m = size; m > 1; m >>= 1) max_levels++;
+    if (!levels || levels > max_levels) levels = max_levels;
+    if (levels > 16) levels = 16;
+    CubeTexture *t = calloc(1, sizeof *t);
+    t->dev = d;
+    t->fmt = fmt; t->w = t->h = size; t->levels = levels; t->usage = usage; t->pool = pool;
+    t->id = new_id();
+    t->com.destroy = cube_destroy;
+    gfx_texture_create_cube(t->id, gfx_fmt(fmt), size, levels);
+    u32 g = x2_com_wrap(&t->com, vt_cube, "IDirect3DCubeTexture9");
+    for (u32 f = 0; f < 6; f++)
+        for (u32 i = 0; i < levels; i++) {
+            u32 s = size >> i ? size >> i : 1;
+            t->surf[f][i] = make_surface(d, fmt, s, s, usage, pool, t->id, f << 4 | i, g);
+        }
+    return g;
+}
+/* (EdgeLength, Levels, Usage, Format, Pool, ppCubeTexture, pSharedHandle) */
+static void D_CreateCubeTexture(X2Cpu *c) {
+    Device *d = COM_THIS(Device);
+    X2_TRACE("d3d9: CreateCubeTexture %u levels %u usage %x fmt %u", ARG(1), ARG(2), ARG(3), ARG(4));
+    WR32(ARG(6), make_cube(d, ARG(1), ARG(2), ARG(3), ARG(4), ARG(5)));
+    RET(D3D_OK);
+}
+
 /* ---- vertex / index buffers ---------------------------------------------- */
 static void B_Lock(X2Cpu *c) {
     Buffer *b = COM_THIS(Buffer);
@@ -804,6 +887,7 @@ static void set_consti(X2Cpu *c, bool pixel) {
     u32 start = ARG(1), n = ARG(3);
     if (start + n > 16) { RET(D3DERR_INVALIDCALL); return; }
     memcpy(pixel ? d->psi[start] : d->vsi[start], X2P(ARG(2)), n * 16);
+    gfx_set_consts_ib(pixel, false, start, (const int32_t *)X2P(ARG(2)), n);
     RET(D3D_OK);
 }
 static void set_constb(X2Cpu *c, bool pixel) {
@@ -811,6 +895,7 @@ static void set_constb(X2Cpu *c, bool pixel) {
     u32 start = ARG(1), n = ARG(3);
     if (start + n > 16) { RET(D3DERR_INVALIDCALL); return; }
     memcpy(pixel ? &d->psb[start] : &d->vsb[start], X2P(ARG(2)), n * 4);
+    gfx_set_consts_ib(pixel, true, start, (const int32_t *)X2P(ARG(2)), n);
     RET(D3D_OK);
 }
 static void D_SetVertexShaderConstantI(X2Cpu *c) { set_consti(c, false); }
@@ -1057,6 +1142,14 @@ u32 x2_d3d9_texture_level(u32 tex, u32 level) {
     Texture *t = (Texture *)x2_com_get(tex);
     return t && level < t->levels ? t->surf[level] : 0;
 }
+u32 x2_d3d9_create_cube(u32 dev, u32 size, u32 levels, u32 usage, u32 fmt, u32 pool) {
+    Device *d = (Device *)x2_com_get(dev);
+    return d ? make_cube(d, size, levels, usage, fmt, pool) : 0;
+}
+u32 x2_d3d9_cube_level(u32 tex, u32 face, u32 level) {
+    CubeTexture *t = (CubeTexture *)x2_com_get(tex);
+    return t && face < 6 && level < t->levels ? t->surf[face][level] : 0;
+}
 u32 x2_d3d9_texture_levels(u32 tex) {
     Texture *t = (Texture *)x2_com_get(tex);
     return t ? t->levels : 0;
@@ -1093,7 +1186,7 @@ static void init_vtables(void) {
         U(CreateAdditionalSwapChain, 3), U(GetSwapChain, 3), U(GetNumberOfSwapChains, 1), M(Reset, D_Reset, 2),
         M(Present, D_Present, 5), M(GetBackBuffer, D_GetBackBuffer, 5), M(GetRasterStatus, D_GetRasterStatus, 3),
         U(SetDialogBoxMode, 2), M(SetGammaRamp, D_SetGammaRamp, 4), U(GetGammaRamp, 3),
-        M(CreateTexture, D_CreateTexture, 9), U(CreateVolumeTexture, 10), U(CreateCubeTexture, 8),
+        M(CreateTexture, D_CreateTexture, 9), U(CreateVolumeTexture, 10), M(CreateCubeTexture, D_CreateCubeTexture, 8),
         M(CreateVertexBuffer, D_CreateVertexBuffer, 7), M(CreateIndexBuffer, D_CreateIndexBuffer, 7),
         M(CreateRenderTarget, D_CreateRenderTarget, 9), M(CreateDepthStencilSurface, D_CreateDepthStencilSurface, 9),
         M(UpdateSurface, D_UpdateSurface, 5), M(UpdateTexture, D_UpdateTexture, 3),
@@ -1152,6 +1245,14 @@ static void init_vtables(void) {
         M(AddDirtyRect, Res_Nop, 2),
     };
     vt_texture = x2_com_vtable("IDirect3DTexture9", tex, sizeof tex / sizeof *tex);
+    static const X2Method cube[] = {
+        RESOURCE, M(GetType, C_GetType, 1), M(SetLOD, Res_Zero, 2), M(GetLOD, Res_Zero, 1),
+        M(GetLevelCount, T_GetLevelCount, 1), M(SetAutoGenFilterType, Res_Nop, 2), U(GetAutoGenFilterType, 1),
+        M(GenerateMipSubLevels, Res_Nop, 1), M(GetLevelDesc, C_GetLevelDesc, 3),
+        M(GetCubeMapSurface, C_GetCubeMapSurface, 4), M(LockRect, C_LockRect, 6), M(UnlockRect, C_UnlockRect, 3),
+        M(AddDirtyRect, Res_Nop, 3),
+    };
+    vt_cube = x2_com_vtable("IDirect3DCubeTexture9", cube, sizeof cube / sizeof *cube);
 
     static const X2Method vb[] = {
         RESOURCE, M(GetType, Res_Zero, 1), M(Lock, B_Lock, 5), M(Unlock, B_Unlock, 1), M(GetDesc, B_GetDesc, 2),

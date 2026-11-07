@@ -160,7 +160,7 @@ static u32 create_file(const char *name, u32 acc, u32 disp) {
     return x2_handle_new(H_FILE, f, close_file);
 }
 
-static void utf16_to_utf8(const u16 *w, char *out, size_t n) {
+void x2_wstr_utf8(const u16 *w, char *out, size_t n) {
     size_t k = 0;
     for (; w && *w && k + 4 < n; w++) {
         u32 ch = *w;
@@ -180,10 +180,32 @@ static void utf16_to_utf8(const u16 *w, char *out, size_t n) {
     out[k] = 0;
 }
 
+u32 x2_put_wstr(u32 g, const char *s, u32 cap) {
+    u32 k = 0;
+    if (!cap) return 0;
+    for (const u8 *p = (const u8 *)s; *p && k + 1 < cap;) {
+        u32 ch = *p++;
+        if (ch >= 0xF0 && p[0] && p[1] && p[2]) { ch = (ch & 7) << 18 | (p[0] & 0x3F) << 12 | (p[1] & 0x3F) << 6 | (p[2] & 0x3F); p += 3; }
+        else if (ch >= 0xE0 && p[0] && p[1]) { ch = (ch & 15) << 12 | (p[0] & 0x3F) << 6 | (p[1] & 0x3F); p += 2; }
+        else if (ch >= 0xC0 && p[0]) { ch = (ch & 31) << 6 | (p[0] & 0x3F); p += 1; }
+        if (ch >= 0x10000) {
+            if (k + 2 >= cap) break;
+            ch -= 0x10000;
+            WR16(g + 2 * k++, (u16)(0xD800 + (ch >> 10)));
+            ch = 0xDC00 + (ch & 0x3FF);
+        }
+        WR16(g + 2 * k++, (u16)ch);
+    }
+    WR16(g + 2 * k, 0);
+    return k;
+}
+/* a wide string argument as UTF-8 */
+#define WARG(i, buf) (x2_wstr_utf8(GWSTR(ARG(i)), buf, sizeof buf), buf)
+
 static void CreateFileA(X2Cpu *c) { RET(create_file(GSTR(ARG(0)), ARG(1), ARG(4))); }
 static void CreateFileW(X2Cpu *c) {
     char n[1024];
-    utf16_to_utf8(GWSTR(ARG(0)), n, sizeof n);
+    x2_wstr_utf8(GWSTR(ARG(0)), n, sizeof n);
     RET(create_file(n, ARG(1), ARG(4)));
 }
 
@@ -343,11 +365,15 @@ static void DuplicateHandle(X2Cpu *c) {
     RET(1);
 }
 
-static void DeleteFileA(X2Cpu *c) {
+static bool delete_file(const char *guest) {
     char hp[1024];
-    x2_host_path(GSTR(ARG(0)), hp, sizeof hp);
-    RET(unlink(hp) == 0);
+    x2_host_path(guest, hp, sizeof hp);
+    if (unlink(hp) == 0) return true;
+    x2_set_last_error(errno_to_win());
+    return false;
 }
+static void DeleteFileA(X2Cpu *c) { RET(delete_file(GSTR(ARG(0)))); }
+static void DeleteFileW(X2Cpu *c) { char n[1024]; RET(delete_file(WARG(0, n))); }
 static void MoveFileA(X2Cpu *c) {
     char a[1024], b[1024];
     x2_host_path(GSTR(ARG(0)), a, sizeof a);
@@ -375,6 +401,7 @@ static void PathFileExistsA(X2Cpu *c) {
     RET(access(hp, F_OK) == 0);
 }
 static void GetDriveTypeA(X2Cpu *c) { RET(3); /* DRIVE_FIXED */ }
+static void GetDriveTypeW(X2Cpu *c) { RET(3); }
 static void GetDiskFreeSpaceExA(X2Cpu *c) {
     u64 free_bytes = 8ull << 30, total = 64ull << 30;
     struct statvfs vs;
@@ -387,6 +414,7 @@ static void GetDiskFreeSpaceExA(X2Cpu *c) {
     if (ARG(3)) WR64(ARG(3), free_bytes);
     RET(1);
 }
+static void GetDiskFreeSpaceExW(X2Cpu *c) { GetDiskFreeSpaceExA(c); } /* the path is not used */
 
 static void GetCurrentDirectoryA(X2Cpu *c) {
     const char *cwd = "C:\\game";
@@ -394,14 +422,17 @@ static void GetCurrentDirectoryA(X2Cpu *c) {
     if (ARG(0) > n) strcpy(GSTR(ARG(1)), cwd);
     RET(ARG(0) > n ? n : n + 1);
 }
-static void GetFullPathNameA(X2Cpu *c) {
-    const char *in = GSTR(ARG(0));
-    char out[1024];
-    if (isalpha((unsigned char)in[0]) && in[1] == ':') snprintf(out, sizeof out, "%s", in);
-    else snprintf(out, sizeof out, "C:\\game\\%s", in);
+/* "C:\game\..." for a relative path; returns the length */
+static u32 full_path(const char *in, char *out, size_t n) {
+    if (isalpha((unsigned char)in[0]) && in[1] == ':') snprintf(out, n, "%s", in);
+    else snprintf(out, n, "C:\\game\\%s", in);
     for (char *p = out; *p; p++)
         if (*p == '/') *p = '\\';
-    u32 n = (u32)strlen(out);
+    return (u32)strlen(out);
+}
+static void GetFullPathNameA(X2Cpu *c) {
+    char out[1024];
+    u32 n = full_path(GSTR(ARG(0)), out, sizeof out);
     if (ARG(1) > n) {
         strcpy(GSTR(ARG(2)), out);
         if (ARG(3)) {
@@ -413,12 +444,34 @@ static void GetFullPathNameA(X2Cpu *c) {
         RET(n + 1);
     }
 }
+static void GetFullPathNameW(X2Cpu *c) {
+    char in[1024], out[1024];
+    full_path(WARG(0, in), out, sizeof out);
+    u32 buf = ARG(2), cap = ARG(1);
+    /* length in UTF-16 units: convert into scratch first */
+    u32 tmp = x2_galloc(2 * 1024);
+    u32 n = x2_put_wstr(tmp, out, 1024);
+    if (cap > n) {
+        memcpy(X2P(buf), X2P(tmp), 2 * (n + 1));
+        if (ARG(3)) {
+            u32 file = buf;
+            for (u32 i = 0; i < n; i++)
+                if (RD16(buf + 2 * i) == '\\') file = buf + 2 * (i + 1);
+            WR32(ARG(3), file);
+        }
+        RET(n);
+    } else {
+        RET(n + 1);
+    }
+    x2_heap_free(x2_process_heap(), tmp);
+}
 
 /* ---- FindFirstFile -------------------------------------------------------- */
 typedef struct {
     DIR *d;
     char dir[1024];
     char pattern[256];
+    bool wide; /* WIN32_FIND_DATAW */
 } Find;
 
 static void close_find(X2Handle *h) {
@@ -437,7 +490,7 @@ static bool find_next(Find *f, u32 data) {
         snprintf(full, sizeof full, "%s/%s", f->dir, e->d_name);
         struct stat st;
         if (stat(full, &st)) continue;
-        memset(X2P(data), 0, 320);
+        memset(X2P(data), 0, f->wide ? 592 : 320);
         WR32(data, S_ISDIR(st.st_mode) ? 0x10 : 0x80);
         u64 ft = unix_to_filetime(st.st_mtime);
         WR64(data + 4, ft);
@@ -445,31 +498,34 @@ static bool find_next(Find *f, u32 data) {
         WR64(data + 20, ft);
         WR32(data + 28, (u32)((u64)st.st_size >> 32));
         WR32(data + 32, (u32)st.st_size);
-        snprintf(GSTR(data + 44), 260, "%s", e->d_name);
+        if (f->wide) x2_put_wstr(data + 44, e->d_name, 260);
+        else snprintf(GSTR(data + 44), 260, "%s", e->d_name);
         return true;
     }
     return false;
 }
 
-static void FindFirstFileA(X2Cpu *c) {
+static u32 find_first(const char *guest, u32 data, bool wide) {
     char hp[1024];
-    x2_host_path(GSTR(ARG(0)), hp, sizeof hp);
+    x2_host_path(guest, hp, sizeof hp);
     Find *f = calloc(1, sizeof *f);
+    f->wide = wide;
     char *s = strrchr(hp, '/');
     snprintf(f->pattern, sizeof f->pattern, "%s", s ? s + 1 : hp);
     if (s) *s = 0;
     snprintf(f->dir, sizeof f->dir, "%s", s ? hp : ".");
     if (!strcmp(f->pattern, "*.*")) strcpy(f->pattern, "*");
     f->d = opendir(f->dir);
-    if (!f->d || !find_next(f, ARG(1))) {
+    if (!f->d || !find_next(f, data)) {
         if (f->d) closedir(f->d);
         free(f);
         x2_set_last_error(ERROR_FILE_NOT_FOUND);
-        RET(INVALID_HANDLE);
-        return;
+        return INVALID_HANDLE;
     }
-    RET(x2_handle_new(H_FIND, f, close_find));
+    return x2_handle_new(H_FIND, f, close_find);
 }
+static void FindFirstFileA(X2Cpu *c) { RET(find_first(GSTR(ARG(0)), ARG(1), false)); }
+static void FindFirstFileW(X2Cpu *c) { char n[1024]; RET(find_first(WARG(0, n), ARG(1), true)); }
 static void FindNextFileA(X2Cpu *c) {
     X2Handle *h = x2_handle_get(ARG(0), H_FIND);
     if (!h || !find_next(h->obj, ARG(1))) {
@@ -479,7 +535,18 @@ static void FindNextFileA(X2Cpu *c) {
     }
     RET(1);
 }
+static void FindNextFileW(X2Cpu *c) { FindNextFileA(c); } /* the handle remembers the layout */
 static void FindClose(X2Cpu *c) { RET(x2_handle_close(ARG(0))); }
+
+static void GetFileTime(X2Cpu *c) {
+    struct stat st;
+    int fd = fd_of(ARG(0));
+    if (fd < 0 || fstat(fd, &st)) { x2_set_last_error(6); RET(0); return; }
+    u64 ft = unix_to_filetime(st.st_mtime);
+    for (int i = 1; i <= 3; i++)
+        if (ARG(i)) WR64(ARG(i), ft);
+    RET(1);
+}
 
 /* ---- console --------------------------------------------------------------- */
 static void WriteConsoleA(X2Cpu *c) {
@@ -558,6 +625,13 @@ const X2Hle x2_hle_k32_file[] = {
     {"FindFirstFileA", FindFirstFileA, 2},
     {"FindNextFileA", FindNextFileA, 2},
     {"FindClose", FindClose, 1},
+    {"DeleteFileW", DeleteFileW, 1},
+    {"GetDriveTypeW", GetDriveTypeW, 1},
+    {"GetDiskFreeSpaceExW", GetDiskFreeSpaceExW, 4},
+    {"GetFullPathNameW", GetFullPathNameW, 4},
+    {"FindFirstFileW", FindFirstFileW, 2},
+    {"FindNextFileW", FindNextFileW, 2},
+    {"GetFileTime", GetFileTime, 4},
     {"WriteConsoleA", WriteConsoleA, 5},
     {"WriteConsoleW", WriteConsoleW, 5},
     {"GetConsoleMode", GetConsoleMode, 2},

@@ -13,6 +13,7 @@ typedef struct {
     int ps_in_usage[16], ps_in_index[16];
     uint32_t samplers_used;
     int samp_type[16];
+    int const_count;                /* float constants read: c0 .. c(const_count-1); all with relative addressing */
 } Sm3Info;
 
 /* Translates D3D9 shader tokens to GLSL. Returns false (with err) when the

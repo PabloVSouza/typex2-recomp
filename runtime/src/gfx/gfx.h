@@ -61,6 +61,8 @@ void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, ui
 /* render target allocated at scale x (w, h); viewports and scissors on it are scaled to match */
 void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool render_target,
                                uint32_t scale);
+/* cube map; uploads address face f (+X -X +Y -Y +Z -Z), level l as level (f << 4 | l) */
+void gfx_texture_create_cube(GfxId id, enum GfxFormat fmt, uint32_t size, uint32_t levels);
 void gfx_texture_upload(GfxId id, uint32_t level, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data,
                         uint32_t pitch);
 void gfx_texture_destroy(GfxId id);
@@ -73,6 +75,8 @@ void gfx_shader_destroy(GfxId id);
 /* D3DVERTEXELEMENT9 array (8 bytes each) terminated by D3DDECL_END */
 void gfx_decl_create(GfxId id, const void *elements, uint32_t count);
 void gfx_set_consts(bool pixel, uint32_t start, const float *v, uint32_t count4);
+/* integer constants (count ivec4s) or boolean constants (count ints) */
+void gfx_set_consts_ib(bool pixel, bool boolean, uint32_t start, const int32_t *v, uint32_t count);
 void gfx_clear(uint32_t flags, uint32_t color, float z, uint32_t stencil, const GfxState *st);
 /* prim: D3DPRIMITIVETYPE; count = primitive count */
 void gfx_draw(const GfxState *st, uint32_t prim, uint32_t start, uint32_t count, bool indexed, int32_t base_vertex,

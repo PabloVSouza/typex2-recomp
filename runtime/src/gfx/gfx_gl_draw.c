@@ -1,6 +1,8 @@
 /* GL backend: shaders, programs, vertex declarations, render state, draws. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "../core.h"
 #include "gfx.h"
@@ -19,14 +21,17 @@
 void gfx_gl_bind_target(const GfxState *st);
 u32 gfx_gl_target_scale(const GfxState *st);
 GLuint gfx_gl_texture(GfxId id);
+GLenum gfx_gl_texture_target(GfxId id); /* GL_TEXTURE_2D or GL_TEXTURE_CUBE_MAP */
 GLuint gfx_gl_buffer(GfxId id);
 const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size);
 
 /* ---- shaders -------------------------------------------------------------------- */
 typedef struct {
-    GLuint sh;
+    GLuint sh, sh_var[4]; /* pixel shader variants by VAR_* bits (index 0 unused) */
     Sm3Info info;
-    bool ok;
+    bool ok;      /* translated (and, once compiled, compiled) */
+    bool pixel;
+    GfxId id;
     u32 serial;
     char *glsl;  /* translated source, printed by F9 captures */
     bool logged; /* source already printed in a capture */
@@ -62,19 +67,52 @@ void gfx_gl_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
         ok = sm3_to_glsl(tok, n, GLES_FLAG, &glsl, &s->info, err, sizeof err);
     }
     if (!ok) x2_log("gfx: shader %u translation incomplete: %s", id, err);
-    char log[2048] = "";
-    s->sh = glsl ? compile(pixel ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER, glsl, log, sizeof log) : 0;
-    s->ok = s->sh != 0;
-    if (!s->ok) x2_log("gfx: shader %u failed to compile:\n%s\n--- source ---\n%s", id, log, glsl ? glsl : "");
-    else if (x2_log_level >= 3 || (getenv("X2_SHADERLOG") && (u32)atoi(getenv("X2_SHADERLOG")) == id)) x2_log("gfx: shader %u:\n%s", id, glsl);
+    /* compiled on first use (see shader_compile): games create far more shaders
+     * than a scene draws with, and a cached program binary needs none of them */
+    s->id = id;
+    s->pixel = pixel;
+    s->ok = glsl != NULL;
+    if (s->ok && (x2_log_level >= 3 || (getenv("X2_SHADERLOG") && (u32)atoi(getenv("X2_SHADERLOG")) == id))) x2_log("gfx: shader %u:\n%s", id, glsl);
     s->glsl = glsl;
     shaders[id] = s;
+}
+/* pixel shader variants, compiled on demand: VAR_ATEST compiles the alpha test
+ * in (a shader that may discard loses early depth and Mali's hidden-surface
+ * removal), VAR_MEDIUMP makes the maths fp16 */
+enum { VAR_ATEST = 1, VAR_MEDIUMP = 2 };
+static bool shader_compile(Shader *s, u32 var) {
+    GLuint *sh = var ? &s->sh_var[var & 3] : &s->sh;
+    if (*sh) return true;
+    char log[2048] = "";
+    if (var) {
+        /* the variant's defines right after the #version line */
+        char defs[64];
+        int dn = snprintf(defs, sizeof defs, "%s%s", var & VAR_ATEST ? "#define X2_ATEST 1\n" : "",
+                          var & VAR_MEDIUMP ? "#define X2_MEDIUMP 1\n" : "");
+        const char *nl = strchr(s->glsl, '\n');
+        size_t at = nl ? (size_t)(nl - s->glsl) + 1 : 0, n = strlen(s->glsl);
+        char *src = malloc(n + (size_t)dn + 1);
+        memcpy(src, s->glsl, at);
+        memcpy(src + at, defs, (size_t)dn);
+        memcpy(src + at + dn, s->glsl + at, n - at + 1);
+        *sh = compile(GL_FRAGMENT_SHADER, src, log, sizeof log);
+        free(src);
+    } else {
+        *sh = compile(s->pixel ? GL_FRAGMENT_SHADER : GL_VERTEX_SHADER, s->glsl, log, sizeof log);
+    }
+    if (!*sh) {
+        x2_log("gfx: shader %u failed to compile:\n%s\n--- source ---\n%s", s->id, log, s->glsl);
+        s->ok = false;
+    }
+    return *sh != 0;
 }
 
 void gfx_gl_shader_destroy(GfxId id) {
     Shader *s = id < MAX_IDS ? shaders[id] : NULL;
     if (!s) return;
     if (s->sh) glDeleteShader(s->sh);
+    for (int v = 1; v < 4; v++)
+        if (s->sh_var[v]) glDeleteShader(s->sh_var[v]);
     free(s->glsl);
     free(s);
     shaders[id] = NULL;
@@ -83,40 +121,148 @@ void gfx_gl_shader_destroy(GfxId id) {
 /* ---- programs ------------------------------------------------------------------- */
 typedef struct Prog {
     u32 vs_serial, ps_serial;
+    u32 var;
     GLuint prog;
-    GLint vs_c, ps_c, vp_fix, bgra, alpha_func, alpha_ref;
+    GLint vs_c, ps_c, vs_i, ps_i, vs_b, ps_b, vp_fix, bgra, alpha_func, alpha_ref;
+    GLsizei vs_count, ps_count; /* float constants the shaders read (uploaded per draw) */
     u32 const_version;
     struct Prog *next;
 } Prog;
 #define PROG_BUCKETS 1024
 static Prog *progs[PROG_BUCKETS];
 
-static Prog *get_program(Shader *vs, Shader *ps) {
-    u32 h = (vs->serial * 2654435761u ^ ps->serial) % PROG_BUCKETS;
+/* ---- program binary cache ------------------------------------------------------------
+ * Linked programs are saved as driver binaries (<dir>/<hash>.bin, hash of both
+ * GLSL sources and the driver identity) and loaded instead of compiling and
+ * linking on later runs: compiling a stage's shaders on first use stalled a
+ * frame for 200-700 ms on a Mali-G57. The front end sets the directory. */
+char gfx_gl_cache_dir[512];
+static u64 fnv1a(const char *s, u64 h) {
+    for (; *s; s++) h = (h ^ (u8)*s) * 0x100000001b3ull;
+    return (h ^ 0xff) * 0x100000001b3ull; /* separator */
+}
+static u64 program_key(const Shader *vs, const Shader *ps, u32 var) {
+    static u64 driver;
+    if (!driver) {
+        driver = fnv1a((const char *)glGetString(GL_RENDERER), 0xcbf29ce484222325ull);
+        driver = fnv1a((const char *)glGetString(GL_VERSION), driver);
+    }
+    u64 k = fnv1a(ps->glsl, fnv1a(vs->glsl, driver));
+    if (var & VAR_ATEST) k = fnv1a("X2_ATEST", k);
+    if (var & VAR_MEDIUMP) k = fnv1a("X2_MEDIUMP", k);
+    return k;
+}
+static bool program_load(GLuint pr, u64 key) {
+#ifdef GL_PROGRAM_BINARY_RETRIEVABLE_HINT
+    char path[640];
+    snprintf(path, sizeof path, "%s/%016llx.bin", gfx_gl_cache_dir, (unsigned long long)key);
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    u32 fmt = 0;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f) - 4;
+    fseek(f, 0, SEEK_SET);
+    void *data = n > 0 ? malloc((size_t)n) : NULL;
+    bool ok = data && fread(&fmt, 4, 1, f) == 1 && fread(data, 1, (size_t)n, f) == (size_t)n;
+    fclose(f);
+    if (ok) {
+        glProgramBinary(pr, (GLenum)fmt, data, (GLsizei)n);
+        GLint linked = 0;
+        glGetProgramiv(pr, GL_LINK_STATUS, &linked);
+        ok = linked != 0; /* a driver update invalidates binaries: compile again */
+    }
+    free(data);
+    return ok;
+#else
+    (void)pr; (void)key;
+    return false;
+#endif
+}
+static void program_save(GLuint pr, u64 key) {
+#ifdef GL_PROGRAM_BINARY_RETRIEVABLE_HINT
+    GLint n = 0;
+    glGetProgramiv(pr, GL_PROGRAM_BINARY_LENGTH, &n);
+    if (n <= 0) return;
+    void *data = malloc((size_t)n);
+    GLenum fmt = 0;
+    GLsizei got = 0;
+    glGetProgramBinary(pr, n, &got, &fmt, data);
+    char path[640], tmp[660];
+    snprintf(path, sizeof path, "%s/%016llx.bin", gfx_gl_cache_dir, (unsigned long long)key);
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = got > 0 ? fopen(tmp, "wb") : NULL;
+    if (f) {
+        u32 f32 = (u32)fmt;
+        bool ok = fwrite(&f32, 4, 1, f) == 1 && fwrite(data, 1, (size_t)got, f) == (size_t)got;
+        ok = fclose(f) == 0 && ok;
+        if (ok) rename(tmp, path); else remove(tmp);
+    }
+    free(data);
+#else
+    (void)pr; (void)key;
+#endif
+}
+
+static Prog *get_program(Shader *vs, Shader *ps, u32 var) {
+    u32 h = (vs->serial * 2654435761u ^ ps->serial ^ var * 0x9E37u) % PROG_BUCKETS;
     for (Prog *p = progs[h]; p; p = p->next)
-        if (p->vs_serial == vs->serial && p->ps_serial == ps->serial) return p->prog ? p : NULL;
+        if (p->vs_serial == vs->serial && p->ps_serial == ps->serial && p->var == var) return p->prog ? p : NULL;
     Prog *p = calloc(1, sizeof *p);
     p->vs_serial = vs->serial;
     p->ps_serial = ps->serial;
+    p->var = var;
     p->next = progs[h];
     progs[h] = p;
     GLuint pr = glCreateProgram();
-    glAttachShader(pr, vs->sh);
-    glAttachShader(pr, ps->sh);
-    glLinkProgram(pr);
-    GLint ok = 0;
-    glGetProgramiv(pr, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[1024];
-        glGetProgramInfoLog(pr, sizeof log, NULL, log);
-        x2_log("gfx: program link failed: %s", log);
-        glDeleteProgram(pr);
-        return NULL;
+    static int formats = -1;
+    if (formats < 0) {
+        formats = 0;
+#ifdef GL_NUM_PROGRAM_BINARY_FORMATS
+        glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS, &formats);
+#endif
+        if (gfx_gl_cache_dir[0] && !formats) x2_log("gfx: the driver has no program binary formats: no shader cache");
     }
+    bool cache = gfx_gl_cache_dir[0] != 0 && formats > 0;
+    u64 key = cache ? program_key(vs, ps, var) : 0;
+    static u32 hits, misses;
+    if (cache && program_load(pr, key)) {
+        hits++;
+    } else {
+        if (!shader_compile(vs, 0) || !shader_compile(ps, var)) {
+            glDeleteProgram(pr);
+            return NULL;
+        }
+#ifdef GL_PROGRAM_BINARY_RETRIEVABLE_HINT
+        if (cache) glProgramParameteri(pr, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+#endif
+        glAttachShader(pr, vs->sh);
+        glAttachShader(pr, var ? ps->sh_var[var] : ps->sh);
+        glLinkProgram(pr);
+        GLint ok = 0;
+        glGetProgramiv(pr, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[1024];
+            glGetProgramInfoLog(pr, sizeof log, NULL, log);
+            x2_log("gfx: program link failed: %s", log);
+            glDeleteProgram(pr);
+            return NULL;
+        }
+        if (cache) {
+            program_save(pr, key);
+            misses++;
+        }
+    }
+    if (cache && (hits + misses) % 64 == 0) x2_log("gfx: program cache: %u loaded, %u compiled", hits, misses);
     p->prog = pr;
+    p->vs_count = vs->info.const_count < GFX_VS_CONSTS ? vs->info.const_count : GFX_VS_CONSTS;
+    p->ps_count = ps->info.const_count < GFX_PS_CONSTS ? ps->info.const_count : GFX_PS_CONSTS;
     glUseProgram(pr);
     p->vs_c = glGetUniformLocation(pr, "vs_c");
     p->ps_c = glGetUniformLocation(pr, "ps_c");
+    p->vs_i = glGetUniformLocation(pr, "vs_i");
+    p->ps_i = glGetUniformLocation(pr, "ps_i");
+    p->vs_b = glGetUniformLocation(pr, "vs_b");
+    p->ps_b = glGetUniformLocation(pr, "ps_b");
     p->vp_fix = glGetUniformLocation(pr, "u_vp_fix");
     p->bgra = glGetUniformLocation(pr, "u_bgra_mask");
     p->alpha_func = glGetUniformLocation(pr, "u_alpha_func");
@@ -139,6 +285,15 @@ void gfx_gl_consts(bool pixel, u32 start, const float *v, u32 count) {
     if (start >= max) return;
     if (start + count > max) count = max - start;
     memcpy(pixel ? psc[start] : vsc[start], v, count * 16);
+    const_version++;
+}
+/* integer / boolean constants (D3D Set*ShaderConstantI / B), uploaded with the floats */
+static s32 vsi[16][4], psi[16][4], vsb[16], psb[16];
+void gfx_gl_consts_ib(bool pixel, bool boolean, u32 start, const int32_t *v, u32 count) {
+    if (start >= 16) return;
+    if (start + count > 16) count = 16 - start;
+    if (boolean) memcpy(pixel ? &psb[start] : &vsb[start], v, count * 4);
+    else memcpy(pixel ? psi[start] : vsi[start], v, count * 16);
     const_version++;
 }
 
@@ -425,9 +580,9 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     if (!draw_inited) draw_init();
     extern bool gfx_gl_drawlog;
     if (gfx_gl_drawlog)
-        x2_log("draw prim %u start %u count %u idx %d up %d / vs %u ps %u decl %u rt0 %u ds %u tex0 %u tex1 %u vb0 %u "
+        x2_log("draw prim %u start %u count %u idx %d up %d / vs %u ps %u decl %u rt0 %u rt1 %u ds %u tex0 %u tex1 %u vb0 %u "
                "stride %u / vp %.0f,%.0f %.0fx%.0f / blend %u %u-%u z %u cull %u atest %u cw %x",
-               prim, start, count, indexed, up_verts != NULL, st->vs, st->ps, st->decl, st->rt[0], st->ds, st->tex[0],
+               prim, start, count, indexed, up_verts != NULL, st->vs, st->ps, st->decl, st->rt[0], st->rt[1], st->ds, st->tex[0],
                st->tex[1], st->vb[0], st->vb_stride[0], st->vp.x, st->vp.y, st->vp.w, st->vp.h, st->rs[27], st->rs[19],
                st->rs[20], st->rs[7], st->rs[22], st->rs[15], st->rs[168]);
     Shader *vs = st->vs < MAX_IDS ? shaders[st->vs] : NULL;
@@ -438,7 +593,23 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         }
         return;
     }
-    Prog *pg = get_program(vs, ps);
+    /* the alpha test is a shader variant: a shader that may discard turns off
+     * early depth and hidden-surface removal on tile GPUs (Mali FPK), even when a
+     * uniform skips the discard */
+    u32 var = st->rs[15] && st->rs[25] != 8 /* ALWAYS */ ? VAR_ATEST : 0;
+    if (GLES_FLAG) {
+        /* fp16 pixel maths: 2.5-4% less GPU time in SSF4 fights, 10% in lighter
+         * scenes (Mali-G57), no visible difference in SSF4 or KOF XIII.
+         * X2_PS_MEDIUMP=0 turns it off; X2_AB_TEST=mediump alternates it (X2_AB) */
+        static int mp = -1;
+        if (mp < 0) {
+            const char *t = getenv("X2_AB_TEST"), *e = getenv("X2_PS_MEDIUMP");
+            mp = t && !strcmp(t, "mediump") ? 2 : e && !atoi(e) ? 0 : 1;
+        }
+        extern int gfx_gl_ab;
+        if (mp == 1 || (mp == 2 && !gfx_gl_ab)) var |= VAR_MEDIUMP;
+    }
+    Prog *pg = get_program(vs, ps, var);
     if (!pg) return;
     Decl *dc = st->decl < MAX_IDS ? decls[st->decl] : NULL;
     if (!dc) return;
@@ -446,8 +617,12 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     apply_state(st);
     glUseProgram(pg->prog);
     if (pg->const_version != const_version) {
-        if (pg->vs_c >= 0) glUniform4fv(pg->vs_c, GFX_VS_CONSTS, &vsc[0][0]);
-        if (pg->ps_c >= 0) glUniform4fv(pg->ps_c, GFX_PS_CONSTS, &psc[0][0]);
+        if (pg->vs_c >= 0 && pg->vs_count) glUniform4fv(pg->vs_c, pg->vs_count, &vsc[0][0]); /* only what the shader reads */
+        if (pg->ps_c >= 0 && pg->ps_count) glUniform4fv(pg->ps_c, pg->ps_count, &psc[0][0]);
+        if (pg->vs_i >= 0) glUniform4iv(pg->vs_i, 16, &vsi[0][0]);
+        if (pg->ps_i >= 0) glUniform4iv(pg->ps_i, 16, &psi[0][0]);
+        if (pg->vs_b >= 0) glUniform1iv(pg->vs_b, 16, vsb);
+        if (pg->ps_b >= 0) glUniform1iv(pg->ps_b, 16, psb);
         pg->const_version = const_version;
     }
     if (pg->vp_fix >= 0) glUniform4f(pg->vp_fix, 1.0f / st->vp.w, -1.0f / st->vp.h, 0, 0); /* D3D9 pixel centers: +0.5 px */ /* D3D9 pixel centers: +0.5 px */
@@ -486,7 +661,8 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     /* textures. Units the shader does not sample must not keep the render
      * target's texture bound: Mali treats that as a feedback hazard and resolves
      * it with copies on every draw (KOF XII ran at 3 fps). */
-    GLuint rt_tex = gfx_gl_texture(st->rt[0]);
+    GLuint rt_tex[4];
+    for (int i = 0; i < 4; i++) rt_tex[i] = st->rt[i] ? gfx_gl_texture(st->rt[i]) : 0;
     {
         /* uploads and texture creation bind on unit 0 outside this function */
         GLint cur = 0;
@@ -496,7 +672,8 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     }
     for (int i = 0; i < 16; i++) {
         if (!(ps->info.samplers_used & (1u << i))) {
-            if (rt_tex && unit_tex[i] == rt_tex) {
+            GLuint u = unit_tex[i];
+            if (u && (u == rt_tex[0] || u == rt_tex[1] || u == rt_tex[2] || u == rt_tex[3])) {
                 glActiveTexture(GL_TEXTURE0 + (GLenum)i);
                 glBindTexture(GL_TEXTURE_2D, 0);
                 unit_tex[i] = 0;
@@ -505,7 +682,8 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         }
         glActiveTexture(GL_TEXTURE0 + (GLenum)i);
         GLuint t = gfx_gl_texture(st->tex[i]);
-        glBindTexture(GL_TEXTURE_2D, t ? t : black_tex);
+        GLenum target = t ? gfx_gl_texture_target(st->tex[i]) : GL_TEXTURE_2D;
+        glBindTexture(target, t ? t : black_tex); /* a cube map binds to its own target */
         unit_tex[i] = t ? t : black_tex;
         glBindSampler((GLuint)i, get_sampler(st->samp[i]));
     }
@@ -676,4 +854,20 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             if (vs->info.vs_in_mask & (1u << l))
                 x2_log("  vs input v%d: usage %d/%d", l, vs->info.vs_in_usage[l], vs->info.vs_in_index[l]);
     }
+}
+
+/* program cache folder <base>/typex2-shaders/<game> (created); X2_SHADER_CACHE=0
+ * turns the cache off, X2_SHADER_CACHE=<dir> overrides the base */
+void gfx_gl_set_cache_dir(const char *base, const char *game) {
+    const char *e = getenv("X2_SHADER_CACHE");
+    if (e && !strcmp(e, "0")) return;
+    if (e && *e) base = e;
+    if (!base || !*base) return;
+    char dir[512];
+    snprintf(dir, sizeof dir, "%s/typex2-shaders/%s", base, game);
+    for (char *p = dir + 1; *p; p++)
+        if (*p == '/') { *p = 0; mkdir(dir, 0755); *p = '/'; }
+    mkdir(dir, 0755);
+    snprintf(gfx_gl_cache_dir, sizeof gfx_gl_cache_dir, "%s", dir);
+    x2_log("gfx: program cache in %s", dir);
 }
