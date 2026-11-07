@@ -6,10 +6,11 @@ or as a RetroArch/libretro core.
 
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
-Arcade Edition (`games/ssf4ae`) runs from boot through attract mode, coin,
-character select and fights, on macOS and in RetroArch on Android. Rendering is D3D9 →
-OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode and runtime HLSL both translated
-to GLSL).
+Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
+Android: 60 fps through attract mode, character select and most fights on a
+Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. Rendering is D3D9 →
+OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly and runtime HLSL
+all translated to GLSL).
 
 ## How it works
 
@@ -47,6 +48,8 @@ cmake --build build --target x2recomp
 build/recompiler/x2recomp "<game dir>/game.exe" games/kof12/gen
 cmake -S . -B build && cmake --build build
 ```
+
+Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`.
 
 This builds `build/x2-<game>` for every `games/<game>/gen` and the core
 `build/typex2_libretro.dylib` (`-DX2_LIBRETRO=OFF` / `-DX2_STANDALONE=OFF`
@@ -122,6 +125,9 @@ Running:
 * Video driver `gl` (OpenGL 3.3 core / GLES 3.2); Vulkan is not supported.
 * The game is clocked by RetroArch's frame loop, so pause, fast-forward and
   slow-motion work. No save states, rewind, run-ahead or reset.
+* One frame in flight: the guest computes frame N+1 while RetroArch shows
+  frame N, so guest work and GPU work each get a whole frame (one frame of
+  latency, as on the cabinet's D3D9 driver; `X2_PIPELINE=0` for lockstep).
 * One game per RetroArch session: guest threads cannot be torn down, so after
   closing content RetroArch must be restarted to load another game.
 * RetroPad: FinalBurn Neo's Neo Geo layout ("Modern" pad): Y B X A = A B C D
@@ -131,6 +137,29 @@ Running:
   RetroArch remaps apply on top, and work the same as with FBNeo: copy
   `remaps/FinalBurn Neo/FinalBurn Neo.rmp` to `remaps/Type X2/Type X2.rmp`
   (set `input_libretro_device_p1/p2 = "1"`) to share one layout.
+
+## Performance on Android (tile-based GPUs)
+
+What the renderer does for Mali-class GPUs, each measured on the tablet with
+`X2_AB` (both halves of the same run, since the game picks random stages):
+
+* **Alpha test in shader variants only**: a `discard` anywhere in a pixel
+  shader turns off early-Z and hidden-surface removal, so the alpha-test code
+  is compiled into a separate variant used only while `D3DRS_ALPHATESTENABLE`
+  is set (SSF4 fights: 15.0 → 11.6 ms GPU per frame).
+* **fp16 pixel shaders** (`precision mediump`, texture coordinates stay
+  highp): 2.5-4 % in fights, ~10 % in light scenes.
+* **RGB565 for opaque DXT1** where S3TC is missing: half the upload size and
+  memory.
+* **One frame in flight** in the core (above): the largest win; in heavy
+  scenes late frames went from 37-59 of 60 to 7-9.
+* **Thread priorities**: guest threads that ask for HIGHEST / TIME_CRITICAL
+  (SSF4's audio mixer) run on the big cores, so the main thread waits far
+  less on their locks.
+
+Tools for finding the next bottleneck: `X2_GPUTIME`, `X2_PACELOG`, `X2_PROF`
+(sampling profiler; the Android build keeps an unstripped `.sym` copy of the
+core to resolve it) and `X2_CSPROF` (lock contention), all below.
 
 ## Debugging switches (environment variables)
 

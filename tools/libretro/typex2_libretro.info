@@ -20,5 +20,5 @@ required_hw_api = "OpenGL Core >= 3.3 | OpenGL ES >= 3.2"
 savestate = "false"
 is_experimental = "true"
 
-notes = "Only games recompiled into this core run (see library list in the log). |One game per RetroArch session: restart RetroArch to switch games. |RetroPad: Y B X A = A B C D, Select = coin, L3 = test, R3 = service."
+notes = "Only games recompiled into this core run (see library list in the log). |One game per RetroArch session: restart RetroArch to switch games. |RetroPad: Y B X A = A B C D (FBNeo Neo Geo layout), Select = coin (hold 2 s: test menu). SSF4 AE: set X2_PAD in the game folder x2.env (see README)."
 description = "Runs statically recompiled Taito Type X2 arcade games (x86 PC hardware) natively. Each supported game is compiled into the core; the original game files are required."
