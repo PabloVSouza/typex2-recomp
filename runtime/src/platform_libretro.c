@@ -217,7 +217,7 @@ static void update_inputs(void) {
     bool test = ((p1 | p2) & X2_PAD_TEST) || held1 || held2;
     p1 &= (u16)~X2_PAD_TEST;
     p2 &= (u16)~X2_PAD_TEST;
-    test |= x2_script_input(gfx_frame_count(), &p1, &coin1); /* X2_INPUT (tests), see padmap.h */
+    test |= x2_script_input(gfx_frame_count(), &p1, &coin1, &p2, &coin2); /* X2_INPUT (tests), see padmap.h */
     jvs_set_inputs(test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 
@@ -413,6 +413,7 @@ EXPORT bool retro_load_game_special(unsigned type, const struct retro_game_info 
 EXPORT void retro_unload_game(void) {
     /* The guest stays parked in Present (no more clock ticks); see header. */
     running = false;
+    x2_park_all();
 }
 
 EXPORT void retro_reset(void) { msg("Type X2: reset is not supported", 180); }

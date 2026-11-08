@@ -120,7 +120,7 @@ bool x2_padmap_hold_test(int slot, bool coin_down) {
     return now - since[slot] >= X2_PAD_HOLD_SECONDS;
 }
 
-bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1) {
+bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1, uint16_t *p2, bool *coin2) {
     static const char *script;
     static bool init;
     if (!init) { script = getenv("X2_INPUT"); init = true; }
@@ -150,6 +150,17 @@ bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1) {
                 case 't': test = true; break;
                 case 'v': *p1 |= JVS_SERVICE; break;
                 case 'p': gfx_request_capture(); break; /* same as F9 */
-            }
+                /* player 2: the same keys in upper case */
+                case 'C': *coin2 = true; break;
+                case 'S': *p2 |= JVS_START; break;
+                case 'U': *p2 |= JVS_UP; break;
+                case 'D': *p2 |= JVS_DOWN; break;
+                case 'L': *p2 |= JVS_LEFT; break;
+                case 'R': *p2 |= JVS_RIGHT; break;
+                case 'A': *p2 |= JVS_B1; break;
+                case 'B': *p2 |= JVS_B2; break;
+                case 'X': *p2 |= JVS_B3; break;
+                case 'Y': *p2 |= JVS_B4; break;
+                }
     return test;
 }

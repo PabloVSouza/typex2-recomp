@@ -110,6 +110,7 @@ static void run(X2Cpu *c, u32 target, bool tail) {
     }
     Thunk *t = thunk_at(target);
     if (t) {
+        if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) x2_park_forever();
         if (!t->fn) x2_fatal("unimplemented import %s (called from %08x)", t->name, RD32(c->esp));
         if (x2_log_level >= 3) x2_log("-> %s from %08x (thread %u)", t->name, RD32(c->esp), x2_self ? x2_self->id : 0);
         bool held = x2_gil_on && x2_gil_held;
@@ -227,5 +228,14 @@ void x2_gil_yield(void) {
         pthread_mutex_unlock(&x2_gil);
         sched_yield();
         pthread_mutex_lock(&x2_gil);
+    }
+}
+
+bool x2_parked;
+void x2_park_all(void) { __atomic_store_n(&x2_parked, true, __ATOMIC_RELEASE); }
+void x2_park_forever(void) {
+    for (;;) {
+        struct timespec ts = {3600, 0};
+        nanosleep(&ts, NULL);
     }
 }

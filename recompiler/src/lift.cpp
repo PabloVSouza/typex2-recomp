@@ -245,13 +245,25 @@ const vector<NativeSig>& native_sigs() {
     static const vector<NativeSig> sigs = {
         // zlib 1.2.3 inflate_fast, MSVC /O2 (identical in KOF XII, XIII and XIII
         // Climax apart from the three error-message addresses)
-        {"zlib inflate_fast", "x2n_inflate_fast",
+        {"zlib inflate_fast",
+         "x2n_inflate_fast",
          {{0x000, "83ec3c535556578b4c24508b411c8b51048b58388b2983ed018d542afb895424148b710c8b49108bd12b54245483ee01"},
-          {0x41e, "c74118"}, {0x425, "c7021b000000"}, {0x431, "c74018"}, {0x44f, "c74018"}},
+          {0x41e, "c74118"},
+          {0x425, "c7021b000000"},
+          {0x431, "c74018"},
+          {0x44f, "c74018"}},
          {0x421, 0x434, 0x452}},
         // byte fill loop, unoptimised: for (; n; n--) *dst++ = *val (KOF XIII Climax)
-        {"byte fill", "x2n_fill8",
+        {"byte fill",
+         "x2n_fill8",
          {{0x000, "558beceb128b450c83e80189450c8b4d0883c101894d08837d0c00760c8b55088b45108a08880aebdc5dc3"}},
+         {}},
+        // BlazBlue CS sprite RLE expander (0x41f860): most of its load hitches
+        {"BlazBlue sprite RLE",
+         "x2n_bb_rle",
+         {{0x000, "83ec0c8b4424208b542418558b6c242c8d0c283bd1894c241c7f048954241c0faf44242885c0c7442404000000"
+                  "008944240c0f8e46010000538b5c2424565790396c24280f8e310100008b44244483f804750b8b4424208b08"
+                  "83c004eb1b83f8"}},
          {}},
     };
     return sigs;

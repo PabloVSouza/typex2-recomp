@@ -18,7 +18,7 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | The King of Fighters XIII | `kof13` | playable |
 | The King of Fighters XIII Climax | `kof13cl` | playable |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
-| BlazBlue Continuum Shift | `bbcs` | playable on macOS (opening movie, title, select, fights); Android untested |
+| BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 
 Not yet started: BlazBlue Calamity Trigger, KOF '98 Ultimate Match, KOF
 Maximum Impact Regulation A (the last two are likely Type X+, not X2).
@@ -107,6 +107,20 @@ Maximum Impact Regulation A (the last two are likely Type X+, not X2).
 * Black screen with draws happening: check `X2_DRAWLOG=<frame>` for an empty
   vertex shader body, the target pixel after each draw, and whether the game
   copies its scene with `StretchRect`.
+* Load hitches on the tablet: `X2_PACELOG=1` shows "guest work max" (game
+  thread) vs "replay max" (renderer); `X2_PROF=2` plus
+  `profsym`-style symbolisation against `build-android/*.so.sym` names the hot
+  functions. Hot guest routines can become natives (`lift.cpp` native_sigs,
+  `natives.c`); verify them with pixel-identical screenshots of a
+  deterministic screen (title, character select).
+* A "host fault ... at 0x0" in a Java thread (e.g. `queued-work-looper`) on
+  Android is ART's implicit null check, not a crash: the handler in `boot.c`
+  only reports faults whose pc is in our module or a guest thread.
+* The tablet runs throttled while locked or asleep (`mWakefulness=Dozing`):
+  check `dumpsys window | grep isKeyguardShowing` before measuring, and raise
+  `settings system screen_off_timeout` for long runs (restore it after).
+* `X2_INPUT` drives player 2 with upper-case keys (C S U D L R A B X Y), e.g.
+  to test versus mode.
 
 ## Android test device
 

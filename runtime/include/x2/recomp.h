@@ -86,6 +86,7 @@ void x2_unimpl(X2Cpu *c, u32 va, const char *text) __attribute__((noreturn));
 /* native replacements x2recomp emits for recognised library routines (natives.c) */
 void x2n_inflate_fast(X2Cpu *c, u32 msg_far, u32 msg_dist, u32 msg_len);
 void x2n_fill8(X2Cpu *c);
+void x2n_bb_rle(X2Cpu *c);
 void x2_trap(X2Cpu *c, u32 va, const char *why);
 void x2_cpuid(X2Cpu *c);
 void x2_rdtsc(X2Cpu *c);

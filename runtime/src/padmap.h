@@ -40,5 +40,6 @@ bool x2_padmap_hold_test(int slot, bool coin_down);
 /* X2_INPUT="frame:keys,frame:keys,..." scripted input for automated tests; each
  * entry holds from its frame until the next. keys: c coin 1, s start 1, u d l r,
  * a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), v service, t test (returned),
- * p draw capture, '-' nothing. Adds to *p1 / *coin1. */
-bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1);
+ * p draw capture, '-' nothing; upper case C S U D L R A B X Y act for player 2.
+ * Adds to *p1 / *coin1 / *p2 / *coin2. */
+bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1, uint16_t *p2, bool *coin2);

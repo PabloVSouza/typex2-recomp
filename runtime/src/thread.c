@@ -372,7 +372,8 @@ static void run_x2_calls(X2Thread *t) {
         if (getenv("X2_POKE")) {
             char pk[4096];
             snprintf(pk, sizeof pk, "%s", getenv("X2_POKE"));
-            for (char *e = strtok(pk, ";"); e; e = strtok(NULL, ";")) {
+            char *sv = NULL;
+            for (char *e = strtok_r(pk, ";", &sv); e; e = strtok_r(NULL, ";", &sv)) {
                 u32 a = (u32)strtoul(e, NULL, 16);
                 char *h = strchr(e, ':');
                 for (h = h ? h + 1 : NULL; h && h[0] && h[1]; h += 2) {
@@ -383,7 +384,8 @@ static void run_x2_calls(X2Thread *t) {
         }
         char spec[1024];
         snprintf(spec, sizeof spec, "%s", getenv("X2_CALL"));
-        for (char *call = strtok(spec, ";"); call; call = strtok(NULL, ";")) {
+        char *sv2 = NULL;
+        for (char *call = strtok_r(spec, ";", &sv2); call; call = strtok_r(NULL, ";", &sv2)) {
             u32 fn = (u32)strtoul(call, NULL, 16);
             u32 args[8];
             int n = 0;

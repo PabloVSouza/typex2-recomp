@@ -5,6 +5,8 @@
  *
  * --frames N    exit after N retro_run calls (with --shot: save the last frame)
  * --hidden      no visible window (automated runs)
+ * --exit        end like RetroArch: retro_deinit, then exit() with its cleanup
+ *               (default: _Exit, since guest threads cannot be joined)
  * Keys: arrows, Z X C V = Y B X A (game A B C D), 1 = Start, 5 = Select (coin),
  *       F2 = L3 (test), F1 = R3 (service), Esc = quit. */
 #include <SDL3/SDL.h>
@@ -167,11 +169,13 @@ int main(int argc, char **argv) {
     }
     long max_frames = 0;
     const char *shot = NULL;
-    bool hidden = false;
+    bool hidden = false, full_exit = false;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = atol(argv[++i]);
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
         else if (!strcmp(argv[i], "--hidden")) hidden = true;
+        else if (!strcmp(argv[i], "--exit"))
+            full_exit = true;
     }
     void *core = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!core) { fprintf(stderr, "dlopen: %s\n", dlerror()); return 1; }
@@ -187,12 +191,16 @@ int main(int argc, char **argv) {
     bool (*retro_load_game_fn)(const struct retro_game_info *);
     void (*retro_run_fn)(void);
     void (*retro_unload_game_fn)(void);
-    SYM(retro_set_environment) SYM(retro_set_video_refresh) SYM(retro_set_audio_sample)
-    SYM(retro_set_audio_sample_batch) SYM(retro_set_input_poll) SYM(retro_set_input_state) SYM(retro_init)
-    SYM(retro_get_system_info) SYM(retro_get_system_av_info) SYM(retro_load_game) SYM(retro_run)
-    SYM(retro_unload_game)
+    void (*retro_deinit_fn)(void);
+    SYM(retro_set_environment)
+    SYM(retro_set_video_refresh) SYM(retro_set_audio_sample) SYM(retro_set_audio_sample_batch) SYM(retro_set_input_poll)
+        SYM(retro_set_input_state) SYM(retro_init) SYM(retro_get_system_info) SYM(retro_get_system_av_info)
+            SYM(retro_load_game) SYM(retro_run) SYM(retro_unload_game) SYM(retro_deinit)
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) { fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1; }
+                if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        return 1;
+    }
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -261,6 +269,10 @@ int main(int argc, char **argv) {
         }
     }
     retro_unload_game_fn();
+    if (full_exit) {
+        retro_deinit_fn();
+        exit(0);
+    }
     fflush(NULL);
     _Exit(0); /* guest threads cannot be joined */
 }

@@ -361,6 +361,7 @@ typedef struct {
     bool cube;        /* GL_TEXTURE_CUBE_MAP: levels per face */
     bool rgb565;      /* DXT1 without punch-through alpha, decoded to 16 bits (no S3TC) */
     bool dxt_seen;    /* storage for a CPU-decoded DXT1 texture has been chosen */
+    bool bgra_swizzle; /* BGRA8 stored as uploaded (B in red): sampling swaps it back */
 } Tex;
 typedef struct {
     GLuint buf;
@@ -399,12 +400,15 @@ static void gl_format(u32 f, GLint *ifmt, GLenum *fmt, GLenum *type, bool *swizz
     }
 }
 
-static void apply_swizzle(GLenum target, u32 f) {
-    /* D3D samples A8 as (0,0,0,a), L8 as (l,l,l,1), A8L8 as (l,l,l,a); BGRA is swapped on upload */
+static void apply_swizzle(GLenum target, u32 f, bool bgra) {
+    /* D3D samples A8 as (0,0,0,a), L8 as (l,l,l,1), A8L8 as (l,l,l,a). BGRA8 textures
+     * keep the game's byte order (no CPU swap per upload) and swap on sampling;
+     * render targets are written by GL in RGBA order and need no swizzle. */
     GLint sw[4] = {GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA};
     if (f == GFX_FMT_A8) { sw[0] = sw[1] = sw[2] = GL_ZERO; sw[3] = GL_RED; }
     if (f == GFX_FMT_L8) { sw[0] = sw[1] = sw[2] = GL_RED; sw[3] = GL_ONE; }
     if (f == GFX_FMT_A8L8) { sw[0] = sw[1] = sw[2] = GL_RED; sw[3] = GL_GREEN; }
+    if (bgra) sw[0] = GL_BLUE, sw[2] = GL_RED;
     if (f == GFX_FMT_BGRX8) sw[3] = GL_ONE;
     glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, sw[0]);
     glTexParameteri(target, GL_TEXTURE_SWIZZLE_G, sw[1]);
@@ -552,7 +556,8 @@ static void do_tex_create(const TexCreate *k) {
     glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)k->levels - 1);
     glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    apply_swizzle(target, k->fmt);
+    t->bgra_swizzle = !k->rt && (k->fmt == GFX_FMT_BGRA8 || k->fmt == GFX_FMT_BGRX8);
+    apply_swizzle(target, k->fmt, t->bgra_swizzle);
     if (k->rt) {
         glGenFramebuffers(1, &t->fbo);
         t->fbo_nbuf = 1;
@@ -613,7 +618,7 @@ static void do_tex_upload(const TexUpload *k) {
     } else {
         u32 bw, bpp = fmt_block_bytes(t->fmt, &bw);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(k->pitch / bpp));
-        if (bgra) {
+        if (bgra && !t->bgra_swizzle) {
             /* swap B and R into a temporary: GLES has no GL_BGRA upload */
             u32 n = k->bytes / 4;
             u32 *sw = malloc(k->bytes);
@@ -1191,6 +1196,12 @@ void gfx_gl_dump_texture(GfxId id) {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t->tex, 0);
     glReadPixels(0, 0, (GLsizei)t->w, (GLsizei)t->h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    if (t->bgra_swizzle) /* stored in the game's BGRA order */
+        for (size_t i = 0; i < (size_t)t->w * t->h; i++) {
+            u8 r = px[4 * i];
+            px[4 * i] = px[4 * i + 2];
+            px[4 * i + 2] = r;
+        }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteFramebuffers(1, &fbo);
 #endif

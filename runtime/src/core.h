@@ -124,6 +124,12 @@ void x2_exit_process(u32 code) __attribute__((noreturn));
 /* set by front ends that must not end the host process (libretro): called by
  * ExitProcess instead of _exit; the calling guest thread is parked afterwards */
 extern void (*x2_exit_hook)(u32 code);
+/* Session over (libretro unload): guest threads block at their next import
+ * call, since they cannot be stopped, and later host faults end the process
+ * quietly instead of crashing during the frontend's exit. */
+extern bool x2_parked;
+void x2_park_all(void);
+void x2_park_forever(void);
 /* boot.c: load <dir>/game.exe for `game` and start its main thread */
 X2Thread *x2_boot(const X2GameTables *game, const char *dir);
 void x2_load_env_file(const char *dir);

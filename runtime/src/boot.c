@@ -1,7 +1,13 @@
 /* Game startup shared by every front end (desktop/Android executable in
  * main.c, libretro core in platform_libretro.c). */
+#include <dlfcn.h>
 #include <execinfo.h>
+#include <pthread.h>
 #include <signal.h>
+#include <sys/ucontext.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +41,7 @@ static struct sigaction prev_segv, prev_bus;
 static void on_fault(int sig, siginfo_t *si, void *uc) {
     uintptr_t a = (uintptr_t)si->si_addr;
     if (x2_mem && a >= (uintptr_t)x2_mem && a < (uintptr_t)x2_mem + X2_GUEST_SPACE) {
+        if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) _exit(0); /* session over, see below */
         if (x2_self) x2_trace_dump(x2_self, 48);
         if (x2_self && x2_self->cpu.host_fn) fprintf(stderr, "[x2] inside host function %s\n", x2_self->cpu.host_fn);
         void *gbt[48];
@@ -43,10 +50,48 @@ static void on_fault(int sig, siginfo_t *si, void *uc) {
         backtrace_symbols_fd(gbt, gn, 2);
         x2_fatal("signal %d: guest memory fault at guest address %08x", sig, (u32)(a - (uintptr_t)x2_mem));
     }
-    void *bt[32];
-    int n = backtrace(bt, 32);
-    fprintf(stderr, "[x2] host fault (signal %d at %p) backtrace:\n", sig, si->si_addr);
-    backtrace_symbols_fd(bt, n, 2);
+    /* the faulting pc and its caller (the backtrace stops at the signal frame) */
+    uintptr_t pc = 0, lr = 0;
+#if defined(__aarch64__) && defined(__linux__)
+    pc = (uintptr_t)((ucontext_t *)uc)->uc_mcontext.pc, lr = (uintptr_t)((ucontext_t *)uc)->uc_mcontext.regs[30];
+#elif defined(__aarch64__) && defined(__APPLE__)
+    pc = (uintptr_t)((ucontext_t *)uc)->uc_mcontext->__ss.__pc,
+    lr = (uintptr_t)((ucontext_t *)uc)->uc_mcontext->__ss.__lr;
+#endif
+    /* Faults in other code are not ours to report: Android's runtime, for one,
+     * turns SIGSEGV in Java code into NullPointerExceptions. Pass them on
+     * silently. */
+    Dl_info self, at;
+    bool ours = !pc || x2_self ||
+                (dladdr((void *)on_fault, &self) && dladdr((void *)pc, &at) && at.dli_fbase == self.dli_fbase);
+    if (ours) {
+        void *bt[32];
+        int n = backtrace(bt, 32);
+        char tname[32] = "?";
+#ifdef __linux__
+        prctl(PR_GET_NAME, tname, 0, 0, 0);
+#else
+        pthread_getname_np(pthread_self(), tname, sizeof tname);
+#endif
+        fprintf(stderr, "[x2] host fault (signal %d at %p) in thread \"%s\"%s backtrace:\n", sig, si->si_addr, tname,
+                x2_self ? " (guest thread)" : "");
+        for (int k = 0; k < 2; k++) {
+            uintptr_t a2 = k ? lr : pc;
+            Dl_info di;
+            if (a2 && dladdr((void *)a2, &di) && di.dli_fname)
+                fprintf(stderr, "[x2]   %s %p = %s+0x%lx (%s)\n", k ? "lr" : "pc", (void *)a2, di.dli_fname,
+                        (unsigned long)(a2 - (uintptr_t)di.dli_fbase), di.dli_sname ? di.dli_sname : "?");
+            else
+                fprintf(stderr, "[x2]   %s %p\n", k ? "lr" : "pc", (void *)a2);
+        }
+        backtrace_symbols_fd(bt, n, 2);
+        if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) {
+            /* the frontend is tearing the process down around guest threads
+             * that cannot be stopped: end quietly rather than crash */
+            fprintf(stderr, "[x2] fault after the session ended: exiting\n");
+            _exit(0);
+        }
+    }
     struct sigaction *prev = sig == SIGBUS ? &prev_bus : &prev_segv;
     if (prev->sa_flags & SA_SIGINFO) {
         if (prev->sa_sigaction) { prev->sa_sigaction(sig, si, uc); return; }

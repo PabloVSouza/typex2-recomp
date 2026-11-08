@@ -161,3 +161,58 @@ void x2n_fill8(X2Cpu *c) {
     }
     c->esp += 4; /* ret */
 }
+
+/* BlazBlue CS sprite RLE expander, stdcall (10 args, ret 0x28):
+ *   (src, dst, dst_rows, dst_w, h, w, y0, x0, dst_bpp, src_bpp)
+ * src holds runs of { colour (src_bpp bytes), length byte } covering a w x h
+ * image; each run fills pixels of the dst_w-wide destination at (x0, y0),
+ * clipped to dst_rows rows and dst_w columns. Fills use the game's 32-bit /
+ * 16-bit loops or memset by dst_bpp; follows the original's control flow
+ * exactly (including how a run is split at row and clip edges). */
+void x2n_bb_rle(X2Cpu *c) {
+    u32 a = c->esp + 4;
+    u32 src = g32(a), dst = g32(a + 4);
+    s32 rows = (s32)g32(a + 8), dst_w = (s32)g32(a + 12), h = (s32)g32(a + 16), w = (s32)g32(a + 20);
+    s32 y0 = (s32)g32(a + 24), x0 = (s32)g32(a + 28), dbpp = (s32)g32(a + 32), sbpp = (s32)g32(a + 36);
+    if (rows > h + y0) rows = h + y0;
+    s32 total = h * w, done = 0, y = y0;
+    if (total > 0 && w != 0) {
+        while (rows > y) {
+            u32 colour;
+            if (sbpp == 4)
+                colour = g32(src), src += 4;
+            else if (sbpp == 2)
+                colour = g16(src), src += 2;
+            else
+                colour = *X2P(src), src += 1;
+            s32 run = *X2P(src);
+            src += 1;
+            for (s32 k = 0; k < run && rows > y;) {
+                s32 x = (k + done) % w + x0;
+                y = (k + done) / w + y0;
+                s32 n;
+                if (x < dst_w) {
+                    u32 d = (u32)((y * dst_w + x) * dbpp) + dst;
+                    s32 rem = run - k, to_edge = dst_w - x, to_row = w - x + x0;
+                    n = rem < to_edge && rem < to_row ? rem : (to_edge < to_row ? to_edge : to_row);
+                    if (dbpp == 4) {
+                        u32 *p = (u32 *)X2P(d);
+                        for (s32 i = 0; i < n; i++) memcpy(p + i, &colour, 4);
+                    } else if (dbpp == 2) {
+                        u16 v = (u16)colour, *p = (u16 *)X2P(d);
+                        for (s32 i = 0; i < n; i++) memcpy(p + i, &v, 2);
+                    } else if (n > 0) {
+                        memset(X2P(d), (int)(colour & 0xFF), (size_t)n);
+                    }
+                } else {
+                    n = w - x + x0; /* past the right edge: skip to the end of the source row */
+                }
+                k += n;
+            }
+            done += run;
+            if (done >= total) break;
+        }
+    }
+    c->eax = c->ecx = c->edx = 0;
+    c->esp += 4 + 0x28; /* ret 0x28 */
+}

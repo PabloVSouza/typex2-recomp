@@ -554,7 +554,7 @@ static void update_inputs(void) {
     pad_test |= x2_padmap_hold_test(1, pads[1] && SDL_GetGamepadButton(pads[1], SDL_GAMEPAD_BUTTON_BACK));
     p1 &= (u16)~X2_PAD_TEST;
     p2 &= (u16)~X2_PAD_TEST;
-    bool script_test = x2_script_input(gfx_frame_count(), &p1, &coin1); /* X2_INPUT, see padmap.h */
+    bool script_test = x2_script_input(gfx_frame_count(), &p1, &coin1, &p2, &coin2); /* X2_INPUT, see padmap.h */
     jvs_set_inputs(k[SDL_SCANCODE_F2] || script_test || touch_test || pad_test ? JVS_SYS_TEST : 0, p1, p2, coin1, coin2);
 }
 

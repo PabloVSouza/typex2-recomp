@@ -10,7 +10,7 @@ Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
 Android: 60 fps through attract mode, character select and most fights on a
 Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
-Shift (`games/bbcs`) is playable on macOS (opening movie, title, character
+Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening movie, title, character
 select, fights). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9
 shader bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
 translated to GLSL).
@@ -168,6 +168,12 @@ What the renderer does for Mali-class GPUs, each measured on the tablet with
 * **Thread priorities**: guest threads that ask for HIGHEST / TIME_CRITICAL
   (SSF4's audio mixer) run on the big cores, so the main thread waits far
   less on their locks.
+* **Loading hitches**: BGRA8 textures upload in the game's byte order and
+  swap channels when sampled (texture swizzle) instead of on the CPU;
+  `UpdateTexture` uploads straight from the source; hot guest routines get
+  native replacements (zlib, BlazBlue's sprite RLE expander, see
+  `lift.cpp` / `natives.c`). BlazBlue's worst transition spike went from
+  ~430 ms to ~230 ms; fights hold 60 fps.
 
 Tools for finding the next bottleneck: `X2_GPUTIME`, `X2_PACELOG`, `X2_PROF`
 (sampling profiler; the Android build keeps an unstripped `.sym` copy of the
@@ -191,7 +197,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
 | `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
-| `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture) |
+| `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture; upper case C S U D L R A B X Y = player 2) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
