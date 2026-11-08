@@ -598,7 +598,18 @@ static void D_UpdateTexture(X2Cpu *c) {
     if (!s || !d) { RET(D3DERR_INVALIDCALL); return; }
     for (u32 l = 0; l < s->levels && l < d->levels; l++) {
         Surface *ss = (Surface *)x2_com_get(s->surf[l]), *ds = (Surface *)x2_com_get(d->surf[l]);
-        if (ss && ds) copy_surface_rect(ss, 0, 0, ss->w, ss->h, ds, 0, 0);
+        if (!ss || !ds) continue;
+        if (ss->fmt == ds->fmt && ss->w == ds->w && ss->h == ds->h && ds->tex) {
+            /* the destination is D3DPOOL_DEFAULT, which the game cannot lock:
+             * upload straight from the source instead of copying the whole
+             * level into the destination's memory first (and diffing it) */
+            gfx_texture_upload(ds->tex, ds->level, 0, 0, ss->w, ss->h, X2P(ss->mem), ss->pitch);
+            free(ds->shadow);
+            ds->shadow = NULL;
+            ds->flushes = 0;
+        } else {
+            copy_surface_rect(ss, 0, 0, ss->w, ss->h, ds, 0, 0);
+        }
     }
     RET(D3D_OK);
 }
