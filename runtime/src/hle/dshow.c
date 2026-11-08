@@ -1,13 +1,11 @@
-/* DirectShow filter graph emulation (CLSID_FilterGraph).
+/* DirectShow filter graph emulation (CLSID_FilterGraph), backed by FFmpeg
+ * (video.h).
  *
- * KOF XII plays its WMV movies through a graph: RenderFile, swap the default
- * "Video Renderer" for its own renderer filter, connect pins, Run, then wait
- * for EC_COMPLETE through IMediaEvent / IMediaPosition.
- *
- * Current behaviour: every graph operation succeeds and Run() completes the
- * movie immediately (EC_COMPLETE), so the game moves on. Real playback needs a
- * WMV/WMA decoder pushing samples into the game's renderer filter; the graph
- * object keeps the file name for that. */
+ * KOF XII renders movies through a SampleGrabber the graph feeds; SSF4 plays
+ * audio-only streams; BlazBlue CS adds its own renderer filter (the SDK's
+ * texture renderer), which AddFilter joins to the graph and Render connects
+ * to our stand-in output pin; a guest thread then pushes RGB24 samples into
+ * its IMemInputPin. EC_COMPLETE is signalled when the decoder runs out. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,6 +37,11 @@ struct Graph {
     char file[512];
     X2Video *video;
     bool completed;
+    /* a renderer filter the game implements itself (AddFilter of a guest object) */
+    u32 renderer, renderer_in, mem_in; /* its IBaseFilter, input IPin, IMemInputPin */
+    u32 sample, sample_buf, sample_size, frame_w, frame_h, frame_bpp;
+    double sample_time;
+    bool connected, feeding;
 };
 
 static u32 vt_graph, vt_control, vt_event, vt_position, vt_audio, vt_video, vt_step, vt_filter, vt_pin, vt_enum;
@@ -110,7 +113,13 @@ static void GB_AddFilter(X2Cpu *c) {
                 if (x2_guest_call(c, guest_method(en, EP_NextSlot), 4, en, 1, out, out + 4) != S_OK || !RD32(out))
                     break;
                 u32 pin = RD32(out);
-                x2_guest_call(c, guest_method(pin, BF_Release), 1, pin);
+                Graph *g = graph_of(ARG(0));
+                if (!g->renderer_in) { /* a renderer's first pin is its input: keep it */
+                    g->renderer = filter;
+                    g->renderer_in = pin;
+                } else {
+                    x2_guest_call(c, guest_method(pin, BF_Release), 1, pin);
+                }
             }
             x2_guest_call(c, guest_method(en, BF_Release), 1, en);
         }
@@ -123,9 +132,13 @@ static void GB_FindFilterByName(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
     ret_iface(c, g->filter_vr, ARG(2));
 }
+static void open_file(Graph *g, u32 wname);
 static void GB_RenderFile(X2Cpu *c) {
-    Graph *g = graph_of(ARG(0));
-    u16 *w = GWSTR(ARG(1));
+    open_file(graph_of(ARG(0)), ARG(1));
+    RET(S_OK);
+}
+static void open_file(Graph *g, u32 wname) {
+    u16 *w = GWSTR(wname);
     size_t k = 0;
     for (; w && w[k] && k + 1 < sizeof g->file; k++) g->file[k] = w[k] < 0x80 ? (char)w[k] : '?';
     g->file[k] = 0;
@@ -137,15 +150,209 @@ static void GB_RenderFile(X2Cpu *c) {
     if (g->video) {
         int vw, vh;
         x2_video_info(g->video, &vw, &vh, &g->duration);
-        X2_TRACE("dshow: RenderFile(\"%s\") %.1fs", g->file, g->duration);
+        X2_TRACE("dshow: open \"%s\" %.1fs", g->file, g->duration);
     } else {
-        x2_log("dshow: RenderFile(\"%s\") - no decoder, completing immediately", g->file);
+        x2_log("dshow: \"%s\" - no decoder, completing immediately", g->file);
     }
-    RET(S_OK);
 }
 static void GB_AddSourceFilter(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
+    open_file(g, ARG(1));
     ret_iface(c, g->filter_vr, ARG(3));
+}
+
+/* ---- feeding a guest renderer filter ----------------------------------------------
+ * Games built on the DirectShow base classes (e.g. the SDK's texture renderer)
+ * add their own renderer and let Render() connect the decoder to it. Here our
+ * stand-in output pin connects to the renderer's input pin with an RGB24 (or
+ * RGB32) VIDEOINFOHEADER type, and a guest thread pushes decoded frames into
+ * its IMemInputPin::Receive as bottom-up DIBs, like the WMV decoder would. */
+enum { PIN_ReceiveConnection = 4, PIN_EndOfStream = 14, MIP_Receive = 6, BF_Stop = 4, BF_Pause = 5, BF_Run = 6 };
+static const u8 iid_mem_input_pin[16] = {0x9d, 0x68, 0xa8, 0x56, 0xd4, 0x0a, 0xce, 0x11,
+                                         0xb0, 0x3a, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70};
+static void put_guid(u32 at, u32 d1, u16 d2, u16 d3, const u8 d4[8]) {
+    WR32(at, d1);
+    WR16(at + 4, d2);
+    WR16(at + 6, d3);
+    memcpy(X2P(at + 8), d4, 8);
+}
+
+/* IMediaSample over one guest buffer */
+static Graph *sample_graph;
+static void MS_QueryInterface(X2Cpu *c) {
+    u32 iid = RD32(ARG(1));
+    if (iid == 0x56a8689au || iid == 0) { /* IMediaSample / IUnknown; not IMediaSample2 */
+        WR32(ARG(2), ARG(0));
+        RET(S_OK);
+        return;
+    }
+    WR32(ARG(2), 0);
+    RET(E_NOINTERFACE);
+}
+static void S_GetPointer(X2Cpu *c) {
+    WR32(ARG(1), sample_graph->sample_buf);
+    RET(S_OK);
+}
+static void S_GetSize(X2Cpu *c) { RET(sample_graph->sample_size); }
+static void S_GetTime(X2Cpu *c) {
+    u64 t = (u64)(sample_graph->sample_time * 1e7);
+    WR64(ARG(1), t);
+    WR64(ARG(2), t + 333333);
+    RET(S_OK);
+}
+static void S_True(X2Cpu *c) { RET(S_OK); }
+static void S_False(X2Cpu *c) { RET(1); }
+static void S_GetLength(X2Cpu *c) { RET(sample_graph->sample_size); }
+static void S_GetMediaType(X2Cpu *c) {
+    WR32(ARG(1), 0);
+    RET(1);
+} /* S_FALSE: unchanged */
+static void S_NoMediaTime(X2Cpu *c) { RET(0x80040251u); } /* VFW_E_MEDIA_TIME_NOT_SET */
+
+static bool connect_renderer(X2Cpu *c, Graph *g) {
+    int w, h;
+    double d;
+    x2_video_info(g->video, &w, &h, &d);
+    static const u8 video4[8] = {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71};
+    static const u8 rgb4[8] = {0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70};
+    static const u8 vinfo4[8] = {0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a};
+    u32 mt = x2_galloc(72 + 1088);
+    u32 vih = mt + 72;
+    for (int bpp = 24; bpp <= 32; bpp += 8) {
+        u32 pitch = ((u32)w * (u32)bpp / 8 + 3) & ~3u, size = pitch * (u32)h;
+        memset(X2P(mt), 0, 72 + 1088);
+        put_guid(mt, 0x73646976u, 0x0000, 0x0010, video4);                              /* MEDIATYPE_Video */
+        put_guid(mt + 16, bpp == 24 ? 0xe436eb7du : 0xe436eb7eu, 0x524f, 0x11ce, rgb4); /* RGB24 / RGB32 */
+        WR32(mt + 32, 1);                                                               /* fixed-size samples */
+        WR32(mt + 40, size);
+        put_guid(mt + 44, 0x05589f80u, 0xc356, 0x11ce, vinfo4); /* FORMAT_VideoInfo */
+        WR32(mt + 64, 88 + 1024);                               /* cbFormat (room for a VIDEOINFO) */
+        WR32(mt + 68, vih);
+        WR32(vih + 8, (u32)w), WR32(vih + 12, (u32)h);  /* rcSource */
+        WR32(vih + 24, (u32)w), WR32(vih + 28, (u32)h); /* rcTarget */
+        WR64(vih + 40, 333333);                         /* AvgTimePerFrame */
+        WR32(vih + 48, 40);                             /* BITMAPINFOHEADER */
+        WR32(vih + 52, (u32)w);
+        WR32(vih + 56, (u32)h); /* positive: bottom-up */
+        WR16(vih + 60, 1);
+        WR16(vih + 62, (u16)bpp);
+        WR32(vih + 68, size);
+        u32 hr = x2_guest_call(c, guest_method(g->renderer_in, PIN_ReceiveConnection), 3, g->renderer_in, g->pin, mt);
+        if (hr == S_OK) {
+            g->frame_w = (u32)w, g->frame_h = (u32)h, g->frame_bpp = (u32)bpp;
+            g->sample_size = size;
+            g->sample_buf = x2_galloc(size);
+            break;
+        }
+        x2_log("dshow: the game's renderer rejects RGB%d (%08x)", bpp, hr);
+    }
+    x2_heap_free(0, mt);
+    if (!g->sample_buf) return false;
+    u32 out = x2_galloc(4);
+    WR32(out, 0);
+    u32 iid = x2_galloc(16);
+    memcpy(X2P(iid), iid_mem_input_pin, 16);
+    x2_guest_call(c, guest_method(g->renderer_in, 0), 3, g->renderer_in, iid, out);
+    g->mem_in = RD32(out);
+    x2_heap_free(0, out);
+    x2_heap_free(0, iid);
+    if (!g->mem_in) return false;
+    static u32 vt_sample;
+    if (!vt_sample) {
+        static const X2Method m[] = {
+            {"QueryInterface", MS_QueryInterface, 3},
+            {"AddRef", x2_com_AddRef, 1},
+            {"Release", x2_com_Release, 1},
+            {"GetPointer", S_GetPointer, 2},
+            {"GetSize", S_GetSize, 1},
+            {"GetTime", S_GetTime, 3},
+            {"SetTime", S_True, 3},
+            {"IsSyncPoint", S_True, 1},
+            {"SetSyncPoint", S_True, 2},
+            {"IsPreroll", S_False, 1},
+            {"SetPreroll", S_True, 2},
+            {"GetActualDataLength", S_GetLength, 1},
+            {"SetActualDataLength", S_True, 2},
+            {"GetMediaType", S_GetMediaType, 2},
+            {"SetMediaType", S_True, 2},
+            {"IsDiscontinuity", S_False, 1},
+            {"SetDiscontinuity", S_True, 2},
+            {"GetMediaTime", S_NoMediaTime, 3},
+            {"SetMediaTime", S_True, 3},
+        };
+        vt_sample = x2_com_vtable("IMediaSample", m, sizeof m / sizeof *m);
+    }
+    X2ComObj *s = calloc(1, sizeof *s);
+    s->immortal = true;
+    g->sample = x2_com_wrap(s, vt_sample, "IMediaSample");
+    g->connected = true;
+    x2_log("dshow: \"%s\" -> the game's renderer, %ux%u RGB%u", g->file, g->frame_w, g->frame_h, g->frame_bpp);
+    return true;
+}
+
+static inline u8 clamp8(int v) { return (u8)(v < 0 ? 0 : v > 255 ? 255 : v); }
+/* YV12 -> bottom-up BGR(X) rows, BT.601 video range */
+static void yv12_to_dib(const u8 *yv12, u32 w, u32 h, u32 bpp, u8 *dst) {
+    const u8 *Y = yv12, *V = Y + (size_t)w * h, *U = V + (size_t)(w / 2) * (h / 2);
+    u32 bytes = bpp / 8, pitch = (w * bytes + 3) & ~3u;
+    for (u32 y = 0; y < h; y++) {
+        u8 *row = dst + (size_t)(h - 1 - y) * pitch;
+        for (u32 x = 0; x < w; x++) {
+            int c = 298 * (Y[(size_t)y * w + x] - 16), d = U[(size_t)(y / 2) * (w / 2) + x / 2] - 128,
+                e = V[(size_t)(y / 2) * (w / 2) + x / 2] - 128;
+            u8 *p = row + (size_t)x * bytes;
+            p[0] = clamp8((c + 516 * d + 128) >> 8);
+            p[1] = clamp8((c - 100 * d - 208 * e + 128) >> 8);
+            p[2] = clamp8((c + 409 * e + 128) >> 8);
+            if (bytes == 4) p[3] = 255;
+        }
+    }
+}
+
+/* guest thread: deliver the current frame every 1/30 s while the graph runs */
+static void feeder(X2Cpu *c) {
+    Graph *g = sample_graph;
+    size_t n = (size_t)g->frame_w * g->frame_h * 3 / 2;
+    u8 *yv12 = malloc(n);
+    bool eos = false;
+    while (g->feeding) {
+        struct timespec ts = {0, 33333333};
+        nanosleep(&ts, NULL);
+        if (!g->running || !g->video) continue;
+        if (x2_video_finished(g->video)) {
+            if (!eos) x2_guest_call(c, guest_method(g->renderer_in, PIN_EndOfStream), 1, g->renderer_in);
+            eos = true;
+            continue;
+        }
+        eos = false;
+        if (!x2_video_frame_yv12(g->video, yv12, n)) continue;
+        yv12_to_dib(yv12, g->frame_w, g->frame_h, g->frame_bpp, X2P(g->sample_buf));
+        g->sample_time = x2_video_position(g->video);
+        x2_guest_call(c, guest_method(g->mem_in, MIP_Receive), 2, g->mem_in, g->sample);
+    }
+    free(yv12);
+    RET(0);
+}
+
+static void GB_Render(X2Cpu *c) {
+    Graph *g = graph_of(ARG(0));
+    if (g->renderer_in && g->video && !g->connected) connect_renderer(c, g);
+    RET(S_OK);
+}
+
+/* the graph's state changes reach the game's renderer, which only accepts
+ * samples while running */
+static void renderer_state(X2Cpu *c, Graph *g, int slot) {
+    if (!g->connected) return;
+    if (slot == BF_Run)
+        x2_guest_call(c, guest_method(g->renderer, BF_Run), 3, g->renderer, 0, 0);
+    else
+        x2_guest_call(c, guest_method(g->renderer, slot), 1, g->renderer);
+    if (slot != BF_Stop && !g->feeding) {
+        g->feeding = true;
+        sample_graph = g;
+        x2_thread_create(x2_thunk_new("dshow feeder", feeder, 1), 0, 0, false);
+    }
 }
 
 /* ---- playback-end monitor ------------------------------------------------------- */
@@ -184,6 +391,7 @@ static void MC_Run(X2Cpu *c) {
     if (g->video) {
         x2_video_set_volume(g->video, g->volume <= -10000 ? 0.f : powf(10.f, (float)g->volume / 2000.f));
         x2_video_run(g->video);
+        renderer_state(c, g, BF_Run);
     } else {
         g->position_s = g->duration;
         pthread_mutex_lock(&graphs_lock);
@@ -195,12 +403,14 @@ static void MC_Run(X2Cpu *c) {
 static void MC_Pause(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
     if (g->video) x2_video_pause(g->video);
+    renderer_state(c, g, BF_Pause);
     RET(S_OK);
 }
 static void MC_Stop(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
     g->running = false;
     if (g->video) x2_video_pause(g->video);
+    renderer_state(c, g, BF_Stop);
     RET(S_OK);
 }
 static void MC_GetState(X2Cpu *c) {
@@ -361,7 +571,17 @@ static void EP_Next(X2Cpu *c) {
     if (ARG(3)) WR32(ARG(3), 1);
     RET(S_OK);
 }
-static void P_ConnectedTo(X2Cpu *c) { WR32(ARG(1), 0); RET(0x80040209u); /* VFW_E_NOT_CONNECTED */ }
+static void P_ConnectedTo(X2Cpu *c) {
+    Graph *g = graph_of(ARG(0));
+    if (g->connected) {
+        x2_guest_call(c, guest_method(g->renderer_in, BF_AddRef), 1, g->renderer_in);
+        WR32(ARG(1), g->renderer_in);
+        RET(S_OK);
+        return;
+    }
+    WR32(ARG(1), 0);
+    RET(0x80040209u); /* VFW_E_NOT_CONNECTED */
+}
 static void P_QueryDirection(X2Cpu *c) { WR32(ARG(1), 1); RET(S_OK); /* PINDIR_OUTPUT */ }
 static void P_QueryPinInfo(X2Cpu *c) {
     Graph *g = graph_of(ARG(0));
@@ -592,11 +812,22 @@ u32 x2_dshow_create_filter(bool grabber, u32 iid) {
 static void init_vtables(void) {
     if (vt_graph) return;
     static const X2Method gb[] = {
-        TEAR_IUNKNOWN, M(AddFilter, GB_AddFilter, 3), M(RemoveFilter, Ok, 2), U(EnumFilters, 2),
-        M(FindFilterByName, GB_FindFilterByName, 3), M(ConnectDirect, Ok, 4), M(Reconnect, Ok, 2),
-        M(Disconnect, Ok, 2), M(SetDefaultSyncSource, Ok, 1), M(Connect, Ok, 3), M(Render, Ok, 2),
-        M(RenderFile, GB_RenderFile, 3), M(AddSourceFilter, GB_AddSourceFilter, 4), M(SetLogFile, Ok, 2),
-        M(Abort, Ok, 1), M(ShouldOperationContinue, Ok, 1),
+        TEAR_IUNKNOWN,
+        M(AddFilter, GB_AddFilter, 3),
+        M(RemoveFilter, Ok, 2),
+        U(EnumFilters, 2),
+        M(FindFilterByName, GB_FindFilterByName, 3),
+        M(ConnectDirect, Ok, 4),
+        M(Reconnect, Ok, 2),
+        M(Disconnect, Ok, 2),
+        M(SetDefaultSyncSource, Ok, 1),
+        M(Connect, Ok, 3),
+        M(Render, GB_Render, 2),
+        M(RenderFile, GB_RenderFile, 3),
+        M(AddSourceFilter, GB_AddSourceFilter, 4),
+        M(SetLogFile, Ok, 2),
+        M(Abort, Ok, 1),
+        M(ShouldOperationContinue, Ok, 1),
     };
     vt_graph = x2_com_vtable("IGraphBuilder", gb, sizeof gb / sizeof *gb);
     static const X2Method mc[] = {

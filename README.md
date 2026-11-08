@@ -10,8 +10,8 @@ Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
 Android: 60 fps through attract mode, character select and most fights on a
 Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
-Shift (`games/bbcs`) is playable on macOS (title, character select, fights);
-its opening movie is skipped. Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9
+Shift (`games/bbcs`) is playable on macOS (opening movie, title, character
+select, fights). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9
 shader bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
 translated to GLSL).
 
@@ -139,7 +139,13 @@ Running:
 * RetroPad: FinalBurn Neo's Neo Geo layout ("Modern" pad): Y B X A = A B C D
   (left, bottom, top, right), R2 = A+B, R = C+D, L2 = A+B+C, L = B+C+D; Start =
   start, Select = coin (hold 2 s: test menu). L3 / R3 are left free for
-  RetroArch hotkeys. `X2_PAD` changes it (below);
+  RetroArch hotkeys. Games with other panels get their own default, using all
+  eight buttons (top row Y X R1 L1, bottom row B A R2 L2):
+  SSF4 AE LP MP HP on Y X R1, LK MK HK on B A R2, L1 / L2 = three punches /
+  kicks; BlazBlue CS A B C on Y X R1, D on B, and its combinations
+  A = B+C (throw), R2 = A+B (barrier), L1 = A+B+C, L2 = A+B+C+D.
+  The input descriptors RetroArch shows use each game's button names.
+  `X2_PAD` changes it (below);
   RetroArch remaps apply on top, and work the same as with FBNeo: copy
   `remaps/FinalBurn Neo/FinalBurn Neo.rmp` to `remaps/Type X2/Type X2.rmp`
   (set `input_libretro_device_p1/p2 = "1"`) to share one layout.
@@ -184,7 +190,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
-| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d, 3 6 for the unused SHOT3/SHOT6, t test, v service, `-` for none); see `runtime/src/padmap.h` |
+| `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
@@ -217,19 +223,17 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 
 * SSF4 AE: link play is off (Winsock reports the network down; the build is the
   "stand-alone" one). Its six buttons are cabinet SHOT1-3 (LP MP HP) and SHOT4-6
-  (LK MK HK); on an 8-button stick whose rows are L1 Y X R1 / L2 B A R2 use
-  `X2_PAD=l1=a,west=c,north=3,r1=-,l2=b,south=d,east=6,r2=-`
-  in its `x2.env` (letters a-d are KOF's A-D, see `runtime/src/padmap.h`). The
+  (LK MK HK). Its default layout is per game (see RetroArch core above); on an
+  8-button stick whose rows are L1 Y X R1 / L2 B A R2 use
+  `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456` in its
+  `x2.env` (digits are cabinet SHOT1-6, see `runtime/src/padmap.h`). The
   opening movie's separate English audio track is missing from the dump.
 * BlazBlue CS: four buttons, cabinet SHOT1-4 = A B C D (its INPUT DEVICE
-  TEST names them BUTTON 1-4). The default (KOF) pad layout has no button 3
-  (C), so set `X2_PAD` in its `x2.env`: on a gamepad e.g.
-  `X2_PAD=west=a,north=c,east=3,south=b` (A left, B top, C right, D bottom);
-  for its "Type B" panel (A B C on top, D below) on an 8-button stick whose
-  rows are L1 Y X R1 / L2 B A R2,
-  `X2_PAD=l1=a,west=c,north=3,l2=b,r1=-,r2=-,south=-,east=-`. The opening
-  movie is not shown: the game renders it through its own DirectShow renderer
-  filter, which the graph joins but does not feed. Effects run without
+  TEST names them BUTTON 1-4), with a per-game default layout. On an 8-button
+  stick whose rows are L1 Y X R1 / L2 B A R2, its "Type B" panel (A B C on
+  top, D below A) is `X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234`.
+  The opening movie plays through the game's own DirectShow renderer filter
+  (RGB24 samples pushed into its input pin). Effects run without
   saving / restoring device state around Begin / End (the game does not rely
   on it); D3DX effect `Get*Array` / parameter blocks / `CloneEffect` are not
   implemented and stop with a named error if a game calls them.

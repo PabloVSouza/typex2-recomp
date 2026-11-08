@@ -73,6 +73,7 @@ typedef struct {
     unsigned nimports;
     const X2ImageInfo *image;
     const u32 *tls_callbacks;
+    const char *id; /* games/<id>, e.g. "kof12": per-game defaults (pad layout) */
 } X2GameTables;
 extern const X2GameTables *x2_game; /* the running game */
 

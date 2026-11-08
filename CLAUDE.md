@@ -18,7 +18,7 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | The King of Fighters XIII | `kof13` | playable |
 | The King of Fighters XIII Climax | `kof13cl` | playable |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
-| BlazBlue Continuum Shift | `bbcs` | playable on macOS (title, select, fights); opening movie skipped; Android untested |
+| BlazBlue Continuum Shift | `bbcs` | playable on macOS (opening movie, title, select, fights); Android untested |
 
 Not yet started: BlazBlue Calamity Trigger, KOF '98 Ultimate Match, KOF
 Maximum Impact Regulation A (the last two are likely Type X+, not X2).
@@ -129,7 +129,8 @@ S3TC, 2 big + 6 little cores, Android 16) with RetroArch
   `x2.env` and restore it afterwards (normally `X2_FPS=1` + the `X2_PAD`
   line).
 * The user's stick is 8-button with L1 / L2 leading each row; 6-button games
-  (SSF4) use `X2_PAD=l1=a,west=c,north=3,r1=-,l2=b,south=d,east=6,r2=-`.
+  (SSF4) use `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456`;
+  BlazBlue `X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234`.
 
 ## Style and lint
 

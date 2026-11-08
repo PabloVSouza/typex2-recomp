@@ -8,10 +8,14 @@
  * (Select / Back) held for X2_PAD_HOLD_SECONDS presses the cabinet's Test
  * switch.
  *
+ * Other games get their own default (x2_game->id): SSF4 AE punches on Y X R1,
+ * kicks on B A R2, L1 / L2 = three punches / kicks; BlazBlue CS A B C on
+ * Y X R1, D on B, A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+D.
+ *
  * X2_PAD overrides the map as "button=keys" pairs, e.g.
  *   X2_PAD=south=b,east=ab,west=d,north=cd,l1=c,r1=bcd,l2=a,r2=abc,l3=t
- * buttons: south east west north l1 r1 l2 r2 l3 r3; keys: any of a b c d (the
- * fight buttons), 3 6 (cabinet SHOT3 / SHOT6, unused by KOF), t (Test),
+ * buttons: south east west north l1 r1 l2 r2 l3 r3; keys: any of a b c d (KOF's
+ * A-D), 1-6 (cabinet SHOT1-6, any game), t (Test),
  * v (Service), or "-" for nothing. Positions are physical: south = bottom
  * face button (RetroPad B, Xbox A), east = right (RetroPad A), west = left
  * (RetroPad Y), north = top (RetroPad X). The letters are KOF's A-D, which sit

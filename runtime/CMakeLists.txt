@@ -156,7 +156,7 @@ function(x2_add_game target gen_dir)
     string(APPEND w "#define x2_${s} ${p}_${s}\n")
   endforeach()
   string(APPEND w "#include \"${gen_dir}/table.c\"\n")
-  string(APPEND w "const X2GameTables ${p} = {x2_func_table, x2_func_count, x2_import_table, x2_import_count, &x2_image, x2_tls_callbacks};\n")
+  string(APPEND w "const X2GameTables ${p} = {x2_func_table, x2_func_count, x2_import_table, x2_import_count, &x2_image, x2_tls_callbacks, \"${game}\"};\n")
   file(WRITE ${CMAKE_BINARY_DIR}/games/${p}.c.tmp "${w}")
   configure_file(${CMAKE_BINARY_DIR}/games/${p}.c.tmp ${CMAKE_BINARY_DIR}/games/${p}.c COPYONLY)
 
