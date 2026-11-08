@@ -192,12 +192,14 @@ int main(int argc, char **argv) {
     void (*retro_run_fn)(void);
     void (*retro_unload_game_fn)(void);
     void (*retro_deinit_fn)(void);
-    SYM(retro_set_environment)
-    SYM(retro_set_video_refresh) SYM(retro_set_audio_sample) SYM(retro_set_audio_sample_batch) SYM(retro_set_input_poll)
-        SYM(retro_set_input_state) SYM(retro_init) SYM(retro_get_system_info) SYM(retro_get_system_av_info)
-            SYM(retro_load_game) SYM(retro_run) SYM(retro_unload_game) SYM(retro_deinit)
+    // clang-format off: SYM() expands to a statement and has no trailing semicolon
+    SYM(retro_set_environment) SYM(retro_set_video_refresh) SYM(retro_set_audio_sample)
+    SYM(retro_set_audio_sample_batch) SYM(retro_set_input_poll) SYM(retro_set_input_state) SYM(retro_init)
+    SYM(retro_get_system_info) SYM(retro_get_system_av_info) SYM(retro_load_game) SYM(retro_run)
+    SYM(retro_unload_game) SYM(retro_deinit)
+    // clang-format on
 
-                if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
