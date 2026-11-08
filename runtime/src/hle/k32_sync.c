@@ -423,8 +423,17 @@ static void ResumeThread(X2Cpu *c) {
 }
 static void SuspendThread(X2Cpu *c) {
     X2Thread *t = thread_of(ARG(0));
-    if (t != x2_self) x2_log("SuspendThread on another thread is not supported; ignoring");
-    RET(0);
+    if (!t) {
+        RET(0xFFFFFFFFu);
+        return;
+    }
+    if (t != x2_self) {
+        static int warned;
+        if (!warned++) x2_log("SuspendThread on another thread is not supported; ignoring");
+        RET(0);
+        return;
+    }
+    RET((u32)x2_thread_suspend_self(t));
 }
 static void GetCurrentThread(X2Cpu *c) { RET(0xFFFFFFFEu); }
 static void GetCurrentThreadId(X2Cpu *c) { RET(x2_self->id); }

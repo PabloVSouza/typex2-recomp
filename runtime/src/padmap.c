@@ -24,6 +24,8 @@ static const struct {
 };
 
 static const char *game_id(void) { return x2_game && x2_game->id ? x2_game->id : ""; }
+/* BlazBlue CT and CS share the panel: buttons A B C D on cabinet SHOT1-4 */
+static bool is_blazblue(void) { return !strcmp(game_id(), "bbcs") || !strcmp(game_id(), "bbct"); }
 
 /* what each game calls cabinet SHOT1-6 (labels for frontends) */
 static const char *const *shot_names(void) {
@@ -31,7 +33,7 @@ static const char *const *shot_names(void) {
     static const char *const sf4[6] = {"LP", "MP", "HP", "LK", "MK", "HK"};
     static const char *const bb[6] = {"A", "B", "C", "D", "5", "6"};
     if (!strcmp(game_id(), "ssf4ae")) return sf4;
-    if (!strcmp(game_id(), "bbcs")) return bb;
+    if (is_blazblue()) return bb;
     return kof;
 }
 
@@ -66,7 +68,7 @@ const uint16_t *x2_padmap(void) {
             map[X2P_SOUTH] = JVS_B4, map[X2P_EAST] = JVS_B5, map[X2P_R2] = JVS_B6;
             map[X2P_L1] = JVS_B1 | JVS_B2 | JVS_B3;
             map[X2P_L2] = JVS_B4 | JVS_B5 | JVS_B6;
-        } else if (!strcmp(game_id(), "bbcs")) {
+        } else if (is_blazblue()) {
             /* the arcade "Type B" panel: A B C on the top row (Y X R1), D below A
              * (B); the rest are its common combinations: throw B+C (A),
              * barrier A+B (R2), rapid cancel A+B+C (L1), A+B+C+D (L2) */

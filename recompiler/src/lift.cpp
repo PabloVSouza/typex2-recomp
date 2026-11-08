@@ -135,7 +135,8 @@ string Lifter::branch_to(uint32_t t, const Function& fn) const {
         if (t <= cur_addr_) return format("X2_YIELD(); goto L_{:08x};", t);
         return format("goto L_{:08x};", t);
     }
-    if (disc_.funcs.count(t)) return format("{} f_{:08x}(c); return;", SPILL, t);
+    if (disc_.funcs.count(t))
+        return format("{}{} f_{:08x}(c); return;", flag_importers.count(t) ? "SPILLF(); " : "", SPILL, t);
     return format("{} x2_dispatch_jmp(c,0x{:x}u); return;", SPILL, t);
 }
 
@@ -225,6 +226,29 @@ void Lifter::analyze_flag_exports() {
         changed = false;
         for (auto& [f, t] : passes)
             if (flag_exporters.count(f) && flag_exporters.insert(t).second) changed = true;
+    }
+
+    // Flag importers: functions that test a flag before writing one, from their
+    // entry on (MSVC /RTC's _RTC_CheckEsp is "cmp esi, esp; call it; ... jne").
+    // Their direct call sites spill the flags and they reload them at entry.
+    for (auto &[entry, fn] : disc_.funcs) {
+        std::map<uint32_t, const Insn *> insns;
+        for (auto &[s, b] : fn.blocks)
+            for (auto *i : b.insns) insns[i->addr] = i;
+        unsigned written = 0;
+        for (uint32_t p = entry;;) {
+            auto it = insns.find(p);
+            if (it == insns.end() || !decode(p)) break;
+            const Insn *j = it->second;
+            FlagUse u = flag_use(*ci_);
+            if (u.test & ~written) {
+                flag_importers.insert(entry);
+                break;
+            }
+            written |= u.write;
+            if (written == F_ALL || j->kind != Kind::Seq) break;
+            p += j->size;
+        }
     }
 }
 
@@ -381,6 +405,7 @@ string Lifter::lift_function(const Function& fn) {
     }
 
     string s = format("void f_{:08x}(X2Cpu *c) {{\n  X2_ENTER(0x{:x}u);\n  LOCALS();\n", fn.entry, fn.entry);
+    if (flag_importers.count(fn.entry)) s += "  RELOADF();\n";
     if (body.empty() || body[0].va != fn.entry) s += format("  goto L_{:08x};\n", fn.entry);
     for (size_t k = 0; k < body.size(); k++) {
         auto& e = body[k];
@@ -452,8 +477,9 @@ Lifter::Out Lifter::lift(const Insn& ins, const Function& fn, const vector<uint3
                 return o;
             }
             if (disc_.funcs.count(ins.target))
-                o.lines = {push, format("{} f_{:08x}(c); {}{}", SPILL, ins.target, RELOAD,
-                                        flag_exporters.count(ins.target) ? " RELOADF();" : "")};
+                o.lines = {push,
+                           format("{}{} f_{:08x}(c); {}{}", flag_importers.count(ins.target) ? "SPILLF(); " : "", SPILL,
+                                  ins.target, RELOAD, flag_exporters.count(ins.target) ? " RELOADF();" : "")};
             else
                 o.lines = {push, format("{} x2_dispatch_call(c,0x{:x}u); {}", SPILL, ins.target, RELOAD)};
             return o;

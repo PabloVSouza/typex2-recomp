@@ -195,6 +195,19 @@ static void process_packet(const u8 *p, u32 n) {
         if (dn >= 2 && data[0] == 0xF1 && node_addr == 0) handle(data, dn);
         return;
     }
+    if (nodeb == 0x00 && !node_addr && dn >= 1) {
+        /* BlazBlue CT first talks to a controller on the I/O board itself
+         * (address 0, commands 0-8: e.g. 05 <u16 ms> set a timeout, 04, 08)
+         * before it starts JVS on the same port; it only checks the status
+         * byte and skips 1 or 2 report bytes per command. */
+        static const u8 report_len[9] = {1, 2, 2, 1, 1, 1, 2, 1, 2};
+        u8 out[8] = {0x01};
+        u32 o = 1, nrep = data[0] < 9 ? report_len[data[0]] : 1;
+        for (u32 k = 0; k < nrep; k++) out[o++] = 0x01;
+        X2_TRACE("jvs: I/O controller command %02x acknowledged", data[0]);
+        send_packet(out, o);
+        return;
+    }
     if (nodeb == 0x00 && node_addr) {
         /* KOF XII's "JVS Libraly 1.06" sends `01 02` to node 0 at the start of
          * every poll cycle and waits for a reply; acknowledge it. */

@@ -282,6 +282,7 @@ void Discovery::run(const std::vector<uint32_t>& extra) {
     auto ptrs = data_code_pointers();
     work.insert(work.end(), ptrs.begin(), ptrs.end());
     entries.clear();
+    std::set<uint32_t> gap_tried;
     funcs.clear();
     for (;;) {
         while (!work.empty()) {
@@ -312,7 +313,10 @@ void Discovery::run(const std::vector<uint32_t>& extra) {
                 if (!entries.count(c)) work.push_back(c);
             funcs[e] = std::move(fn);
         }
-        work = gap_candidates();
+        // gap candidates that were rejected (traps, not code) must not come back
+        work.clear();
+        for (uint32_t g : gap_candidates())
+            if (gap_tried.insert(g).second) work.push_back(g);
         if (work.empty()) break;
     }
     // Re-explore with the final entry set so jumps into other functions become

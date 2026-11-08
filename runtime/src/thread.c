@@ -525,3 +525,14 @@ void x2_watch_init(void) {
     const char *d = strchr(w, '-');
     x2_watch_hi = d ? (u32)strtoul(d + 1, NULL, 16) : x2_watch_lo + 4;
 }
+
+/* SuspendThread on the calling thread: block until another thread resumes it
+ * (BlazBlue CT's I/O thread suspends itself every frame and the main thread
+ * resumes it). Returns the previous suspend count. */
+int x2_thread_suspend_self(X2Thread *t) {
+    pthread_mutex_lock(&t->lock);
+    int prev = t->suspend++;
+    while (t->suspend > 0) pthread_cond_wait(&t->cond, &t->lock);
+    pthread_mutex_unlock(&t->lock);
+    return prev;
+}

@@ -112,6 +112,7 @@ void x2_trace_dump(X2Thread *t, int n);
 void x2_thread_perf(const char *name, bool critical);
 X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended);
 void x2_thread_resume(X2Thread *t);
+int x2_thread_suspend_self(X2Thread *t);
 X2Thread *x2_start_main(void);  /* guest main thread; host main stays with the platform */
 void x2_sync_broadcast(void);   /* wake waiters after a waitable object changed */
 bool x2_event_set(u32 handle);  /* host-side SetEvent */

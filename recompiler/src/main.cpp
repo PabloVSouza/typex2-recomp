@@ -121,7 +121,8 @@ int main(int argc, char** argv) {
     }
 
     lifter.analyze_flag_exports();
-    std::fprintf(stderr, "functions returning flags to their callers: %zu\n", lifter.flag_exporters.size());
+    std::fprintf(stderr, "functions returning flags to their callers: %zu, reading their callers' flags: %zu\n",
+                 lifter.flag_exporters.size(), lifter.flag_importers.size());
     std::vector<std::string> sources;
     const size_t kChunkBytes = 3u << 20;
     std::ofstream chunk;

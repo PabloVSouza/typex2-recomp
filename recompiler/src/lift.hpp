@@ -38,6 +38,9 @@ public:
     // their direct call sites reload them (RELOADF). Run before lift_function.
     void analyze_flag_exports();
     std::set<uint32_t> flag_exporters;
+    // Functions that read EFLAGS set by their caller (_RTC_CheckEsp): call sites
+    // SPILLF before the call, the function RELOADFs at entry (same pass).
+    std::set<uint32_t> flag_importers;
 
     // used by the vector/x87 helpers
     std::string rn(unsigned reg) const;

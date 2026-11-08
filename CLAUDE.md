@@ -19,8 +19,9 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | The King of Fighters XIII Climax | `kof13cl` | playable |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
+| BlazBlue Calamity Trigger | `bbct` | playable on macOS (attract, select, fights); Android build ready, untested |
 
-Not yet started: BlazBlue Calamity Trigger, KOF '98 Ultimate Match, KOF
+Not yet started: KOF '98 Ultimate Match, KOF
 Maximum Impact Regulation A (the last two are likely Type X+, not X2).
 
 ## Hard rules
@@ -86,6 +87,14 @@ Maximum Impact Regulation A (the last two are likely Type X+, not X2).
 * EFLAGS are C locals: callees whose flags are read by the caller (MSVC CRT
   x87 helpers) are found by `Lifter::analyze_flag_exports`; symptom of a
   miss is procedurally generated textures turning into hard 0/255 grids.
+  The reverse (a function reading flags its caller set: MSVC `/RTC`
+  `_RTC_CheckEsp`, mid-function entry points) is handled by flag importers in
+  the same pass. An `/RTC` build failing a check ends in `failwithmessage` →
+  DebugBreak; look at what the check compares before blaming the HLE.
+* Before guessing at an I/O protocol, follow the game's own code: which
+  thread writes the serial port, what it waits for (BlazBlue CT's I/O thread
+  suspends itself every frame and the main thread resumes it), and what the
+  reply parser accepts.
 * ARM memory ordering: guests rely on x86 TSO (spinlocks released with plain
   stores); see `X2_TSO` in the README.
 * GPU / pacing work on Android: measure with `X2_AB` + `X2_AB_TEST` (both

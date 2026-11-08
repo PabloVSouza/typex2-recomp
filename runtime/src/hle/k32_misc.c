@@ -614,9 +614,14 @@ static void OutputDebugStringA(X2Cpu *c) { x2_log("debug: %s", GSTR(ARG(0))); }
 static void RaiseException(X2Cpu *c) {
     u32 code = ARG(0);
     if (code == 0x406D1388u) { /* MS_VC_EXCEPTION: SetThreadName; behave as if a debugger took it */
-        if (ARG(2) >= 2 && ARG(3)) {
+        /* dwType 0x1000: THREADNAME_INFO; MSVC /RTC also raises it (0x1001, 0x1002) to
+         * describe a run-time check failure, just before it calls DebugBreak */
+        u32 type = ARG(2) >= 1 && ARG(3) ? RD32(ARG(3)) : 0;
+        if (type == 0x1000 && ARG(2) >= 2) {
             u32 info = RD32(ARG(3) + 4);
             if (info) X2_TRACE("thread name: %s", GSTR(info));
+        } else if (type == 0x1001 || type == 0x1002) {
+            x2_log("run-time check failure reported by the game (called from %08x)", RD32(c->esp));
         }
         return;
     }
@@ -624,6 +629,19 @@ static void RaiseException(X2Cpu *c) {
      * unwinding to land in __except blocks; not required for normal play. */
     x2_fatal("RaiseException(%08x, flags %x, %u args) - structured exceptions are not supported yet", code, ARG(1),
              ARG(2));
+}
+/* guest memory is all mapped read/write/execute: pointers are "good", protection is a no-op */
+static void IsBadPtr(X2Cpu *c) { RET(0); }
+static void VirtualProtect(X2Cpu *c) {
+    if (ARG(3)) WR32(ARG(3), 0x40); /* PAGE_EXECUTE_READWRITE */
+    RET(1);
+}
+static void TerminateThread(X2Cpu *c) {
+    x2_log("TerminateThread(%08x): guest threads cannot be stopped; ignored", ARG(0));
+    RET(1);
+}
+static void DebugBreak(X2Cpu *c) {
+    x2_fatal("the game called DebugBreak (an assertion or run-time check failed) from %08x", RD32(c->esp));
 }
 static void RtlUnwind(X2Cpu *c) {
     /* pop SEH registrations down to TargetFrame (no unwind handlers are run) */
@@ -822,6 +840,11 @@ const X2Hle x2_hle_kernel32[] = {
     {"IsDebuggerPresent", IsDebuggerPresent, 0},
     {"OutputDebugStringA", OutputDebugStringA, 1},
     {"RaiseException", RaiseException, 4},
+    {"DebugBreak", DebugBreak, 0},
+    {"IsBadCodePtr", IsBadPtr, 1},
+    {"IsBadReadPtr", IsBadPtr, 2},
+    {"VirtualProtect", VirtualProtect, 4},
+    {"TerminateThread", TerminateThread, 2},
     {"RtlUnwind", RtlUnwind, 4},
     {NULL, NULL, 0},
 };

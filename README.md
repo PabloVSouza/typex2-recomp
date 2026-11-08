@@ -1,18 +1,20 @@
 # typex2-recomp
 
 Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII, Capcom's
-Super Street Fighter IV Arcade Edition, Arc System Works' BlazBlue Continuum
-Shift) to native code, so they run on macOS and Android: as standalone apps
-(launched by ES-DE) or as a RetroArch/libretro core.
+Super Street Fighter IV Arcade Edition, Arc System Works' BlazBlue Calamity
+Trigger and Continuum Shift) to native code, so they run on macOS and Android:
+as standalone apps (launched by ES-DE) or as a RetroArch/libretro core.
 
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
 Android: 60 fps through attract mode, character select and most fights on a
 Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
-Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening movie, title, character
-select, fights). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9
-shader bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
+Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
+movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
+Calamity Trigger (`games/bbct`) is playable on macOS (attract, character
+select, fights). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader
+bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
 translated to GLSL).
 
 ## How it works
@@ -54,8 +56,8 @@ build/recompiler/x2recomp "<game dir>/game.exe" games/kof12/gen
 cmake -S . -B build && cmake --build build
 ```
 
-Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`, `bbcs`
-(BlazBlue Continuum Shift).
+Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`, `bbcs`, `bbct`
+(BlazBlue Continuum Shift / Calamity Trigger).
 
 This builds `build/x2-<game>` for every `games/<game>/gen` and the core
 `build/typex2_libretro.dylib` (`-DX2_LIBRETRO=OFF` / `-DX2_STANDALONE=OFF`
@@ -243,6 +245,13 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   saving / restoring device state around Begin / End (the game does not rely
   on it); D3DX effect `Get*Array` / parameter blocks / `CloneEffect` are not
   implemented and stop with a named error if a game calls them.
+* BlazBlue CT: same panel and default layout as CS. Its `game.exe` is the
+  arcade `launcher.exe` with the save paths changed (`d:\` → `sv\`); the code
+  is identical. Before JVS it shakes hands with a controller on the I/O board
+  (packets to address 0, commands 0-8), answered by `jvs.c`. The build has
+  MSVC run-time checks (`_RTC_CheckEsp` reads the caller's flags; see
+  "flag importers" in `lift.cpp`); a failed check now stops with "the game
+  called DebugBreak". Not yet measured on the tablet.
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
 * Guest threads run truly parallel. On ARM, shared (non-stack) guest stores
   are release (and loads acquire, with `X2_TSO=1`) so x86 TSO-dependent code

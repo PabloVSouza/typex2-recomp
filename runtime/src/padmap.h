@@ -10,7 +10,8 @@
  *
  * Other games get their own default (x2_game->id): SSF4 AE punches on Y X R1,
  * kicks on B A R2, L1 / L2 = three punches / kicks; BlazBlue CS A B C on
- * Y X R1, D on B, A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+D.
+ * Y X R1, D on B, A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+D (Calamity Trigger
+ * too).
  *
  * X2_PAD overrides the map as "button=keys" pairs, e.g.
  *   X2_PAD=south=b,east=ab,west=d,north=cd,l1=c,r1=bcd,l2=a,r2=abc,l3=t
