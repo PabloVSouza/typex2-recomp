@@ -21,6 +21,7 @@ static const FakeModule fake_modules[] = {
     {"advapi32.dll", 0x77DD0000u}, {"ole32.dll", 0x774E0000u},   {"winmm.dll", 0x76B40000u},
     {"shlwapi.dll", 0x77F60000u},  {"d3d9.dll", 0x4FDD0000u},    {"d3dx9_35.dll", 0x4A000000u},
     {"d3dx9_37.dll", 0x4A100000u}, {"shell32.dll", 0x7C9C0000u}, {"imm32.dll", 0x76390000u},
+    {"d3dx9_31.dll", 0x4A200000u},
 };
 
 static const char *base_name(const char *p) {
@@ -260,6 +261,16 @@ static void VirtualQuery(X2Cpu *c) {
 static void IsBadWritePtr(X2Cpu *c) { RET(ARG(0) < X2_VM_LOW); }
 
 static void HeapCreate(X2Cpu *c) { RET(x2_heap_create()); }
+static void HeapCompact(X2Cpu *c) { RET(1u << 20); } /* largest free block: plenty */
+static void lstrcpyA(X2Cpu *c) {
+    u32 d = ARG(0), s = ARG(1);
+    for (u32 i = 0;; i++) {
+        u8 ch = RD8(s + i);
+        WR8(d + i, ch);
+        if (!ch) break;
+    }
+    RET(d);
+}
 static void HeapDestroy(X2Cpu *c) { RET(1); }
 static void GetProcessHeap(X2Cpu *c) { RET(x2_process_heap()); }
 static void HeapAlloc(X2Cpu *c) { RET(x2_heap_alloc(ARG(0), ARG(2), ARG(1) & 8)); }
@@ -766,6 +777,8 @@ const X2Hle x2_hle_kernel32[] = {
     {"VirtualQuery", VirtualQuery, 3},
     {"IsBadWritePtr", IsBadWritePtr, 2},
     {"HeapCreate", HeapCreate, 3},
+    {"HeapCompact", HeapCompact, 2},
+    {"lstrcpyA", lstrcpyA, 2},
     {"HeapDestroy", HeapDestroy, 1},
     {"GetProcessHeap", GetProcessHeap, 0},
     {"HeapAlloc", HeapAlloc, 3},

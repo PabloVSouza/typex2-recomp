@@ -415,6 +415,21 @@ static void GetDiskFreeSpaceExA(X2Cpu *c) {
     RET(1);
 }
 static void GetDiskFreeSpaceExW(X2Cpu *c) { GetDiskFreeSpaceExA(c); } /* the path is not used */
+/* GetDiskFreeSpaceA(root, sectors per cluster, bytes per sector, free clusters, total clusters): 32 KiB clusters, capped at 2^31-1 */
+static void GetDiskFreeSpaceA(X2Cpu *c) {
+    u64 free_bytes = 8ull << 30, total = 64ull << 30;
+    struct statvfs vs;
+    if (statvfs(x2_module.game_dir, &vs) == 0) {
+        free_bytes = (u64)vs.f_bavail * vs.f_frsize;
+        total = (u64)vs.f_blocks * vs.f_frsize;
+    }
+    u64 fc = free_bytes / 32768, tc = total / 32768;
+    if (ARG(1)) WR32(ARG(1), 64);
+    if (ARG(2)) WR32(ARG(2), 512);
+    if (ARG(3)) WR32(ARG(3), (u32)(fc > 0x7FFFFFFF ? 0x7FFFFFFF : fc));
+    if (ARG(4)) WR32(ARG(4), (u32)(tc > 0x7FFFFFFF ? 0x7FFFFFFF : tc));
+    RET(1);
+}
 
 static void GetCurrentDirectoryA(X2Cpu *c) {
     const char *cwd = "C:\\game";
@@ -628,6 +643,7 @@ const X2Hle x2_hle_k32_file[] = {
     {"DeleteFileW", DeleteFileW, 1},
     {"GetDriveTypeW", GetDriveTypeW, 1},
     {"GetDiskFreeSpaceExW", GetDiskFreeSpaceExW, 4},
+    {"GetDiskFreeSpaceA", GetDiskFreeSpaceA, 5},
     {"GetFullPathNameW", GetFullPathNameW, 4},
     {"FindFirstFileW", FindFirstFileW, 2},
     {"FindNextFileW", FindNextFileW, 2},

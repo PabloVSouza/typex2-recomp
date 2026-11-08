@@ -146,9 +146,10 @@ typedef struct {
     const char *dll;
     const X2Hle *funcs;
 } X2HleModule;
-extern const X2Hle x2_hle_kernel32[], x2_hle_k32_sync[], x2_hle_k32_file[], x2_hle_user32[], x2_hle_gdi32[], x2_hle_advapi32[], x2_hle_ole32[],
-    x2_hle_winmm[], x2_hle_shlwapi[], x2_hle_d3d9[], x2_hle_d3dx9[], x2_hle_shell32[], x2_hle_imm32[], x2_hle_dsound[],
-    x2_hle_oleaut32[], x2_hle_ws2_32[], x2_hle_iphlpapi[], x2_hle_dinput8[];
+extern const X2Hle x2_hle_kernel32[], x2_hle_k32_sync[], x2_hle_k32_file[], x2_hle_user32[], x2_hle_gdi32[],
+    x2_hle_advapi32[], x2_hle_ole32[], x2_hle_winmm[], x2_hle_shlwapi[], x2_hle_d3d9[], x2_hle_d3dx9[],
+    x2_hle_shell32[], x2_hle_imm32[], x2_hle_dsound[], x2_hle_oleaut32[], x2_hle_ws2_32[], x2_hle_iphlpapi[],
+    x2_hle_dinput8[], x2_hle_ddraw[];
 const X2Hle *x2_hle_find(const char *dll, const char *name);
 
 /* ---- diagnostics ------------------------------------------------------ */

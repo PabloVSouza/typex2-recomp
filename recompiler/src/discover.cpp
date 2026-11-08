@@ -294,8 +294,20 @@ void Discovery::run(const std::vector<uint32_t>& extra) {
             for (auto& [s, b] : fn.blocks)
                 for (auto* ins : b.insns)
                     if (ins->kind == Kind::Seq)
-                        for (uint32_t v : ins->imms)
+                        for (uint32_t v : ins->imms) {
                             if (img.is_code(v) && !entries.count(v)) work.push_back(v);
+                            // MSVC CRT x87 helpers (_CIsin, pow, ...): `mov edx, desc` and
+                            // _trandisp jumps through four handlers at desc+0x10, which
+                            // are unaligned (the aligned data scan misses them)
+                            if (!img.is_code(v) && img.in_image(v) && img.in_image(v + 0x1F)) {
+                                bool all = true;
+                                for (uint32_t k = 0; k < 4 && all; k++) all = img.is_code(img.u32(v + 0x10 + 4 * k));
+                                if (all)
+                                    for (uint32_t k = 0; k < 4; k++)
+                                        if (!entries.count(img.u32(v + 0x10 + 4 * k)))
+                                            work.push_back(img.u32(v + 0x10 + 4 * k));
+                            }
+                        }
             for (uint32_t c : calls)
                 if (!entries.count(c)) work.push_back(c);
             funcs[e] = std::move(fn);

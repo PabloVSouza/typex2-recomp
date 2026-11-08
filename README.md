@@ -1,16 +1,19 @@
 # typex2-recomp
 
-Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII, Capcom's Super Street Fighter IV Arcade Edition) to native
-code, so they run on macOS and Android: as standalone apps (launched by ES-DE)
-or as a RetroArch/libretro core.
+Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII, Capcom's
+Super Street Fighter IV Arcade Edition, Arc System Works' BlazBlue Continuum
+Shift) to native code, so they run on macOS and Android: as standalone apps
+(launched by ES-DE) or as a RetroArch/libretro core.
 
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
 Android: 60 fps through attract mode, character select and most fights on a
-Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. Rendering is D3D9 →
-OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly and runtime HLSL
-all translated to GLSL).
+Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
+Shift (`games/bbcs`) is playable on macOS (title, character select, fights);
+its opening movie is skipped. Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9
+shader bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
+translated to GLSL).
 
 ## How it works
 
@@ -27,15 +30,17 @@ runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,                 └
   doubles; SSE/MMX on unions.
 * **runtime/**: 4 GiB guest address space, dispatcher for indirect calls,
   host implementations of every import (kernel32, user32, gdi32, advapi32
-  crypto, ole32), Direct3D 9 / D3DX / DirectSound / DirectShow (FFmpeg movies)
-  as host COM objects, an emulated JVS I/O board on COM2, and a GL renderer.
+  crypto, ole32), Direct3D 9 / D3DX (with compiled fx_2_0 effects and their
+  preshaders, `gfx/fx.c` + `hle/d3dx_effect.c`) / DirectSound / DirectShow
+  (FFmpeg movies) as host COM objects, an emulated JVS I/O board on COM2, and a GL renderer.
   The guest runs on its own threads and records frames; the platform thread
   replays them: `platform_sdl.c` (standalone) or `platform_libretro.c`
   (`retro_run`, which also clocks the guest).
 * **tools/**: `arc` (unpack `gamediskimg.arc`), `kofarc` (list/extract KOF
   XIII `media.kof`, decrypting TXAC entries with the game's
   `TypeXmulti/txac` key), `lifttest` (differential test of the lifter against
-  Unicorn), `retro_host` (minimal libretro frontend for testing the core),
+  Unicorn), `fxdump` (list the compiled D3DX effects in a file, e.g. a
+  game.exe), `retro_host` (minimal libretro frontend for testing the core),
   `android/` (APK packaging, FFmpeg cross-build), `es-de/` (ES-DE system
   files), `libretro/` (core info file).
 
@@ -49,7 +54,8 @@ build/recompiler/x2recomp "<game dir>/game.exe" games/kof12/gen
 cmake -S . -B build && cmake --build build
 ```
 
-Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`.
+Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`, `bbcs`
+(BlazBlue Continuum Shift).
 
 This builds `build/x2-<game>` for every `games/<game>/gen` and the core
 `build/typex2_libretro.dylib` (`-DX2_LIBRETRO=OFF` / `-DX2_STANDALONE=OFF`
@@ -161,6 +167,14 @@ Tools for finding the next bottleneck: `X2_GPUTIME`, `X2_PACELOG`, `X2_PROF`
 (sampling profiler; the Android build keeps an unstripped `.sym` copy of the
 core to resolve it) and `X2_CSPROF` (lock contention), all below.
 
+## Contributing
+
+Agents and humans: read `CLAUDE.md` (also `AGENTS.md`) for the project rules.
+Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
+`tools/lint.sh fix`), bug-finding checks are `.clang-tidy`
+(`tools/lint.sh tidy` after configuring `build/`), editors follow
+`.editorconfig`.
+
 ## Debugging switches (environment variables)
 
 | Variable | Effect |
@@ -207,6 +221,18 @@ core to resolve it) and `X2_CSPROF` (lock contention), all below.
   `X2_PAD=l1=a,west=c,north=3,r1=-,l2=b,south=d,east=6,r2=-`
   in its `x2.env` (letters a-d are KOF's A-D, see `runtime/src/padmap.h`). The
   opening movie's separate English audio track is missing from the dump.
+* BlazBlue CS: four buttons, cabinet SHOT1-4 = A B C D (its INPUT DEVICE
+  TEST names them BUTTON 1-4). The default (KOF) pad layout has no button 3
+  (C), so set `X2_PAD` in its `x2.env`: on a gamepad e.g.
+  `X2_PAD=west=a,north=c,east=3,south=b` (A left, B top, C right, D bottom);
+  for its "Type B" panel (A B C on top, D below) on an 8-button stick whose
+  rows are L1 Y X R1 / L2 B A R2,
+  `X2_PAD=l1=a,west=c,north=3,l2=b,r1=-,r2=-,south=-,east=-`. The opening
+  movie is not shown: the game renders it through its own DirectShow renderer
+  filter, which the graph joins but does not feed. Effects run without
+  saving / restoring device state around Begin / End (the game does not rely
+  on it); D3DX effect `Get*Array` / parameter blocks / `CloneEffect` are not
+  implemented and stop with a named error if a game calls them.
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
 * Guest threads run truly parallel. On ARM, shared (non-stack) guest stores
   are release (and loads acquire, with `X2_TSO=1`) so x86 TSO-dependent code

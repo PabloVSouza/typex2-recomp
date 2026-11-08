@@ -20,6 +20,7 @@ void gfx_decl_create(GfxId id, const void *elements, uint32_t count) {}
 void gfx_set_consts(bool pixel, uint32_t start, const float *v, uint32_t count4) {}
 void gfx_set_consts_ib(bool pixel, bool boolean, uint32_t start, const int32_t *v, uint32_t count) {}
 void gfx_clear(uint32_t flags, uint32_t color, float z, uint32_t stencil, const GfxState *st) {}
+void gfx_blit(GfxId src, const uint32_t srect[4], GfxId dst, const uint32_t drect[4], bool linear) {}
 void gfx_draw(const GfxState *st, uint32_t prim, uint32_t start, uint32_t count, bool indexed, int32_t base_vertex,
               uint32_t min_index, uint32_t num_vertices) {}
 void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *verts, uint32_t vbytes,

@@ -246,6 +246,12 @@ static void GetCursorPos(X2Cpu *c) { WR32(ARG(0), 0); WR32(ARG(0) + 4, 0); RET(1
 static void LoadImageW(X2Cpu *c) { RET(0x00030030u); } /* cursor / icon: never drawn */
 static void RegisterWindowMessageW(X2Cpu *c) { static u32 next = 0xC100; RET(next++); }
 static void SetCursor(X2Cpu *c) { RET(0); }
+static void LoadCursorA(X2Cpu *c) { RET(0x00010011u); } /* never drawn */
+static void PostThreadMessageA(X2Cpu *c) { RET(1); }
+static void MessageBoxA(X2Cpu *c) {
+    x2_log("MessageBoxA(\"%s\", \"%s\")", ARG(2) ? GSTR(ARG(2)) : "", ARG(1) ? GSTR(ARG(1)) : "");
+    RET(1); /* IDOK */
+}
 static void SetForegroundWindow(X2Cpu *c) { RET(1); }
 static void SetRect(X2Cpu *c) {
     for (int i = 0; i < 4; i++) WR32(ARG(0) + 4 * i, ARG(1 + i));
@@ -359,6 +365,10 @@ const X2Hle x2_hle_user32[] = {
     {"LoadImageW", LoadImageW, 6},
     {"RegisterWindowMessageW", RegisterWindowMessageW, 1},
     {"SetCursor", SetCursor, 1},
+    {"LoadCursorA", LoadCursorA, 2},
+    {"PostThreadMessageA", PostThreadMessageA, 4},
+    {"MessageBoxA", MessageBoxA, 4},
+    {"RegisterWindowMessageA", RegisterWindowMessageW, 1},
     {"SetForegroundWindow", SetForegroundWindow, 1},
     {"SetRect", SetRect, 5},
     {"ShowWindow", ShowWindow, 2},

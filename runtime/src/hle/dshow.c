@@ -86,10 +86,37 @@ static void Ok(X2Cpu *c) { RET(S_OK); }
 static void NotImpl(X2Cpu *c) { RET(E_NOTIMPL); }
 
 /* ---- IGraphBuilder ------------------------------------------------------------- */
+/* IBaseFilter / IEnumPins vtable slots, for filters the game implements itself */
+enum { BF_AddRef = 1, BF_Release = 2, BF_EnumPins = 10, BF_JoinFilterGraph = 13, EP_NextSlot = 3 };
+static u32 guest_method(u32 obj, int slot) { return RD32(RD32(obj) + 4u * (u32)slot); }
+
 static void GB_AddFilter(X2Cpu *c) {
-    X2ComObj *f = x2_com_get(ARG(1));
-    if (f) f->refs++; /* the graph holds a reference to every filter */
-    X2_TRACE("dshow: AddFilter(%08x)", ARG(1));
+    u32 filter = ARG(1);
+    X2ComObj *f = x2_com_get(filter);
+    if (f) {
+        f->refs++; /* the graph holds a reference to every filter */
+    } else if (filter) {
+        /* a guest filter (e.g. the game's own video renderer): join it to the
+         * graph and enumerate its pins, as connecting would; DirectShow base
+         * classes create their pins on first enumeration */
+        x2_guest_call(c, guest_method(filter, BF_AddRef), 1, filter);
+        x2_guest_call(c, guest_method(filter, BF_JoinFilterGraph), 3, filter, ARG(0), ARG(2));
+        u32 out = x2_galloc(8);
+        WR32(out, 0);
+        if (x2_guest_call(c, guest_method(filter, BF_EnumPins), 2, filter, out) == S_OK && RD32(out)) {
+            u32 en = RD32(out);
+            for (int i = 0; i < 8; i++) {
+                WR32(out, 0);
+                if (x2_guest_call(c, guest_method(en, EP_NextSlot), 4, en, 1, out, out + 4) != S_OK || !RD32(out))
+                    break;
+                u32 pin = RD32(out);
+                x2_guest_call(c, guest_method(pin, BF_Release), 1, pin);
+            }
+            x2_guest_call(c, guest_method(en, BF_Release), 1, en);
+        }
+        x2_heap_free(0, out);
+    }
+    X2_TRACE("dshow: AddFilter(%08x)", filter);
     RET(S_OK);
 }
 static void GB_FindFilterByName(X2Cpu *c) {

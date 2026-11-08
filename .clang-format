@@ -1,0 +1,21 @@
+# Formatting for our own C / C++ (generated code in games/*/gen is never formatted).
+# Apply to changed lines only: git clang-format (see CLAUDE.md).
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+PointerAlignment: Right
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AlignConsecutiveMacros: Consecutive
+AlignTrailingComments: true
+BreakBeforeBraces: Attach
+IndentCaseLabels: false
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+SpaceAfterCStyleCast: false
+Cpp11BracedListStyle: true
+ReflowComments: false

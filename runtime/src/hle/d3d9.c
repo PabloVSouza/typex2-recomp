@@ -549,10 +549,21 @@ static void D_CreateOffscreenPlainSurface(X2Cpu *c) {
     WR32(ARG(5), make_surface(d, ARG(3), ARG(1), ARG(2), 0, ARG(4), 0, 0, 0));
     RET(D3D_OK);
 }
+/* StretchRect(this, src, srcRect, dst, dstRect, filter): a GPU blit between
+ * render targets (the backbuffer included) */
 static void D_StretchRect(X2Cpu *c) {
-    static int n;
-    if (n++ < 20) X2_TRACE("d3d9: StretchRect(%08x, %08x, filter %u) ignored (called from %08x)", ARG(1), ARG(3), ARG(5), RD32(c->esp));
-    RET(D3D_OK); /* TODO: gfx blit */
+    Surface *s = (Surface *)x2_com_get(ARG(1)), *d = (Surface *)x2_com_get(ARG(3));
+    if (!s || !d) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    u32 sr[4] = {0, 0, s->w, s->h}, dr[4] = {0, 0, d->w, d->h};
+    for (int i = 0; i < 4; i++) {
+        if (ARG(2)) sr[i] = RD32(ARG(2) + 4 * (u32)i);
+        if (ARG(4)) dr[i] = RD32(ARG(4) + 4 * (u32)i);
+    }
+    gfx_blit(s->tex, sr, d->tex, dr, ARG(5) == 2 /* D3DTEXF_LINEAR */);
+    RET(D3D_OK);
 }
 /* copy a rect between two surfaces of the same format (CPU side), then upload */
 static void copy_surface_rect(Surface *s, u32 sx, u32 sy, u32 w, u32 h, Surface *d, u32 dx, u32 dy) {
@@ -704,7 +715,7 @@ static void D_GetTexture(X2Cpu *c) {
 static void D_SetTexture(X2Cpu *c) {
     DEV;
     u32 s = ARG(1);
-    if (s >= 0x100000) s = s - 0x100000 + 16;  /* D3DVERTEXTEXTURESAMPLER0 */
+    if (s >= 257 && s <= 260) s = s - 257 + 16; /* D3DVERTEXTEXTURESAMPLER0-3: not sampled (pixel samplers only) */
     if (s >= GFX_MAX_SAMPLERS) { RET(D3D_OK); return; }
     d->tex_obj[s] = ARG(2);
     Texture *t = (Texture *)x2_com_get(ARG(2));
@@ -825,8 +836,11 @@ static void D_SetFVF(X2Cpu *c) {
 static void D_GetFVF(X2Cpu *c) { DEV; WR32(ARG(1), d->fvf); RET(D3D_OK); }
 
 static u32 shader_len(u32 tok) {
-    u32 n = 0;
-    while (RD32(tok + 4 * n) != 0x0000FFFFu && n < 65536) n++;  /* D3DSIO_END */
+    /* up to D3DSIO_END, skipping comments: an effect's preshader is a token
+     * stream with its own END inside a comment */
+    u32 n = 1;
+    for (u32 t; (t = RD32(tok + 4 * n)) != 0x0000FFFFu && n < 65536; n++)
+        if ((t & 0xFFFF) == 0xFFFE) n += (t >> 16) & 0x7FFF;
     return n + 1;
 }
 static void create_shader(X2Cpu *c, bool pixel) {

@@ -18,8 +18,21 @@
 
 /* ---- command stream ---------------------------------------------------------- */
 enum {
-    C_TEX_CREATE = 1, C_TEX_UPLOAD, C_TEX_DESTROY, C_BUF_CREATE, C_BUF_UPLOAD, C_BUF_DESTROY,
-    C_SHADER_CREATE, C_SHADER_DESTROY, C_DECL_CREATE, C_CONSTS, C_CLEAR, C_DRAW, C_DRAW_UP, C_PRESENT,
+    C_TEX_CREATE = 1,
+    C_TEX_UPLOAD,
+    C_TEX_DESTROY,
+    C_BUF_CREATE,
+    C_BUF_UPLOAD,
+    C_BUF_DESTROY,
+    C_SHADER_CREATE,
+    C_SHADER_DESTROY,
+    C_DECL_CREATE,
+    C_CONSTS,
+    C_CLEAR,
+    C_DRAW,
+    C_DRAW_UP,
+    C_PRESENT,
+    C_BLIT,
 };
 
 typedef struct Frame {
@@ -83,6 +96,10 @@ typedef struct { GfxId id; u32 pixel, ntokens; } ShaderCreate;
 typedef struct { GfxId id; u32 count; } DeclCreate;
 typedef struct { u32 pixel, start, count; } Consts;
 typedef struct { u32 flags, color, stencil; float z; GfxState st; } Clear;
+typedef struct {
+    GfxId src, dst;
+    u32 s[4], d[4], linear;
+} Blit;
 typedef struct { GfxState st; u32 prim, start, count, indexed; s32 base; u32 min_index, nverts; } Draw;
 typedef struct { GfxState st; u32 prim, count, vbytes, stride, ibytes, isz; } DrawUp;
 
@@ -187,6 +204,16 @@ void gfx_set_consts(bool pixel, uint32_t start, const float *v, uint32_t count4)
     Consts *k = emit(C_CONSTS, sizeof(Consts) + count4 * 16);
     *k = (Consts){pixel, start, count4};
     memcpy(k + 1, v, count4 * 16);
+    pthread_mutex_unlock(&rec_lock);
+}
+void gfx_blit(GfxId src, const uint32_t srect[4], GfxId dst, const uint32_t drect[4], bool linear) {
+    pthread_mutex_lock(&rec_lock);
+    Blit *k = emit(C_BLIT, sizeof(Blit));
+    k->src = src;
+    k->dst = dst;
+    memcpy(k->s, srect, 16);
+    memcpy(k->d, drect, 16);
+    k->linear = linear;
     pthread_mutex_unlock(&rec_lock);
 }
 void gfx_clear(uint32_t flags, uint32_t color, float z, uint32_t stencil, const GfxState *st) {
@@ -731,6 +758,28 @@ u32 gfx_gl_target_scale(const GfxState *st) {
     Tex *t = st->rt[0] < MAX_IDS ? texs[st->rt[0]] : NULL;
     return t && t->scale ? t->scale : 1;
 }
+/* StretchRect between render targets / the backbuffer (rects in the game's pixels) */
+static void do_blit(const Blit *k) {
+    Tex *s = k->src < MAX_IDS ? texs[k->src] : NULL, *d = k->dst < MAX_IDS ? texs[k->dst] : NULL;
+    GLuint sf = s && s->fbo ? s->fbo : (k->src == backbuffer_id ? backbuffer_fbo : 0);
+    GLuint df = d && d->fbo ? d->fbo : (k->dst == backbuffer_id ? backbuffer_fbo : 0);
+    if (!sf || !df) {
+        static int warned;
+        if (!warned++) x2_log("gfx: StretchRect from/to a texture that is not a render target: not supported");
+        return;
+    }
+    u32 ss = s && s->scale ? s->scale : 1, ds = d && d->scale ? d->scale : 1;
+    GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, sf);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, df);
+    glBlitFramebuffer((GLint)(k->s[0] * ss), (GLint)(k->s[1] * ss), (GLint)(k->s[2] * ss), (GLint)(k->s[3] * ss),
+                      (GLint)(k->d[0] * ds), (GLint)(k->d[1] * ds), (GLint)(k->d[2] * ds), (GLint)(k->d[3] * ds),
+                      GL_COLOR_BUFFER_BIT, k->linear ? GL_LINEAR : GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (scissor) glEnable(GL_SCISSOR_TEST);
+}
+
 static void bind_target(const GfxState *st) {
     Tex *t = st->rt[0] < MAX_IDS ? texs[st->rt[0]] : NULL;
     GLuint fbo = t && t->fbo ? t->fbo : backbuffer_fbo;
@@ -843,7 +892,7 @@ static volatile bool capture_request;
 void gfx_request_capture(void) { capture_request = true; }
 
 /* Execute one frame; returns the texture the frame presented. */
-static u64 glprof_ns[C_PRESENT + 1], glprof_n[C_PRESENT + 1], glprof_bytes;
+static u64 glprof_ns[C_BLIT + 1], glprof_n[C_BLIT + 1], glprof_bytes;
 static int glprof = -1; /* X2_GLPROF=1: time spent per replayed command type */
 /* X2_GPUTIME=1: GPU time per replayed frame (GL_TIME_ELAPSED queries, read a few
  * frames later so they never stall), logged as average / max every 120 frames */
@@ -1024,6 +1073,14 @@ static void run_frame(Frame *f) {
                             k->isz);
                 break;
             }
+            case C_BLIT:
+                if (gfx_gl_drawlog) {
+                    const Blit *k = p;
+                    x2_log("blit %u (%u,%u)-(%u,%u) -> %u (%u,%u)-(%u,%u)%s", k->src, k->s[0], k->s[1], k->s[2],
+                           k->s[3], k->dst, k->d[0], k->d[1], k->d[2], k->d[3], k->linear ? " linear" : "");
+                }
+                do_blit(p);
+                break;
             case C_PRESENT:
                 gfx_gl_drawlog = (drawlog_frame && st_frames + 2 >= drawlog_frame && st_frames + 2 <= drawlog_last) || capture_request;
                 if (capture_request) { capture_request = false; x2_log("---- F9 capture ----"); }
@@ -1034,13 +1091,18 @@ static void run_frame(Frame *f) {
                            st_frames, st_draws, st_clears, st_uploads, st_deferred, pq_len);
                     st_draws = st_clears = st_uploads = st_deferred = 0;
                     if (glprof > 0) {
-                        static const char *nm[C_PRESENT + 1] = {[C_TEX_CREATE] = "tex-create", [C_TEX_UPLOAD] = "tex-upload",
-                                                                [C_BUF_CREATE] = "buf-create", [C_BUF_UPLOAD] = "buf-upload",
-                                                                [C_CLEAR] = "clear", [C_DRAW] = "draw", [C_DRAW_UP] = "draw-up",
-                                                                [C_SHADER_CREATE] = "shader"};
+                        static const char *nm[C_BLIT + 1] = {[C_BLIT] = "blit",
+                                                             [C_TEX_CREATE] = "tex-create",
+                                                             [C_TEX_UPLOAD] = "tex-upload",
+                                                             [C_BUF_CREATE] = "buf-create",
+                                                             [C_BUF_UPLOAD] = "buf-upload",
+                                                             [C_CLEAR] = "clear",
+                                                             [C_DRAW] = "draw",
+                                                             [C_DRAW_UP] = "draw-up",
+                                                             [C_SHADER_CREATE] = "shader"};
                         char line[512];
                         int len = snprintf(line, sizeof line, "glprof (ms per frame):");
-                        for (int i = 0; i <= C_PRESENT; i++)
+                        for (int i = 0; i <= C_BLIT; i++)
                             if (nm[i] && glprof_n[i])
                                 len += snprintf(line + len, sizeof line - (size_t)len, " %s %.2f (%llu)", nm[i], glprof_ns[i] / 1e6 / 120,
                                                 (unsigned long long)glprof_n[i]);

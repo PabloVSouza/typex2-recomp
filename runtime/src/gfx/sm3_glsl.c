@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "d3dasm.h"
 #include "sm3_glsl.h"
 
 typedef struct {
@@ -215,12 +216,15 @@ typedef struct {
     int ncomp;
     bool sat;
     bool is_addr;
+    int shift; /* ps_1_x result shift: _x2 = 1 .. _x8 = 3, _d2 = -1 .. _d8 = -3 */
 } Dst;
 
 static void dst(Ctx *c, uint32_t t, Dst *d) {
     int type = rtype(t), num = rnum(t);
     uint32_t m = (t >> 16) & 0xF;
     d->sat = (t >> 20) & 1;
+    d->shift = (int)((t >> 24) & 0xF);
+    if (d->shift >= 8) d->shift -= 16;
     d->is_addr = false;
     d->ncomp = 0;
     d->mask[0] = 0;
@@ -284,9 +288,21 @@ static void dst(Ctx *c, uint32_t t, Dst *d) {
 
 /* assign a vec4 expression to a destination with mask/saturate */
 static void assign(Ctx *c, const Dst *d, const char *expr) {
-    char e[2048];
-    if (d->sat) snprintf(e, sizeof e, "clamp(%s,0.0,1.0)", expr);
-    else snprintf(e, sizeof e, "%s", expr);
+    char e[2048], sh[2100];
+    if (d->shift)
+        snprintf(sh, sizeof sh, "((%s)*%s)", expr,
+                 d->shift > 0 ? (d->shift == 1   ? "2.0"
+                                 : d->shift == 2 ? "4.0"
+                                                 : "8.0")
+                              : (d->shift == -1   ? "0.5"
+                                 : d->shift == -2 ? "0.25"
+                                                  : "0.125"));
+    else
+        snprintf(sh, sizeof sh, "%s", expr);
+    if (d->sat)
+        snprintf(e, sizeof e, "clamp(%s,0.0,1.0)", sh);
+    else
+        snprintf(e, sizeof e, "%s", sh);
     if (d->is_addr) { /* mova: round to nearest (vs_2_0+) */
         if (d->mask[0]) line(c, "a0%s = ivec4(floor((%s)+0.5))%s;", d->mask, e, d->mask);
         else line(c, "a0 = ivec4(floor((%s)+0.5));", e);
@@ -524,6 +540,14 @@ static const char *prelude_common =
     "#define saturate(x) clamp(x,0.0,1.0)\n";
 
 bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info *info, char *err, size_t errlen) {
+    if (n >= 1 && (tok[0] & 0xFFFFFF00u) == 0xFFFF0100u) { /* ps_1_x: rewritten to ps_2_0 first (d3dasm.c) */
+        int cap = (int)n * 2 + 64;
+        uint32_t *t2 = malloc(sizeof *t2 * (size_t)cap);
+        int m = x2_ps1_to_ps2(tok, n, t2, cap, err, errlen);
+        bool ok = m > 0 && m <= cap && sm3_to_glsl(t2, (uint32_t)m, gles, out, info, err, errlen);
+        free(t2);
+        return ok;
+    }
     Ctx *c = calloc(1, sizeof *c);
     memset(info, 0, sizeof *info);
     c->info = info;
@@ -599,10 +623,11 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
                 info->vs_out_mask |= 1u << i;
             }
         } else {
-            for (int i = 0; i < 8; i++)
-                if (c->oT[i]) sf(&s, "out vec4 x_5_%d;\n", i);
-            for (int i = 0; i < 2; i++)
-                if (c->oD[i]) sf(&s, "out vec4 x_10_%d;\n", i);
+            /* every legacy output, written or not: D3D lets a pixel shader read
+             * one the vertex shader never wrote (it reads 0), GLSL does not link;
+             * the linker drops the ones nothing reads */
+            for (int i = 0; i < 8; i++) sf(&s, "out vec4 x_5_%d;\n", i);
+            for (int i = 0; i < 2; i++) sf(&s, "out vec4 x_10_%d;\n", i);
         }
     }
     sf(&s, "void main() {\n");
@@ -622,8 +647,8 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
             for (int i = 0; i < 16; i++)
                 if (c->output_used[i]) sf(&s, "  vec4 o%d = vec4(0.0);\n", i);
         if (c->major < 3) {
-            for (int i = 0; i < 2; i++)
-                if (c->oD[i]) sf(&s, "  x_10_%d = vec4(0.0);\n", i);
+            for (int i = 0; i < 2; i++) sf(&s, "  x_10_%d = vec4(0.0);\n", i);
+            for (int i = 0; i < 8; i++) sf(&s, "  x_5_%d = vec4(0.0);\n", i);
         }
     } else {
         sf(&s, "  float o_depth = gl_FragCoord.z;\n");

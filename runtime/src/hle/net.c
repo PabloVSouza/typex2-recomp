@@ -1,10 +1,12 @@
-/* ws2_32, iphlpapi and dinput8: just enough for a game that can link cabinets
+/* ws2_32, iphlpapi, dinput8 and ddraw: just enough for a game that can link cabinets
  * and read a debug keyboard, running alone.
  *
  * Winsock: the network is down (socket() fails with WSAENETDOWN), so link play
  * stays off. IP helper: one Ethernet adapter with a fixed MAC and a private
  * address, for games that derive a cabinet id from it. DirectInput 8: an
- * object with no devices (inputs come through JVS). */
+ * object that enumerates no devices and creates idle ones (inputs come through
+ * JVS). DirectDraw: an object that
+ * reports video memory and nothing else. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -142,9 +144,59 @@ const X2Hle x2_hle_iphlpapi[] = {
 #define M(name, fn, n) {#name, fn, n}
 #define DIERR_DEVICENOTREG 0x80040154u
 static void DI_Ok(X2Cpu *c) { RET(S_OK); }
+static void DI_FindDevice(X2Cpu *c) { RET(DIERR_DEVICENOTREG); }
+/* a device that is always idle: games create the system keyboard (or mouse)
+ * for debug keys and read it without checking; nothing is ever pressed */
+static void DID_GetDeviceState(X2Cpu *c) {
+    if (ARG(2) && ARG(1)) memset(X2P(ARG(2)), 0, ARG(1));
+    RET(S_OK);
+}
+static void DID_GetDeviceData(X2Cpu *c) {
+    if (ARG(3)) WR32(ARG(3), 0); /* no buffered events */
+    RET(S_OK);
+}
 static void DI_CreateDevice(X2Cpu *c) {
-    if (ARG(2)) WR32(ARG(2), 0);
-    RET(DIERR_DEVICENOTREG);
+    static u32 vt;
+    if (!vt) {
+        static const X2Method m[] = {
+            M(QueryInterface, x2_com_QueryInterface_self, 3),
+            M(AddRef, x2_com_AddRef, 1),
+            M(Release, x2_com_Release, 1),
+            M(GetCapabilities, DI_Ok, 2),
+            M(EnumObjects, DI_Ok, 4),
+            M(GetProperty, DI_Ok, 3),
+            M(SetProperty, DI_Ok, 3),
+            M(Acquire, DI_Ok, 1),
+            M(Unacquire, DI_Ok, 1),
+            M(GetDeviceState, DID_GetDeviceState, 3),
+            M(GetDeviceData, DID_GetDeviceData, 5),
+            M(SetDataFormat, DI_Ok, 2),
+            M(SetEventNotification, DI_Ok, 2),
+            M(SetCooperativeLevel, DI_Ok, 3),
+            M(GetObjectInfo, DI_Ok, 4),
+            M(GetDeviceInfo, DI_Ok, 2),
+            M(RunControlPanel, DI_Ok, 3),
+            M(Initialize, DI_Ok, 4),
+            M(CreateEffect, DI_Ok, 5),
+            M(EnumEffects, DI_Ok, 4),
+            M(GetEffectInfo, DI_Ok, 3),
+            M(GetForceFeedbackState, DI_Ok, 2),
+            M(SendForceFeedbackCommand, DI_Ok, 2),
+            M(EnumCreatedEffectObjects, DI_Ok, 4),
+            M(Escape, DI_Ok, 2),
+            M(Poll, DI_Ok, 1),
+            M(SendDeviceData, DI_Ok, 5),
+            M(EnumEffectsInFile, DI_Ok, 5),
+            M(WriteEffectToFile, DI_Ok, 5),
+            M(BuildActionMap, DI_Ok, 4),
+            M(SetActionMap, DI_Ok, 4),
+            M(GetImageInfo, DI_Ok, 2),
+        };
+        vt = x2_com_vtable("IDirectInputDevice8", m, sizeof m / sizeof *m);
+    }
+    X2ComObj *o = calloc(1, sizeof *o);
+    WR32(ARG(2), x2_com_wrap(o, vt, "IDirectInputDevice8"));
+    RET(S_OK);
 }
 static void DI_GetDeviceStatus(X2Cpu *c) { RET(1); } /* DI_NOTATTACHED */
 
@@ -152,10 +204,17 @@ static void DirectInput8Create(X2Cpu *c) {
     static u32 vt;
     if (!vt) {
         static const X2Method m[] = {
-            M(QueryInterface, x2_com_QueryInterface_self, 3), M(AddRef, x2_com_AddRef, 1),
-            M(Release, x2_com_Release, 1), M(CreateDevice, DI_CreateDevice, 4), M(EnumDevices, DI_Ok, 5),
-            M(GetDeviceStatus, DI_GetDeviceStatus, 2), M(RunControlPanel, DI_Ok, 3), M(Initialize, DI_Ok, 3),
-            M(FindDevice, DI_CreateDevice, 4), M(EnumDevicesBySemantics, DI_Ok, 6), M(ConfigureDevices, DI_Ok, 5),
+            M(QueryInterface, x2_com_QueryInterface_self, 3),
+            M(AddRef, x2_com_AddRef, 1),
+            M(Release, x2_com_Release, 1),
+            M(CreateDevice, DI_CreateDevice, 4),
+            M(EnumDevices, DI_Ok, 5),
+            M(GetDeviceStatus, DI_GetDeviceStatus, 2),
+            M(RunControlPanel, DI_Ok, 3),
+            M(Initialize, DI_Ok, 3),
+            M(FindDevice, DI_FindDevice, 4),
+            M(EnumDevicesBySemantics, DI_Ok, 6),
+            M(ConfigureDevices, DI_Ok, 5),
         };
         vt = x2_com_vtable("IDirectInput8", m, sizeof m / sizeof *m);
     }
@@ -167,5 +226,76 @@ static void DirectInput8Create(X2Cpu *c) {
 
 const X2Hle x2_hle_dinput8[] = {
     {"DirectInput8Create", DirectInput8Create, 5},
+    {NULL, NULL, 0},
+};
+
+/* ---- ddraw: games only probe it (BlazBlue reads DDCAPS.dwVidMemTotal) ------------ */
+#define VIDMEM (256u << 20)
+static void DD_Fail(X2Cpu *c) { RET(0x80004001u); } /* E_NOTIMPL */
+static void DD_Ok(X2Cpu *c) { RET(S_OK); }
+/* GetCaps(this, DDCAPS *driver, DDCAPS *hel): sizes come from dwSize */
+static void DD_GetCaps(X2Cpu *c) {
+    for (int i = 1; i <= 2; i++) {
+        u32 caps = ARG(i);
+        if (!caps) continue;
+        u32 size = RD32(caps);
+        for (u32 o = 4; o + 4 <= size; o += 4) WR32(caps + o, 0);
+        if (size >= 0x44) {
+            WR32(caps + 0x3c, VIDMEM); /* dwVidMemTotal */
+            WR32(caps + 0x40, VIDMEM); /* dwVidMemFree */
+        }
+    }
+    RET(S_OK);
+}
+/* GetAvailableVidMem(this, DDSCAPS2 *, total, free) */
+static void DD_GetAvailableVidMem(X2Cpu *c) {
+    if (ARG(2)) WR32(ARG(2), VIDMEM);
+    if (ARG(3)) WR32(ARG(3), VIDMEM);
+    RET(S_OK);
+}
+static void DirectDrawCreateEx(X2Cpu *c) {
+    static u32 vt;
+    if (!vt) {
+        static const X2Method m[] = {
+            M(QueryInterface, x2_com_QueryInterface_self, 3),
+            M(AddRef, x2_com_AddRef, 1),
+            M(Release, x2_com_Release, 1),
+            M(Compact, DD_Ok, 1),
+            M(CreateClipper, DD_Fail, 4),
+            M(CreatePalette, DD_Fail, 5),
+            M(CreateSurface, DD_Fail, 4),
+            M(DuplicateSurface, DD_Fail, 3),
+            M(EnumDisplayModes, DD_Ok, 5),
+            M(EnumSurfaces, DD_Ok, 5),
+            M(FlipToGDISurface, DD_Ok, 1),
+            M(GetCaps, DD_GetCaps, 3),
+            M(GetDisplayMode, DD_Fail, 2),
+            M(GetFourCCCodes, DD_Fail, 3),
+            M(GetGDISurface, DD_Fail, 2),
+            M(GetMonitorFrequency, DD_Fail, 2),
+            M(GetScanLine, DD_Fail, 2),
+            M(GetVerticalBlankStatus, DD_Fail, 2),
+            M(Initialize, DD_Ok, 2),
+            M(RestoreDisplayMode, DD_Ok, 1),
+            M(SetCooperativeLevel, DD_Ok, 3),
+            M(SetDisplayMode, DD_Ok, 6),
+            M(WaitForVerticalBlank, DD_Ok, 3),
+            M(GetAvailableVidMem, DD_GetAvailableVidMem, 4),
+            M(GetSurfaceFromDC, DD_Fail, 3),
+            M(RestoreAllSurfaces, DD_Ok, 1),
+            M(TestCooperativeLevel, DD_Ok, 1),
+            M(GetDeviceIdentifier, DD_Fail, 3),
+            M(StartModeTest, DD_Fail, 4),
+            M(EvaluateMode, DD_Fail, 3),
+        };
+        vt = x2_com_vtable("IDirectDraw7", m, sizeof m / sizeof *m);
+    }
+    X2ComObj *o = calloc(1, sizeof *o);
+    WR32(ARG(1), x2_com_wrap(o, vt, "IDirectDraw7"));
+    RET(S_OK);
+}
+
+const X2Hle x2_hle_ddraw[] = {
+    {"DirectDrawCreateEx", DirectDrawCreateEx, 4},
     {NULL, NULL, 0},
 };

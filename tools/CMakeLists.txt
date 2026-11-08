@@ -17,6 +17,9 @@ if(UNICORN_FOUND AND EXISTS ${X2_LIFTTEST_C})
 endif()
 
 add_executable(kofarc kofarc.cpp ${CMAKE_SOURCE_DIR}/runtime/src/txac.c)
+# fxdump: list compiled D3DX effects (fx_2_0), e.g. the ones embedded in a game.exe
+add_executable(fxdump fxdump.c ${CMAKE_SOURCE_DIR}/runtime/src/gfx/fx.c)
+target_link_libraries(fxdump PRIVATE m)
 
 # retro_host: minimal libretro frontend for testing the core (desktop, needs SDL3)
 find_package(SDL3 CONFIG QUIET)

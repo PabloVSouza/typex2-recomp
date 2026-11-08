@@ -303,3 +303,189 @@ int x2_d3d_assemble(const char *src, size_t len, uint32_t *out, int cap, char *e
     free(text);
     return ok ? a->n : -1;
 }
+
+/* ---- ps_1_x bytecode -> ps_2_0 bytecode ------------------------------------------ */
+static int reg_type(uint32_t t) { return (int)(((t >> 28) & 7) | ((t >> 8) & 0x18)); }
+static int reg_num(uint32_t t) { return (int)(t & 0x7FF); }
+
+typedef struct {
+    uint32_t *out;
+    int n, cap;
+} Buf;
+static void put(Buf *b, uint32_t t) {
+    if (b->n < b->cap) b->out[b->n] = t;
+    b->n++;
+}
+
+int x2_ps1_to_ps2(const uint32_t *in, uint32_t n, uint32_t *out, int cap, char *err, size_t errn) {
+    if (n < 2 || (in[0] & 0xFFFFFF00u) != 0xFFFF0100u) {
+        snprintf(err, errn, "not a ps_1_x shader");
+        return -1;
+    }
+    int minor = (int)(in[0] & 0xFF);
+    bool tex_done[8] = {0}, t_used[8] = {0}, s_used[16] = {0}, v_used[2] = {0};
+    uint32_t *body = malloc(sizeof(uint32_t) * (n * 2 + 16));
+    Buf b = {body, 0, (int)(n * 2 + 16)};
+    /* sources: a tN that holds a texture result reads its temp */
+#define MAP_SRC(t)                                                                                                     \
+    do {                                                                                                               \
+        uint32_t _t = (t);                                                                                             \
+        int _ty = reg_type(_t), _n = reg_num(_t);                                                                      \
+        if (_ty == R_TEXTURE && _n < 8 && tex_done[_n])                                                                \
+            _t = (_t & ~0x70001FFFu & ~0x1800u) | reg_bits(R_TEMP, 6 + _n);                                            \
+        else if (_ty == R_TEXTURE && _n < 8)                                                                           \
+            t_used[_n] = true;                                                                                         \
+        if (_ty == R_INPUT && _n < 2) v_used[_n] = true;                                                               \
+        put(&b, _t);                                                                                                   \
+    } while (0)
+    uint32_t i = 1;
+    bool ok = true;
+    while (i < n && ok) {
+        uint32_t ins = in[i++];
+        uint32_t op = ins & 0xFFFF;
+        if (ins == 0x0000FFFFu) break;
+        if (op == 0xFFFE) { /* comment: keep */
+            uint32_t len = (ins >> 16) & 0x7FFF;
+            put(&b, ins);
+            for (uint32_t k = 0; k < len && i < n; k++) put(&b, in[i++]);
+            continue;
+        }
+        if (op == 0xFFFD) continue; /* phase */
+        int nops;
+        switch (op) {
+        case 0: nops = 0; break;
+        case 1:
+        case 6:
+        case 7:
+        case 14:
+        case 15:
+        case 19: nops = 2; break;
+        case 2:
+        case 3:
+        case 5:
+        case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+        case 13:
+        case 89: nops = 3; break;
+        case 4:
+        case 18:
+        case 80:
+        case 88: nops = 4; break;
+        case 81: nops = 5; break;
+        case 64:
+        case 66: nops = minor >= 4 ? 2 : 1; break;
+        case 65: nops = 1; break;
+        default:
+            snprintf(err, errn, "ps_1_%d instruction %u not supported", minor, op);
+            ok = false;
+            continue;
+        }
+        if (i + (uint32_t)nops > n) {
+            snprintf(err, errn, "truncated shader");
+            ok = false;
+            break;
+        }
+        const uint32_t *o = in + i;
+        i += (uint32_t)nops;
+        if (op == 81) { /* def */
+            put(&b, 81 | 5u << 24);
+            for (int k = 0; k < 5; k++) put(&b, o[k]);
+            continue;
+        }
+        if (op == 66 && minor < 4) { /* tex tN -> texld r(6+N), tN, sN */
+            int t = reg_num(o[0]);
+            if (t >= 8) {
+                snprintf(err, errn, "bad tex");
+                ok = false;
+                break;
+            }
+            t_used[t] = s_used[t] = true;
+            put(&b, 66 | 3u << 24);
+            put(&b, reg_bits(R_TEMP, 6 + t) | 0xFu << 16);
+            put(&b, reg_bits(R_TEXTURE, t) | 0xE4u << 16);
+            put(&b, reg_bits(R_SAMPLER, t) | 0xE4u << 16);
+            tex_done[t] = true;
+            continue;
+        }
+        if (op == 64 && minor < 4) { /* texcoord tN -> mov_sat r(6+N), tN */
+            int t = reg_num(o[0]);
+            if (t >= 8) {
+                snprintf(err, errn, "bad texcoord");
+                ok = false;
+                break;
+            }
+            t_used[t] = true;
+            put(&b, 1 | 2u << 24);
+            put(&b, reg_bits(R_TEMP, 6 + t) | 0xFu << 16 | 1u << 20);
+            put(&b, reg_bits(R_TEXTURE, t) | 0xE4u << 16);
+            tex_done[t] = true;
+            continue;
+        }
+        if (op == 66) { /* ps_1_4 texld rN, src -> texld rN, src, sN */
+            int r = reg_num(o[0]);
+            if (r >= 16) {
+                snprintf(err, errn, "bad texld");
+                ok = false;
+                break;
+            }
+            s_used[r] = true;
+            put(&b, 66 | 3u << 24);
+            put(&b, (o[0] & ~0x0F000000u) | 0xFu << 16);
+            MAP_SRC(o[1] & ~0x0F000000u); /* _dz / _dw (projective): not supported, dropped */
+            put(&b, reg_bits(R_SAMPLER, r) | 0xE4u << 16);
+            continue;
+        }
+        if (op == 64) { /* ps_1_4 texcrd rN, tK -> mov rN, tK */
+            put(&b, 1 | 2u << 24);
+            put(&b, o[0]);
+            MAP_SRC(o[1] & ~0x0F000000u);
+            continue;
+        }
+        if (op == 65) { /* texkill tN: the texture coordinates */
+            int t = reg_num(o[0]);
+            if (reg_type(o[0]) == R_TEXTURE && t < 8) t_used[t] = true;
+            put(&b, 65 | 1u << 24);
+            put(&b, o[0]);
+            continue;
+        }
+        /* arithmetic: same encoding, plus the 2.0 length field; co-issue runs in order */
+        put(&b, (ins & 0xFFFFu) | (uint32_t)nops << 24);
+        put(&b, o[0]);
+        for (int k = 1; k < nops; k++) MAP_SRC(o[k]);
+    }
+#undef MAP_SRC
+    if (ok) {
+        Buf ob = {out, 0, cap};
+        put(&ob, 0xFFFF0200u);
+        for (int k = 0; k < 2; k++)
+            if (v_used[k]) {
+                put(&ob, 31 | 2u << 24);
+                put(&ob, 0x80000000u);
+                put(&ob, reg_bits(R_INPUT, k) | 0xFu << 16);
+            }
+        for (int k = 0; k < 8; k++)
+            if (t_used[k]) {
+                put(&ob, 31 | 2u << 24);
+                put(&ob, 0x80000000u);
+                put(&ob, reg_bits(R_TEXTURE, k) | 0xFu << 16);
+            }
+        for (int k = 0; k < 16; k++)
+            if (s_used[k]) {
+                put(&ob, 31 | 2u << 24);
+                put(&ob, 0x90000000u);
+                put(&ob, reg_bits(R_SAMPLER, k) | 0xFu << 16);
+            }
+        for (int k = 0; k < b.n && k < b.cap; k++) put(&ob, body[k]);
+        put(&ob, 1 | 2u << 24); /* the ps_1_x result is r0 */
+        put(&ob, reg_bits(R_COLOROUT, 0) | 0xFu << 16);
+        put(&ob, reg_bits(R_TEMP, 0) | 0xE4u << 16);
+        put(&ob, 0x0000FFFFu);
+        free(body);
+        return ob.n;
+    }
+    free(body);
+    return -1;
+}

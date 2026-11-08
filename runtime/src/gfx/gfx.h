@@ -84,6 +84,8 @@ void gfx_draw(const GfxState *st, uint32_t prim, uint32_t start, uint32_t count,
 /* inline vertex data (DrawPrimitiveUP / DrawIndexedPrimitiveUP) */
 void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *verts, uint32_t vbytes,
                  uint32_t stride, const void *idx, uint32_t ibytes, uint32_t index_size);
+/* copy a rect (x0, y0, x1, y1 in the game's pixels) between render targets / the backbuffer */
+void gfx_blit(GfxId src, const uint32_t srect[4], GfxId dst, const uint32_t drect[4], bool linear);
 void gfx_present(void);
 void gfx_gl_set_backbuffer(GfxId id); /* texture that Present() shows */
 uint64_t gfx_frame_count(void);

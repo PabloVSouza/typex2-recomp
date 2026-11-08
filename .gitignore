@@ -1,5 +1,35 @@
+# Build trees (build/, build-android/, build-asan/, ...)
 build/
 build-*/
+cmake-build-*/
+compile_commands.json
+
+# Generated per-game C (lifted from copyrighted executables)
 games/*/gen/
-.DS_Store
+
+# Third-party checkouts (SDL, FFmpeg; see README)
 /third_party/
+
+# Never commit game data, dumps or captures
+*.exe
+*.dll
+*.arc
+*.pac
+*.kof
+*.so
+*.sym
+*.dylib
+*.apk
+x2_capture-*.png
+tex*-f*.png
+*.prof
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~
+.cache/
+.clangd/

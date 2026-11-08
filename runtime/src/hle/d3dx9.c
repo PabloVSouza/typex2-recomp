@@ -1,4 +1,4 @@
-/* d3dx9_35 / d3dx9_37: the handful of helpers the games import.
+/* d3dx9_31 / _35 / _37 / _41: the helpers the games import (effects: d3dx_effect.c).
  *
  * D3DXCompileShader: there is no HLSL compiler on our targets, so we emit a
  * valid shader blob { version, comment("X2HL" + source), END }. The graphics
@@ -202,6 +202,123 @@ static void D3DXMatrixOrthoOffCenterLH(X2Cpu *c) {
     m[13] = (t + b) / (b - t);
     m[14] = zn / (zn - zf);
     memcpy(X2P(ARG(0)), m, 64);
+    RET(ARG(0));
+}
+static void put_mat(X2Cpu *c, const float *m) {
+    memcpy(X2P(ARG(0)), m, 64);
+    RET(ARG(0));
+}
+static void D3DXMatrixRotationX(X2Cpu *c) {
+    float a = ARGF(1), m[16];
+    identity(m);
+    m[5] = cosf(a), m[6] = sinf(a), m[9] = -sinf(a), m[10] = cosf(a);
+    put_mat(c, m);
+}
+static void D3DXMatrixRotationY(X2Cpu *c) {
+    float a = ARGF(1), m[16];
+    identity(m);
+    m[0] = cosf(a), m[2] = -sinf(a), m[8] = sinf(a), m[10] = cosf(a);
+    put_mat(c, m);
+}
+/* unit quaternion (x, y, z, w) -> rotation matrix (D3DX layout) */
+static void quat_mat(float *m, const float *q) {
+    float x = q[0], y = q[1], z = q[2], w = q[3];
+    identity(m);
+    m[0] = 1 - 2 * (y * y + z * z), m[1] = 2 * (x * y + z * w), m[2] = 2 * (x * z - y * w);
+    m[4] = 2 * (x * y - z * w), m[5] = 1 - 2 * (x * x + z * z), m[6] = 2 * (y * z + x * w);
+    m[8] = 2 * (x * z + y * w), m[9] = 2 * (y * z - x * w), m[10] = 1 - 2 * (x * x + y * y);
+}
+static void D3DXMatrixRotationQuaternion(X2Cpu *c) {
+    float q[4], m[16];
+    memcpy(q, X2P(ARG(1)), 16);
+    quat_mat(m, q);
+    put_mat(c, m);
+}
+/* roll (Z), then pitch (X), then yaw (Y) */
+static void D3DXMatrixRotationYawPitchRoll(X2Cpu *c) {
+    float yaw = ARGF(1), pitch = ARGF(2), roll = ARGF(3);
+    float sy = sinf(yaw / 2), cy = cosf(yaw / 2), sp = sinf(pitch / 2), cp = cosf(pitch / 2), sr = sinf(roll / 2),
+          cr = cosf(roll / 2);
+    float q[4] = {cy * sp * cr + sy * cp * sr, sy * cp * cr - cy * sp * sr, cy * cp * sr - sy * sp * cr,
+                  cy * cp * cr + sy * sp * sr};
+    float m[16];
+    quat_mat(m, q);
+    put_mat(c, m);
+}
+static void D3DXQuaternionSlerp(X2Cpu *c) {
+    float a[4], b[4], o[4], t = ARGF(3);
+    memcpy(a, X2P(ARG(1)), 16);
+    memcpy(b, X2P(ARG(2)), 16);
+    float d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3], sign = 1;
+    if (d < 0) d = -d, sign = -1;
+    float ka = 1 - t, kb = t;
+    if (d < 0.9999f) {
+        float th = acosf(d), s = sinf(th);
+        ka = sinf((1 - t) * th) / s;
+        kb = sinf(t * th) / s;
+    }
+    for (int i = 0; i < 4; i++) o[i] = ka * a[i] + sign * kb * b[i];
+    memcpy(X2P(ARG(0)), o, 16);
+    RET(ARG(0));
+}
+static void D3DXMatrixLookAtLH(X2Cpu *c) {
+    float eye[3], at[3], up[3], x[3], y[3], z[3];
+    memcpy(eye, X2P(ARG(1)), 12);
+    memcpy(at, X2P(ARG(2)), 12);
+    memcpy(up, X2P(ARG(3)), 12);
+    for (int i = 0; i < 3; i++) z[i] = at[i] - eye[i];
+    float l = sqrtf(z[0] * z[0] + z[1] * z[1] + z[2] * z[2]);
+    for (int i = 0; i < 3; i++) z[i] /= l;
+    x[0] = up[1] * z[2] - up[2] * z[1], x[1] = up[2] * z[0] - up[0] * z[2], x[2] = up[0] * z[1] - up[1] * z[0];
+    l = sqrtf(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+    for (int i = 0; i < 3; i++) x[i] /= l;
+    y[0] = z[1] * x[2] - z[2] * x[1], y[1] = z[2] * x[0] - z[0] * x[2], y[2] = z[0] * x[1] - z[1] * x[0];
+    float m[16] = {x[0],
+                   y[0],
+                   z[0],
+                   0,
+                   x[1],
+                   y[1],
+                   z[1],
+                   0,
+                   x[2],
+                   y[2],
+                   z[2],
+                   0,
+                   -(x[0] * eye[0] + x[1] * eye[1] + x[2] * eye[2]),
+                   -(y[0] * eye[0] + y[1] * eye[1] + y[2] * eye[2]),
+                   -(z[0] * eye[0] + z[1] * eye[1] + z[2] * eye[2]),
+                   1};
+    put_mat(c, m);
+}
+static void D3DXMatrixPerspectiveFovLH(X2Cpu *c) {
+    float fovy = ARGF(1), aspect = ARGF(2), zn = ARGF(3), zf = ARGF(4);
+    float ys = 1 / tanf(fovy / 2), m[16] = {0};
+    m[0] = ys / aspect, m[5] = ys, m[10] = zf / (zf - zn), m[11] = 1, m[14] = -zn * zf / (zf - zn);
+    put_mat(c, m);
+}
+static void vec_normalize(X2Cpu *c, int n) {
+    float v[4];
+    memcpy(v, X2P(ARG(1)), 4 * n);
+    float l = 0;
+    for (int i = 0; i < n; i++) l += v[i] * v[i];
+    l = sqrtf(l);
+    for (int i = 0; i < n; i++) v[i] = l > 0 ? v[i] / l : 0;
+    memcpy(X2P(ARG(0)), v, 4 * n);
+    RET(ARG(0));
+}
+static void D3DXVec2Normalize(X2Cpu *c) { vec_normalize(c, 2); }
+static void D3DXVec3Normalize(X2Cpu *c) { vec_normalize(c, 3); }
+static void D3DXVec4Normalize(X2Cpu *c) { vec_normalize(c, 4); }
+/* (x, y, z, 1) * m, divided by w */
+static void D3DXVec3TransformCoord(X2Cpu *c) {
+    float v[3], m[16], o[4];
+    memcpy(v, X2P(ARG(1)), 12);
+    memcpy(m, X2P(ARG(2)), 64);
+    for (int k = 0; k < 4; k++) o[k] = v[0] * m[k] + v[1] * m[4 + k] + v[2] * m[8 + k] + m[12 + k];
+    if (o[3] != 0)
+        for (int k = 0; k < 3; k++) o[k] /= o[3];
+    memcpy(X2P(ARG(0)), o, 12);
     RET(ARG(0));
 }
 
@@ -555,7 +672,97 @@ static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
     free(data);
 }
 
+/* D3DXCreateTexture(dev, w, h, levels, usage, fmt, pool, out): levels 0 = full chain */
+static void D3DXCreateTexture(X2Cpu *c) {
+    u32 w = ARG(1) ? ARG(1) : 256, h = ARG(2) ? ARG(2) : 256, levels = ARG(3);
+    u32 max_levels = 1;
+    for (u32 m = w > h ? w : h; m > 1; m >>= 1) max_levels++;
+    if (levels == 0 || levels > max_levels) levels = max_levels;
+    u32 tex = x2_d3d9_create_texture(ARG(0), w, h, levels, ARG(4), ARG(5), ARG(6));
+    if (!tex) {
+        RET(0x8876086Cu);
+        return;
+    }
+    WR32(ARG(7), tex);
+    RET(0);
+}
+
+/* ---- ID3DXFont: debug text only; draws nothing ------------------------------ */
+static u32 vt_font;
+static void F_Ok(X2Cpu *c) { RET(0); }
+static void F_GetDC(X2Cpu *c) { RET(0); }
+static void F_DrawText(X2Cpu *c) { RET(0); } /* height of the text drawn */
+static void D3DXCreateFontIndirectA(X2Cpu *c) {
+    if (!vt_font) {
+        static const X2Method m[] = {
+            {"QueryInterface", x2_com_QueryInterface_self, 3},
+            {"AddRef", x2_com_AddRef, 1},
+            {"Release", x2_com_Release, 1},
+            {"GetDevice", F_Ok, 2},
+            {"GetDescA", F_Ok, 2},
+            {"GetDescW", F_Ok, 2},
+            {"GetTextMetricsA", F_Ok, 2},
+            {"GetTextMetricsW", F_Ok, 2},
+            {"GetDC", F_GetDC, 1},
+            {"GetGlyphData", F_Ok, 5},
+            {"PreloadCharacters", F_Ok, 3},
+            {"PreloadGlyphs", F_Ok, 3},
+            {"PreloadTextA", F_Ok, 3},
+            {"PreloadTextW", F_Ok, 3},
+            {"DrawTextA", F_DrawText, 7},
+            {"DrawTextW", F_DrawText, 7},
+            {"OnLostDevice", F_Ok, 1},
+            {"OnResetDevice", F_Ok, 1},
+        };
+        vt_font = x2_com_vtable("ID3DXFont", m, 18);
+    }
+    X2ComObj *o = calloc(1, sizeof *o);
+    WR32(ARG(2), x2_com_wrap(o, vt_font, "ID3DXFont"));
+    RET(0);
+}
+
+/* screenshots from the game's test menu: not saved */
+static void D3DXSaveSurfaceToFileA(X2Cpu *c) {
+    x2_log("d3dx9: D3DXSaveSurfaceToFileA(\"%s\") ignored", GSTR(ARG(0)));
+    RET(0);
+}
+
+/* ---- effects --------------------------------------------------------------- */
+static void D3DXCreateEffectPool(X2Cpu *c) {
+    X2ComObj *o = calloc(1, sizeof *o);
+    static u32 vt;
+    if (!vt) {
+        static const X2Method m[] = {
+            {"QueryInterface", x2_com_QueryInterface_self, 3},
+            {"AddRef", x2_com_AddRef, 1},
+            {"Release", x2_com_Release, 1},
+        };
+        vt = x2_com_vtable("ID3DXEffectPool", m, 3);
+    }
+    WR32(ARG(0), x2_com_wrap(o, vt, "ID3DXEffectPool"));
+    RET(0);
+}
+/* compiled effects: d3dx_effect.c */
+void x2_d3dx_create_effect(X2Cpu *c);
+static void D3DXCreateEffect(X2Cpu *c) { x2_d3dx_create_effect(c); }
+
 const X2Hle x2_hle_d3dx9[] = {
+    {"D3DXMatrixRotationX", D3DXMatrixRotationX, 2},
+    {"D3DXMatrixRotationY", D3DXMatrixRotationY, 2},
+    {"D3DXMatrixRotationQuaternion", D3DXMatrixRotationQuaternion, 2},
+    {"D3DXMatrixRotationYawPitchRoll", D3DXMatrixRotationYawPitchRoll, 4},
+    {"D3DXQuaternionSlerp", D3DXQuaternionSlerp, 4},
+    {"D3DXMatrixLookAtLH", D3DXMatrixLookAtLH, 4},
+    {"D3DXMatrixPerspectiveFovLH", D3DXMatrixPerspectiveFovLH, 5},
+    {"D3DXVec2Normalize", D3DXVec2Normalize, 2},
+    {"D3DXVec3Normalize", D3DXVec3Normalize, 2},
+    {"D3DXVec4Normalize", D3DXVec4Normalize, 2},
+    {"D3DXVec3TransformCoord", D3DXVec3TransformCoord, 3},
+    {"D3DXCreateTexture", D3DXCreateTexture, 8},
+    {"D3DXCreateFontIndirectA", D3DXCreateFontIndirectA, 3},
+    {"D3DXSaveSurfaceToFileA", D3DXSaveSurfaceToFileA, 6},
+    {"D3DXCreateEffectPool", D3DXCreateEffectPool, 1},
+    {"D3DXCreateEffect", D3DXCreateEffect, 9},
     {"D3DXCreateTextureFromFileInMemoryEx", D3DXCreateTextureFromFileInMemoryEx, 15},
     {"D3DXCreateTextureFromFileExA", D3DXCreateTextureFromFileExA, 14},
     {"D3DXLoadSurfaceFromMemory", D3DXLoadSurfaceFromMemory, 10},
