@@ -1,9 +1,21 @@
 # Game status
 
-Progress for every Taito Type X / X+ and Type X2 title. The game lists come
-from Wikipedia's [Taito Type X](https://en.wikipedia.org/wiki/Taito_Type_X)
-article (read November 2026). Its board for each game is just the section the
-game is listed under, so treat it as a guide, not a certified hardware list.
+Progress for every known Taito Type X / X+ and Type X2 title, whether or not
+we have a dump. The later Taito PC boards are listed at the end for
+completeness.
+
+No single source lists every game. These lists merge the following
+(read November 2026):
+- English Wikipedia's [Taito Type X](https://en.wikipedia.org/wiki/Taito_Type_X)
+  article: the base list.
+- Japanese Wikipedia's [TAITO Type X](https://ja.wikipedia.org/wiki/TAITO_Type_X)
+  article: alternate names and cancelled games.
+- A [community Type X2 list](https://www.arcade-projects.com/threads/taito-type-x2-launcher-replacement.30455/):
+  release variants.
+
+The board for each game is the section the sources list it under. Treat it as
+a guide, not a certified hardware list. Rows marked † appear in only one
+source. If you know a missing game or a wrong board, please open an issue.
 
 ## Status levels
 
@@ -101,6 +113,7 @@ may need a different loader than disc / HDD builds.
 | Lord of Vermilion | 2008 | — |
 | Lord of Vermilion II | 2009 | — |
 | Lord of Vermilion Re:2 | 2011 | — |
+| Lupin the 3rd † (community list only; exact title unconfirmed) | — | — |
 | Magical Beat ★ | 2012 | — |
 | Monster Hunter Nikki Angrily Pooh Ghee Race | 2013 | — |
 | Music Gun Gun! | 2009 | — |
@@ -149,8 +162,25 @@ may need a different loader than disc / HDD builds.
 | Yatagarasu: Attack on Cataclysm ★ | 2015 | — |
 | Yuukyuu no Sharin: Eternal Wheel | 2007 | — |
 
-Likely easiest after the current set: games built the same way as titles
-that already run. Street Fighter IV and SSF4 AE Ver.2012 share SSF4 AE's
+### Release variants
+
+Some games shipped in several builds. A port is per `game.exe`, so each build
+may need its own check:
+
+| Game | Builds |
+|---|---|
+| Super Street Fighter IV Arcade Edition | Ver.1.0 (NESYS network); EXP stand-alone Ver.1.0, **the build our port uses**; Ver.2012 (Ver.1.3, NESYS) |
+| Elevator Action Death Parade | Japanese and export (EXP) |
+| The King of Fighters XIII Climax | Disc / HDD release (supported); NESiCAxLive release (2013) |
+
+### Cancelled Type X2 games
+
+Japanese Wikipedia names two Type X2 games that were never released:
+*Minna de Watto!* (みんなでワッと!) and *Top Speed* (トップスピード).
+
+### Easiest next ports
+
+Games built the same way as titles that already run should come first. Street Fighter IV and SSF4 AE Ver.2012 share SSF4 AE's
 engine. BlazBlue CS II shares Continuum Shift's engine. The KOF XIII Climax
 NESiCAxLive build shares Climax's engine.
 
@@ -198,6 +228,7 @@ the board's I/O setup. Type X+ is Type X with a stronger graphics card.
 | Spica Adventure | 2005 | — |
 | Supreme!! Mecha Mote Chairperson Kurmote Girls Contest! | 2009 | — |
 | Taisen Hot Gimmick 5 | 2006 | — |
+| Taisen Hot Gimmick: Mirai Eigou † (Japanese Wikipedia; possibly the same game as Hot Gimmick 5) | 2006 | — |
 | Taisen Hot Gimmick Mix Party | 2005 | — |
 | Tetris The Grand Master 3: Terror Instinct | 2005 | — |
 | Tetsudamasy | 2011 | — |
@@ -213,3 +244,48 @@ the board's I/O setup. Type X+ is Type X with a stronger graphics card.
 Many of these, such as card dispensers, network titles and medal games,
 depend on peripherals beyond a joystick panel. Those are out of scope unless
 someone brings the hardware protocol.
+
+## Later Taito PC boards (out of scope for now)
+
+These lists are for reference only. The later boards move to Windows 7 / 8
+Embedded and, from Type X3 on, often 64-bit executables. Supporting them
+would take a different runtime: the current recompiler only handles 32-bit
+x86 code for XP-era DirectX 9. English Wikipedia gives no game list for Type
+X7.
+
+### Type X Zero (2011–)
+
+Card de Renketsu! Densha de Go! (2012) · Groove Coaster (2013) · Groove
+Coaster EX (2014) · Groove Coaster 2 Heavenly Festival (2015) · Groove
+Coaster 3 Link Fever (2016) · Groove Coaster 3 EX Dream Party (2017) ·
+Groove Coaster 4 Starlight Road (2018) · Groove Coaster 4 EX Infinity
+Highway (2019) · Groove Coaster 4 MAX Diamond Galaxy (2020) · Kickthrough
+Racers (2011) · Mogutte Horehore (2011)
+
+### Type X3 (2012–)
+
+BlazBlue: Central Fiction for NESiCAxLive2 (2017) · BlazBlue: Cross Tag
+Battle (2019) · Chousoku Henkei Gyrozetter (2012) · Dragon Quest Monster
+Battle Scanner (2016) · EN-Eins Perfektewelt Anastasis (2023) · Fight!
+Dragon Quest Scan Butlers (2017) · Fighting EX Layer (2018) · Figure Heads
+Aces (2017) · Gunslinger Stratos (2012) · Gunslinger Stratos 2 (2014) ·
+Gunslinger Stratos 3 (2016) · Gunslinger Stratos Σ (2017) · Left 4 Dead
+-Survivors- (2014) · Lord of Vermilion III (2013) · Lord of Vermilion III
+ArK-cell (2014) · Lord of Vermilion III Chain-Gene (2015) · Lord of
+Vermilion III Twin Lance (2014) · Lord of Vermilion IV (2017) · Lord of
+Vermilion Re:3 (2015) · Lord of Vermilion Re:3 Dear Servant (2016) · Lord of
+Vermilion Re:3 Dear Servant -Saviour of the 13 Swords- (2016) · Ma Dolomiti
+Dragon Solazur Kingdom -Puzzle & Dragons Battle Tournament- (2014) · Million
+Arthur: Arcana Blood (2017) · Samurai Spirits (2019) · School of Ragnarok
+(2015) · School of Ragnarok Re:Boot (2015) · SNK Heroines AC: Tag Team
+Frenzy (2018) · Theatrhythm Final Fantasy – All-Star Carnival (2016) · The
+King of Fighters XIV Arcade Ver. (2017) · Ultra Street Fighter IV (2014,
+also listed under Type X2)
+
+### Type X4 (2016–)
+
+Densha de Go!! (2017) · Love Live! School Idol Festival: After School
+Activity (2016) · … Next Stage (2018) · Magicians Dead (2016) · Magicians
+Dead Next Blazing (2017) · Metal Slug 8 3D (Wikipedia's year is unreliable)
+· Starwing Paradox (2018) · Street Fighter V: Type Arcade (2019) · Street
+Fighter 6: Type Arcade (2023)
