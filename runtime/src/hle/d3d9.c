@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "../com.h"
+#include "../gfx/ffp.h"
 #include "../gfx/gfx.h"
 
 #define D3D_OK 0u
@@ -117,6 +118,10 @@ struct Device {
     u32 rt_obj[4], ds_obj;
     u32 backbuffer, auto_ds;
     u32 fvf;
+    bool fvf_active; /* SetFVF came after SetVertexDeclaration: the FVF is the declaration */
+    /* fixed-function constants the GPU holds in the reserved registers (ffp.h) */
+    bool ffp_vs_loaded, ffp_ps_loaded;
+    float ffp_vc[FFP_VS_COUNT][4], ffp_pc[FFP_PS_COUNT][4];
     u32 tss[8][33];
     float vsc[GFX_VS_CONSTS][4], psc[GFX_PS_CONSTS][4];
     s32 vsi[16][4], psi[16][4];
@@ -774,15 +779,150 @@ static u32 index_size_of(Device *d) {
     Buffer *b = (Buffer *)x2_com_get(d->ib_obj);
     return b && b->fmt_or_fvf == D3DFMT_INDEX32 ? 4 : 2;
 }
+/* ---- fixed function (ffp.c) ------------------------------------------------------ */
+/* generated declarations and shaders, by key */
+typedef struct {
+    u64 key;
+    GfxId id;
+} FfpEntry;
+static FfpEntry ffp_decls[64], ffp_vss[128], ffp_pss[512];
+static u32 ffp_ndecls, ffp_nvss, ffp_npss;
+static pthread_mutex_t ffp_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static GfxId ffp_find(FfpEntry *t, u32 n, u64 key) {
+    for (u32 i = 0; i < n; i++)
+        if (t[i].key == key) return t[i].id;
+    return 0;
+}
+static GfxId ffp_decl(u32 fvf) {
+    GfxId id = ffp_find(ffp_decls, ffp_ndecls, fvf);
+    if (id || ffp_ndecls >= 64) return id;
+    u8 el[8 * 20];
+    u32 n = ffp_fvf_decl(fvf, el, 20);
+    if (!n) return 0;
+    id = new_id();
+    gfx_decl_create(id, el, n);
+    ffp_decls[ffp_ndecls++] = (FfpEntry){fvf, id};
+    x2_log("d3d9: FVF %#x -> vertex declaration %u (%u bytes per vertex)", fvf, id, ffp_fvf_size(fvf));
+    return id;
+}
+static GfxId ffp_vs(Device *d) {
+    u32 idx[8], packed = 0;
+    for (int s = 0; s < 8; s++) {
+        idx[s] = d->tss[s][11] & 0xFFFF;
+        packed |= (idx[s] & 7) << (3 * s);
+    }
+    u64 key = (u64)d->fvf << 24 | packed;
+    GfxId id = ffp_find(ffp_vss, ffp_nvss, key);
+    if (id || ffp_nvss >= 128) return id;
+    u32 tok[512];
+    int n = ffp_vertex_shader(d->fvf, idx, tok, 512);
+    if (n <= 0 || n > 512) return 0;
+    id = new_id();
+    gfx_shader_create(id, false, tok, (u32)n);
+    ffp_vss[ffp_nvss++] = (FfpEntry){key, id};
+    return id;
+}
+static GfxId ffp_ps(Device *d) {
+    u64 key = ffp_pixel_key((const uint32_t (*)[33])d->tss);
+    GfxId id = ffp_find(ffp_pss, ffp_npss, key);
+    if (id) return id;
+    if (ffp_npss >= 512) {
+        static bool warned;
+        if (!warned) x2_log("d3d9: more than 512 fixed-function texture stage setups");
+        warned = true;
+        return 0;
+    }
+    u32 tok[2048];
+    int n = ffp_pixel_shader((const uint32_t (*)[33])d->tss, tok, 2048);
+    if (n <= 0 || n > 2048) return 0;
+    id = new_id();
+    gfx_shader_create(id, true, tok, (u32)n);
+    ffp_pss[ffp_npss++] = (FfpEntry){key, id};
+    return id;
+}
+static void ffp_upload(bool pixel, bool *loaded, float *cur, const float *want, u32 first, u32 count) {
+    if (*loaded && !memcmp(cur, want, 16 * count)) return;
+    memcpy(cur, want, 16 * count);
+    gfx_set_consts(pixel, first, want, count);
+    *loaded = true;
+}
+/* The state a draw renders with: the device state, with generated shaders and
+ * an FVF declaration filled in where the game uses the fixed-function pipeline.
+ * The reserved constant registers hold either the game's values or the
+ * fixed-function ones; each draw makes sure they hold what it reads. */
+static const GfxState *draw_state(Device *d, GfxState *tmp) {
+    bool fvf_decl = d->fvf_active && d->fvf, ffp_ps_draw = !d->ps_obj;
+    /* pre-transformed vertices (XYZRHW) bypass vertex processing even with a
+     * vertex shader set: KOF '98 UM draws its stages that way, in 640x480
+     * pixel coordinates, while its shader's matrix maps a 320-wide space */
+    bool ffp_vs_draw = !d->vs_obj || (fvf_decl && (d->fvf & 0x400E) == 0x004);
+    if (!ffp_vs_draw && d->ffp_vs_loaded) { /* a game shader may read those registers */
+        gfx_set_consts(false, FFP_VS_FIRST, d->vsc[FFP_VS_FIRST], FFP_VS_COUNT);
+        d->ffp_vs_loaded = false;
+    }
+    if (!ffp_ps_draw && d->ffp_ps_loaded) {
+        gfx_set_consts(true, FFP_PS_FIRST, d->psc[FFP_PS_FIRST], FFP_PS_COUNT);
+        d->ffp_ps_loaded = false;
+    }
+    if (!ffp_vs_draw && !ffp_ps_draw && !fvf_decl) return &d->st;
+    *tmp = d->st;
+    pthread_mutex_lock(&ffp_lock);
+    if (fvf_decl) tmp->decl = ffp_decl(d->fvf);
+    if (ffp_vs_draw) {
+        if (!fvf_decl) {
+            static bool warned;
+            if (!warned) x2_log("d3d9: fixed-function draw with a vertex declaration (not supported)");
+            warned = true;
+        } else {
+            tmp->vs = ffp_vs(d);
+            float v[FFP_VS_COUNT][4] = {{0}};
+            const float *w = d->transforms[256], *vw = d->transforms[2], *p = d->transforms[3]; /* WORLD VIEW PROJ */
+            float wv[16], wvp[16];
+            for (int r = 0; r < 4; r++)
+                for (int k = 0; k < 4; k++) {
+                    wv[r * 4 + k] = 0;
+                    for (int j = 0; j < 4; j++) wv[r * 4 + k] += w[r * 4 + j] * vw[j * 4 + k];
+                }
+            for (int r = 0; r < 4; r++)
+                for (int k = 0; k < 4; k++) {
+                    wvp[r * 4 + k] = 0;
+                    for (int j = 0; j < 4; j++) wvp[r * 4 + k] += wv[r * 4 + j] * p[j * 4 + k];
+                }
+            for (int k = 0; k < 4; k++) /* clip = position * WVP: one register per column */
+                for (int r = 0; r < 4; r++) v[FFP_VS_WVP - FFP_VS_FIRST + k][r] = wvp[r * 4 + k];
+            const GfxViewport *vp = &d->st.vp;
+            float vw_ = vp->w > 0 ? vp->w : 1, vh = vp->h > 0 ? vp->h : 1;
+            float *vc = v[FFP_VS_VIEWPORT - FFP_VS_FIRST];
+            vc[0] = 2.0f / vw_;
+            vc[1] = -2.0f / vh;
+            vc[2] = -1.0f - 2.0f * vp->x / vw_;
+            vc[3] = 1.0f + 2.0f * vp->y / vh;
+            ffp_upload(false, &d->ffp_vs_loaded, &d->ffp_vc[0][0], &v[0][0], FFP_VS_FIRST, FFP_VS_COUNT);
+        }
+    }
+    if (ffp_ps_draw) {
+        tmp->ps = ffp_ps(d);
+        u32 tf = d->st.rs[60]; /* TEXTUREFACTOR, a D3DCOLOR */
+        float v[4] = {(float)((tf >> 16) & 0xFF) / 255.0f, (float)((tf >> 8) & 0xFF) / 255.0f,
+                      (float)(tf & 0xFF) / 255.0f, (float)(tf >> 24) / 255.0f};
+        ffp_upload(true, &d->ffp_ps_loaded, &d->ffp_pc[0][0], v, FFP_PS_FIRST, FFP_PS_COUNT);
+    }
+    pthread_mutex_unlock(&ffp_lock);
+    return tmp;
+}
+
 static void D_DrawPrimitive(X2Cpu *c) {
     DEV;
-    gfx_draw(&d->st, ARG(1), ARG(2), ARG(3), false, 0, 0, 0);
+    GfxState tmp;
+    gfx_draw(draw_state(d, &tmp), ARG(1), ARG(2), ARG(3), false, 0, 0, 0);
     RET(D3D_OK);
 }
 static void D_DrawIndexedPrimitive(X2Cpu *c) {
     DEV;
     d->st.ib_index_size = index_size_of(d);
-    gfx_draw(&d->st, ARG(1), ARG(5), ARG(6), true, (s32)ARG(2), ARG(3), ARG(4));
+    GfxState tmp;
+    gfx_draw(draw_state(d, &tmp), ARG(1), ARG(5), ARG(6), true, (s32)ARG(2), ARG(3), ARG(4));
     RET(D3D_OK);
 }
 static u32 prim_verts(u32 prim, u32 n) {
@@ -799,7 +939,8 @@ static void D_DrawPrimitiveUP(X2Cpu *c) {
     DEV;
     u32 prim = ARG(1), n = ARG(2), stride = ARG(4);
     u32 nv = prim_verts(prim, n);
-    gfx_draw_up(&d->st, prim, n, X2P(ARG(3)), nv * stride, stride, NULL, 0, 0);
+    GfxState tmp;
+    gfx_draw_up(draw_state(d, &tmp), prim, n, X2P(ARG(3)), nv * stride, stride, NULL, 0, 0);
     /* D3D9 semantics: stream 0 and indices are reset after *UP draws */
     d->vb_obj[0] = 0; d->st.vb[0] = 0;
     RET(D3D_OK);
@@ -809,7 +950,8 @@ static void D_DrawIndexedPrimitiveUP(X2Cpu *c) {
     u32 prim = ARG(1), nverts = ARG(3), n = ARG(4), idx = ARG(5), fmt = ARG(6), verts = ARG(7), stride = ARG(8);
     u32 isz = fmt == D3DFMT_INDEX32 ? 4 : 2;
     u32 ni = prim_verts(prim, n);
-    gfx_draw_up(&d->st, prim, n, X2P(verts), (ARG(2) + nverts) * stride, stride, X2P(idx), ni * isz, isz);
+    GfxState tmp;
+    gfx_draw_up(draw_state(d, &tmp), prim, n, X2P(verts), (ARG(2) + nverts) * stride, stride, X2P(idx), ni * isz, isz);
     d->vb_obj[0] = 0; d->st.vb[0] = 0;
     d->ib_obj = 0; d->st.ib = 0;
     RET(D3D_OK);
@@ -828,6 +970,7 @@ static void D_CreateVertexDeclaration(X2Cpu *c) {
 static void D_SetVertexDeclaration(X2Cpu *c) {
     DEV;
     d->decl_obj = ARG(1);
+    d->fvf_active = false;
     Simple *s = (Simple *)x2_com_get(ARG(1));
     d->st.decl = s ? s->id : 0;
     RET(D3D_OK);
@@ -841,7 +984,7 @@ static void D_GetVertexDeclaration(X2Cpu *c) {
 static void D_SetFVF(X2Cpu *c) {
     DEV;
     d->fvf = ARG(1);
-    if (ARG(1)) x2_log("d3d9: SetFVF(%x) - fixed-function vertex formats are not translated yet", ARG(1));
+    d->fvf_active = ARG(1) != 0;
     RET(D3D_OK);
 }
 static void D_GetFVF(X2Cpu *c) { DEV; WR32(ARG(1), d->fvf); RET(D3D_OK); }
@@ -894,6 +1037,14 @@ static void set_constf(X2Cpu *c, bool pixel) {
     if (start + n > max) n = max - start;
     memcpy(pixel ? d->psc[start] : d->vsc[start], X2P(ARG(2)), n * 16);
     gfx_set_consts(pixel, start, (const float *)X2P(ARG(2)), n);
+    /* the game overwrote registers the fixed-function shaders use */
+    if (pixel ? start < FFP_PS_FIRST + FFP_PS_COUNT && start + n > FFP_PS_FIRST
+              : start < FFP_VS_FIRST + FFP_VS_COUNT && start + n > FFP_VS_FIRST) {
+        if (pixel)
+            d->ffp_ps_loaded = false;
+        else
+            d->ffp_vs_loaded = false;
+    }
     RET(D3D_OK);
 }
 static void get_constf(X2Cpu *c, bool pixel) {
@@ -1108,6 +1259,20 @@ static void A_CreateDevice(X2Cpu *c) {
     rs[193] = 0xFFFFFFFF; /* BLENDFACTOR */
     rs[168] = 0xF;        /* COLORWRITEENABLE */
     rs[171] = 1;          /* BLENDOP add */
+    rs[60] = 0xFFFFFFFF;  /* TEXTUREFACTOR */
+    /* texture stage defaults: stage 0 modulates texture and diffuse, the rest
+     * are off; each stage reads the coordinate set of its own number */
+    for (u32 s = 0; s < 8; s++) {
+        u32 *t = d->tss[s];
+        t[1] = s ? 1 : 4;          /* COLOROP: DISABLE / MODULATE */
+        t[4] = s ? 1 : 2;          /* ALPHAOP: DISABLE / SELECTARG1 */
+        t[2] = t[5] = 2;           /* COLORARG1 / ALPHAARG1: TEXTURE */
+        t[3] = t[6] = 1;           /* COLORARG2 / ALPHAARG2: CURRENT */
+        t[26] = t[27] = t[28] = 1; /* COLORARG0 / ALPHAARG0 / RESULTARG: CURRENT */
+        t[11] = s;                 /* TEXCOORDINDEX */
+    }
+    for (u32 i = 0; i < 512; i++) /* every transform starts as the identity */
+        for (u32 k = 0; k < 4; k++) d->transforms[i][k * 5] = 1.0f;
     for (int s = 0; s < GFX_MAX_SAMPLERS; s++) {
         d->st.samp[s][1] = d->st.samp[s][2] = d->st.samp[s][3] = 1; /* ADDRESSU/V/W wrap */
         d->st.samp[s][5] = d->st.samp[s][6] = 1;                    /* MAG/MIN point */

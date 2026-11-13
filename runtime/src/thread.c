@@ -310,6 +310,10 @@ static void *thread_main(void *p) {
     run_tls_callbacks(t, 2 /* DLL_THREAD_ATTACH */);
     X2_TRACE("thread %u start %08x(%08x)", t->id, t->start, t->param);
     u32 rc = x2_guest_call(&t->cpu, t->start, 1, t->param);
+    /* the guest stack is dead now: give it back. Short-lived threads (KOF '98
+     * UM starts a one-shot multimedia timer, i.e. a thread, per sound effect)
+     * would otherwise use up the address space within minutes. */
+    x2_vm_free(t->stack_base - t->stack_size);
     pthread_mutex_lock(&t->lock);
     t->exit_code = rc;
     t->finished = true;

@@ -1,9 +1,10 @@
 # typex2-recomp
 
-Static recompilation of Taito Type X2 games (SNK's KOF XII / XIII, Capcom's
-Super Street Fighter IV Arcade Edition, Arc System Works' BlazBlue Calamity
-Trigger and Continuum Shift) to native code, so they run on macOS and Android:
-as standalone apps (launched by ES-DE) or as a RetroArch/libretro core.
+Static recompilation of Taito Type X and Type X2 games (SNK's KOF XII / XIII
+and KOF '98 Ultimate Match, Capcom's Super Street Fighter IV Arcade Edition,
+Arc System Works' BlazBlue Calamity Trigger and Continuum Shift) to native
+code, so they run on macOS and Android: as standalone apps (launched by ES-DE)
+or as a RetroArch/libretro core.
 
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
@@ -14,9 +15,11 @@ Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
 RetroArch on Android (attract, select, fights; 0.3-0.7 s load pauses at fight
-start). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader
-bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
-translated to GLSL).
+start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
+macOS (attract, team select, fights; not yet tested on Android). Rendering is
+D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
+HLSL, compiled D3DX effects and the fixed-function pipeline all translated to
+GLSL).
 
 **Documentation:** [`docs/`](docs/Home.md) (also the project wiki) has the
 status of every Type X / X2 game ([Game status](docs/Game-Status.md)), a page
@@ -62,8 +65,9 @@ build/recompiler/x2recomp "<game dir>/game.exe" games/kof12/gen
 cmake -S . -B build && cmake --build build
 ```
 
-Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `ssf4ae`, `bbcs`, `bbct`
-(BlazBlue Continuum Shift / Calamity Trigger).
+Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `kof98um`, `ssf4ae`,
+`bbcs`, `bbct` (BlazBlue Continuum Shift / Calamity Trigger). KOF '98 UM starts
+from `launcher.exe`: give x2recomp that file; the runtime finds either name.
 
 This builds `build/x2-<game>` for every `games/<game>/gen` and the core
 `build/typex2_libretro.dylib` (`-DX2_LIBRETRO=OFF` / `-DX2_STANDALONE=OFF`
@@ -259,6 +263,13 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   MSVC run-time checks (`_RTC_CheckEsp` reads the caller's flags; see
   "flag importers" in `lift.cpp`); a failed check now stops with "the game
   called DebugBreak". On the tablet: 60 fps, with 0.3-0.7 s load pauses.
+* KOF '98 UM (Type X): KOF's panel and pad layout (its INPUT TEST: A B C D on
+  SHOT1, SHOT4, SHOT2, SHOT5). It draws with the fixed-function pipeline
+  (generated shaders, `gfx/ffp.c`) and palettized L8 textures; its stages use
+  pre-transformed vertices with its own vertex shader bound, which D3D9
+  bypasses. Not yet tested on Android. Fixed-function lighting, fog, vertex
+  blending and texture-coordinate generation are not implemented (no game
+  needs them yet).
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
 * Guest threads run truly parallel. On ARM, shared (non-stack) guest stores
   are release (and loads acquire, with `X2_TSO=1`) so x86 TSO-dependent code

@@ -17,11 +17,11 @@ typedef struct {
 } FakeModule;
 /* Handles for HLE'd system DLLs; values mimic XP load addresses. */
 static const FakeModule fake_modules[] = {
-    {"kernel32.dll", 0x7C800000u}, {"user32.dll", 0x7E410000u},  {"gdi32.dll", 0x77F10000u},
-    {"advapi32.dll", 0x77DD0000u}, {"ole32.dll", 0x774E0000u},   {"winmm.dll", 0x76B40000u},
-    {"shlwapi.dll", 0x77F60000u},  {"d3d9.dll", 0x4FDD0000u},    {"d3dx9_35.dll", 0x4A000000u},
-    {"d3dx9_37.dll", 0x4A100000u}, {"shell32.dll", 0x7C9C0000u}, {"imm32.dll", 0x76390000u},
-    {"d3dx9_31.dll", 0x4A200000u},
+    {"kernel32.dll", 0x7C800000u}, {"user32.dll", 0x7E410000u},   {"gdi32.dll", 0x77F10000u},
+    {"advapi32.dll", 0x77DD0000u}, {"ole32.dll", 0x774E0000u},    {"winmm.dll", 0x76B40000u},
+    {"shlwapi.dll", 0x77F60000u},  {"d3d9.dll", 0x4FDD0000u},     {"d3dx9_35.dll", 0x4A000000u},
+    {"d3dx9_37.dll", 0x4A100000u}, {"shell32.dll", 0x7C9C0000u},  {"imm32.dll", 0x76390000u},
+    {"d3dx9_31.dll", 0x4A200000u}, {"d3dx9_36.dll", 0x4A300000u}, {"d3dx9d_36.dll", 0x4A400000u},
 };
 
 static const char *base_name(const char *p) {

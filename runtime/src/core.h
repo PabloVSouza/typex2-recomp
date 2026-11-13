@@ -134,6 +134,9 @@ void x2_park_forever(void);
 /* boot.c: load <dir>/game.exe for `game` and start its main thread */
 X2Thread *x2_boot(const X2GameTables *game, const char *dir);
 void x2_load_env_file(const char *dir);
+/* the game draws a 16:9 picture with bars into a 4:3 backbuffer (KOF XIII
+ * Climax): front ends show only the 16:9 band */
+bool x2_game_letterboxed(void);
 u32 x2_peb(void);
 void x2_set_last_error(u32 e);
 

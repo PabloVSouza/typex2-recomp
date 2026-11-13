@@ -437,6 +437,13 @@ static void GetCurrentDirectoryA(X2Cpu *c) {
     if (ARG(0) > n) strcpy(GSTR(ARG(1)), cwd);
     RET(ARG(0) > n ? n : n + 1);
 }
+/* the current directory stays C:\game (the game folder): log any move elsewhere */
+static void SetCurrentDirectoryA(X2Cpu *c) {
+    const char *p = GSTR(ARG(0));
+    if (strcasecmp(p, "C:\\game") && strcasecmp(p, "C:\\game\\") && strcmp(p, "."))
+        x2_log("SetCurrentDirectoryA(\"%s\"): ignored", p);
+    RET(1);
+}
 /* "C:\game\..." for a relative path; returns the length */
 static u32 full_path(const char *in, char *out, size_t n) {
     if (isalpha((unsigned char)in[0]) && in[1] == ':') snprintf(out, n, "%s", in);
@@ -636,6 +643,7 @@ const X2Hle x2_hle_k32_file[] = {
     {"GetDriveTypeA", GetDriveTypeA, 1},
     {"GetDiskFreeSpaceExA", GetDiskFreeSpaceExA, 4},
     {"GetCurrentDirectoryA", GetCurrentDirectoryA, 2},
+    {"SetCurrentDirectoryA", SetCurrentDirectoryA, 1},
     {"GetFullPathNameA", GetFullPathNameA, 4},
     {"FindFirstFileA", FindFirstFileA, 2},
     {"FindNextFileA", FindNextFileA, 2},

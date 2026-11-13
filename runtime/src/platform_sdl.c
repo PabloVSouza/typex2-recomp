@@ -129,7 +129,7 @@ static void present_image(GLuint tex, u32 tw, u32 th) {
     /* A 4:3 image (KOF XIII Climax's 640x480 mode) carries a 16:9 picture with
      * bars: show only that band, then letterbox to the game's aspect ratio */
     float v0 = 0, v1 = 1, ih = (float)th;
-    if (tw * 3 == th * 4) {
+    if (tw * 3 == th * 4 && x2_game_letterboxed()) {
         ih = (float)(tw * 9 / 16);
         v0 = ((float)th - ih) / 2 / (float)th;
         v1 = v0 + ih / (float)th;

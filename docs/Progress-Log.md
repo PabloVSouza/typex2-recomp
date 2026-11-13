@@ -2,6 +2,20 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: KOF '98 Ultimate Match, the first Type X game
+
+- **Running on macOS:** attract mode, team select and fights with full
+  stages and sound.
+- **Fixed-function pipeline:** generated vs_2_0 / ps_2_0 shaders for
+  `SetFVF` draws and texture stage states (`gfx/ffp.c`). Draws with a vertex
+  shader but no pixel shader, which were skipped before, now render too.
+- **Pre-transformed (XYZRHW) vertices** skip the bound vertex shader, as in
+  D3D9.
+- **Threads and sync:** thread stacks are freed when a thread ends, and
+  `PulseEvent` releases the threads waiting at that moment.
+- **Executable:** found as `game.exe` or `launcher.exe`. The 16:9 crop only
+  applies to KOF XIII Climax, so true 4:3 games keep their full frame.
+
 ## 2026-11-13: BlazBlue CT on Android
 
 - **On the tablet:** 60 fps in attract mode and fights in RetroArch. Load

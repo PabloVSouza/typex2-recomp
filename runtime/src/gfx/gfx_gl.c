@@ -1056,8 +1056,8 @@ static void run_frame(Frame *f) {
                 gpu_pass(((const Clear *)p)->st.rt[0]);
                 if (gfx_gl_drawlog) {
                     const Clear *k = p;
-                    x2_log("clear flags %x color %08x rt0 %u ds %u vp %.0f,%.0f %.0fx%.0f", k->flags, k->color, k->st.rt[0], k->st.ds, k->st.vp.x,
-                           k->st.vp.y, k->st.vp.w, k->st.vp.h);
+                    x2_log("clear flags %x color %08x z %.3f rt0 %u ds %u vp %.0f,%.0f %.0fx%.0f", k->flags, k->color,
+                           k->z, k->st.rt[0], k->st.ds, k->st.vp.x, k->st.vp.y, k->st.vp.w, k->st.vp.h);
                 }
                 do_clear(p);
                 st_clears++;
@@ -1074,6 +1074,7 @@ static void run_frame(Frame *f) {
                 const DrawUp *k = p;
                 const u8 *v = (const u8 *)(k + 1);
                 gpu_pass(k->st.rt[0]);
+                st_draws++;
                 gfx_gl_draw(&k->st, k->prim, 0, k->count, k->ibytes != 0, 0, v, k->stride, k->ibytes ? v + k->vbytes : NULL,
                             k->isz);
                 break;

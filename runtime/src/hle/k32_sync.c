@@ -18,6 +18,8 @@ static pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 
 typedef struct {
     bool manual, signaled;
+    u32 pulses;  /* PulseEvent count (manual-reset): releases the threads waiting at that moment */
+    u32 waiters; /* threads blocked on it (PulseEvent on an auto-reset event frees one, if any) */
 } Event;
 typedef struct {
     u32 owner;  /* thread id, 0 = free */
@@ -185,17 +187,24 @@ bool x2_event_set(u32 handle) {
     return true;
 }
 static void ResetEvent(X2Cpu *c) { set_event(c, false); }
-/* wake whoever waits now, then reset (waiters that are not yet blocked may miss it, as on Windows) */
+/* Release the threads waiting right now and leave the event reset: every
+ * waiter of a manual-reset event, one waiter of an auto-reset event. Waiters
+ * compare the pulse count with the one they started with, so a woken thread
+ * that gets the lock late still sees its pulse (KOF '98 UM's sound threads
+ * wait for the pulses of a 16 ms timer; setting and resetting the event
+ * starved them). */
 static void PulseEvent(X2Cpu *c) {
     X2Handle *h = x2_handle_get(ARG(0), H_EVENT);
     if (!h) { RET(0); return; }
+    Event *e = h->obj;
     pthread_mutex_lock(&sync_lock);
-    ((Event *)h->obj)->signaled = true;
+    if (e->manual) {
+        e->pulses++;
+        e->signaled = false;
+    } else {
+        e->signaled = e->waiters > 0; /* the first waiter to look takes it */
+    }
     pthread_cond_broadcast(&sync_cond);
-    pthread_mutex_unlock(&sync_lock);
-    sched_yield();
-    pthread_mutex_lock(&sync_lock);
-    ((Event *)h->obj)->signaled = false;
     pthread_mutex_unlock(&sync_lock);
     RET(1);
 }
@@ -288,20 +297,33 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
         dl.tv_nsec = (long)(ns % 1000000000ull);
     }
     pthread_mutex_lock(&sync_lock);
+    /* events: the pulse count when the wait began (see PulseEvent) */
+    Event *ev[64] = {0};
+    u32 seen[64] = {0};
+    if (n > 64) n = 64;
+    for (u32 i = 0; i < n; i++) {
+        X2Handle *h = x2_handle_get(hs[i], H_EVENT);
+        if (!h) continue;
+        ev[i] = h->obj;
+        seen[i] = ev[i]->pulses;
+        ev[i]->waiters++;
+    }
+#define PULSED(i) (ev[i] && ev[i]->pulses != seen[i])
     u32 rc;
     for (;;) {
         if (all) {
             bool ok = true;
-            for (u32 i = 0; i < n && ok; i++) ok = check(hs[i], false);
+            for (u32 i = 0; i < n && ok; i++) ok = PULSED(i) || check(hs[i], false);
             if (ok) {
-                for (u32 i = 0; i < n; i++) check(hs[i], true);
+                for (u32 i = 0; i < n; i++)
+                    if (!PULSED(i)) check(hs[i], true);
                 rc = WAIT_OBJECT_0;
                 break;
             }
         } else {
             u32 i;
             for (i = 0; i < n; i++)
-                if (check(hs[i], true)) break;
+                if (PULSED(i) || check(hs[i], true)) break;
             if (i < n) {
                 rc = WAIT_OBJECT_0 + i;
                 break;
@@ -318,10 +340,13 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
         } else if (pthread_cond_timedwait(&sync_cond, &sync_lock, &dl) == ETIMEDOUT) {
             /* one last check happens on the next loop iteration only if time remains */
             bool any = false;
-            for (u32 i = 0; i < n && !any; i++) any = check(hs[i], false);
+            for (u32 i = 0; i < n && !any; i++) any = PULSED(i) || check(hs[i], false);
             if (!any || all) { rc = WAIT_TIMEOUT; break; }
         }
     }
+#undef PULSED
+    for (u32 i = 0; i < n; i++)
+        if (ev[i]) ev[i]->waiters--;
     pthread_mutex_unlock(&sync_lock);
     return rc;
 }
@@ -463,6 +488,7 @@ static void ExitThread(X2Cpu *c) {
     pthread_cond_broadcast(&t->cond);
     pthread_mutex_unlock(&t->lock);
     x2_sync_broadcast();
+    x2_vm_free(t->stack_base - t->stack_size); /* as in thread_main: the stack is dead */
     pthread_exit(NULL);
 }
 

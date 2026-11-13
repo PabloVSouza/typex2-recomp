@@ -40,17 +40,17 @@ Mali-G57 MC2) for Android.
 | Super Street Fighter IV Arcade Edition | Type X2 | 2010 | `ssf4ae` | Playable | not tested | Playable, issues | [SSF4 AE](Game-SSF4-AE.md) |
 | BlazBlue: Continuum Shift | Type X2 | 2009 | `bbcs` | Playable | not tested | Playable | [BlazBlue CS](Game-BlazBlue-CS.md) |
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
+| The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | not tested | not tested | [KOF '98 UM](Game-KOF-98-UM.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
-app. Both identify the game from its `game.exe`.
+app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
+for KOF '98 UM).
 
 ## Planned
 
 | Game | Board | Year | What it needs | Page |
 |---|---|---|---|---|
-| The King of Fighters '98 Ultimate Match | Type X | 2008 | `launcher.exe` imports D3D9, debug D3DX 36 (`d3dx9d_36.dll`), DirectSound and WinMM, all close to what the runtime already has. It is the first Type X (not X2) game. | [KOF '98 UM](Game-KOF-98-UM.md) |
 | The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | A 3D game. It also imports `MSVCR80.dll` (the C runtime as a DLL: either implement it or recompile the DLL), Direct3D 8, DirectDraw and DirectInput 8. | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
-
 
 ## Type X2 library
 
@@ -152,7 +152,7 @@ Type X with a stronger graphics card.
 | Chaos Breaker | Type X | 2004 | Not started |
 | Giga Wing Generations | Type X | 2004 | Not started |
 | K-On! After School Rhythm Selection | Type X | 2013 | Not started |
-| **The King of Fighters '98 Ultimate Match** | Type X | 2008 | **Planned** |
+| **The King of Fighters '98 Ultimate Match** | Type X | 2008 | **Playable** |
 | The King of Fighters: Sky Stage | Type X | 2010 | Not started |
 | New Super Mario Bros. Wii Coin World | Type X | — | Not started |
 | Raiden III | Type X | 2005 | Not started |

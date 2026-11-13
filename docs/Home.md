@@ -31,8 +31,8 @@ Game pages:
 - [SSF4 AE](Game-SSF4-AE.md)
 - [BlazBlue CS](Game-BlazBlue-CS.md)
 - [BlazBlue CT](Game-BlazBlue-CT.md)
-- Planned: [KOF '98 UM](Game-KOF-98-UM.md),
-  [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
+- [KOF '98 UM](Game-KOF-98-UM.md)
+- Planned: [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
 
 ## Quick start
 

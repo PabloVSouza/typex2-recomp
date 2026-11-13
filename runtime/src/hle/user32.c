@@ -260,26 +260,59 @@ static void SetRect(X2Cpu *c) {
 static void ShowWindow(X2Cpu *c) { RET(0); }
 
 /* wsprintfW(buf, fmt, ...), cdecl: %[-][0][width][.prec][h|l]{c C d i u x X s S p} */
-static void wsprintfW(X2Cpu *c) {
+/* wsprintfA / wsprintfW: one formatter, characters one or two bytes wide */
+static u32 fch(u32 f, u32 i, bool wide) { return wide ? RD16(f + 2 * i) : RD8(f + i); }
+static void och(u32 out, u32 k, u32 v, bool wide) {
+    if (wide)
+        WR16(out + 2 * k, (u16)v);
+    else
+        WR8(out + k, (u8)v);
+}
+static void wsprintf_any(X2Cpu *c, bool wide) {
     u32 out = ARG(0), f = ARG(1), ai = 2, k = 0;
     const u32 cap = 1024; /* wsprintf's documented limit */
-    for (u32 i = 0; RD16(f + 2 * i) && k + 1 < cap; i++) {
-        u16 ch = RD16(f + 2 * i);
-        if (ch != '%') { WR16(out + 2 * k++, ch); continue; }
-        ch = RD16(f + 2 * ++i);
-        if (ch == '%') { WR16(out + 2 * k++, '%'); continue; }
+    for (u32 i = 0; fch(f, i, wide) && k + 1 < cap; i++) {
+        u16 ch = fch(f, i, wide);
+        if (ch != '%') {
+            och(out, k++, ch, wide);
+            continue;
+        }
+        ch = fch(f, ++i, wide);
+        if (ch == '%') {
+            och(out, k++, '%', wide);
+            continue;
+        }
         bool left = false, zero = false, hmod = false, lmod = false;
-        if (ch == '-') { left = true; ch = RD16(f + 2 * ++i); }
-        if (ch == '0') { zero = true; ch = RD16(f + 2 * ++i); }
+        if (ch == '-') {
+            left = true;
+            ch = fch(f, ++i, wide);
+        }
+        if (ch == '0') {
+            zero = true;
+            ch = fch(f, ++i, wide);
+        }
         u32 width = 0, prec = 0xFFFFFFFFu;
-        while (ch >= '0' && ch <= '9') { width = width * 10 + (ch - '0'); ch = RD16(f + 2 * ++i); }
+        while (ch >= '0' && ch <= '9') {
+            width = width * 10 + (ch - '0');
+            ch = fch(f, ++i, wide);
+        }
         if (ch == '.') {
             prec = 0;
-            ch = RD16(f + 2 * ++i);
-            while (ch >= '0' && ch <= '9') { prec = prec * 10 + (ch - '0'); ch = RD16(f + 2 * ++i); }
+            ch = fch(f, ++i, wide);
+            while (ch >= '0' && ch <= '9') {
+                prec = prec * 10 + (ch - '0');
+                ch = fch(f, ++i, wide);
+            }
         }
-        if (ch == 'h') { hmod = true; ch = RD16(f + 2 * ++i); }
-        else if (ch == 'l') { lmod = true; ch = RD16(f + 2 * ++i); }
+        if (ch == 'h') {
+            hmod = true;
+            ch = fch(f, ++i, wide);
+        } else if (ch == 'l') {
+            lmod = true;
+            ch = fch(f, ++i, wide);
+        }
+        if (!wide) /* in wsprintfA, %s / %c are narrow and %S / %C wide: the reverse of W */
+            ch = ch == 's' ? 'S' : ch == 'S' ? 's' : ch == 'c' ? 'C' : ch == 'C' ? 'c' : ch;
         u16 tmp[64];
         u32 n = 0, src = 0;
         bool wide_src = false;
@@ -302,9 +335,17 @@ static void wsprintfW(X2Cpu *c) {
             u32 len = 0;
             while (src && (wide_src ? RD16(src + 2 * len) : RD8(src + len)) && len < prec) len++;
             u32 pad = width > len ? width - len : 0;
-            if (!left) while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
-            for (u32 j = 0; j < len && k + 1 < cap; j++) WR16(out + 2 * k++, wide_src ? RD16(src + 2 * j) : RD8(src + j));
-            while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
+            if (!left)
+                while (pad && k + 1 < cap) {
+                    och(out, k++, ' ', wide);
+                    pad--;
+                }
+            for (u32 j = 0; j < len && k + 1 < cap; j++)
+                och(out, k++, wide_src ? RD16(src + 2 * j) : RD8(src + j), wide);
+            while (pad && k + 1 < cap) {
+                och(out, k++, ' ', wide);
+                pad--;
+            }
             continue;
         }
         if (prec != 0xFFFFFFFFu && n < prec && ch != 'c' && ch != 'C') { /* minimum digits */
@@ -315,13 +356,41 @@ static void wsprintfW(X2Cpu *c) {
             n += pz;
         }
         u32 pad = width > n ? width - n : 0;
-        if (!left) while (pad && k + 1 < cap) { WR16(out + 2 * k++, zero ? '0' : ' '); pad--; }
-        for (u32 j = 0; j < n && k + 1 < cap; j++) WR16(out + 2 * k++, tmp[j]);
-        while (pad && k + 1 < cap) { WR16(out + 2 * k++, ' '); pad--; }
+        if (!left)
+            while (pad && k + 1 < cap) {
+                och(out, k++, zero ? '0' : ' ', wide);
+                pad--;
+            }
+        for (u32 j = 0; j < n && k + 1 < cap; j++) och(out, k++, tmp[j], wide);
+        while (pad && k + 1 < cap) {
+            och(out, k++, ' ', wide);
+            pad--;
+        }
     }
-    WR16(out + 2 * k, 0);
+    och(out, k, 0, wide);
     RET(k);
 }
+static void wsprintfA(X2Cpu *c) { wsprintf_any(c, false); }
+static void wsprintfW(X2Cpu *c) { wsprintf_any(c, true); }
+static void UpdateWindow(X2Cpu *c) { RET(1); }
+static void LoadIconA(X2Cpu *c) { RET(0x00010013u); } /* never drawn */
+static void LoadAcceleratorsA(X2Cpu *c) { RET(0x00010015u); }
+static void PostMessageA(X2Cpu *c) {
+    x2_post_message(ARG(1), ARG(2), ARG(3));
+    RET(1);
+}
+/* BeginPaint(hwnd, PAINTSTRUCT *): nothing to paint, the game draws with D3D */
+static void BeginPaint(X2Cpu *c) {
+    memset(X2P(ARG(1)), 0, 64);
+    RET(0x00020020u);
+}
+static void EndPaint(X2Cpu *c) { RET(1); }
+/* modal dialogs (an About box behind a menu nobody can open): closed at once */
+static void DialogBoxParamA(X2Cpu *c) {
+    x2_log("DialogBoxParamA(template %#x): not shown", ARG(1));
+    RET(1); /* IDOK */
+}
+static void EndDialog(X2Cpu *c) { RET(1); }
 
 const X2Hle x2_hle_user32[] = {
     {"RegisterClassExA", RegisterClassExA, 1},
@@ -373,6 +442,16 @@ const X2Hle x2_hle_user32[] = {
     {"SetRect", SetRect, 5},
     {"ShowWindow", ShowWindow, 2},
     {"wsprintfW", wsprintfW, -1},
+    {"wsprintfA", wsprintfA, -1},
+    {"UpdateWindow", UpdateWindow, 1},
+    {"LoadIconA", LoadIconA, 2},
+    {"LoadAcceleratorsA", LoadAcceleratorsA, 2},
+    {"PostMessageA", PostMessageA, 4},
+    {"BeginPaint", BeginPaint, 2},
+    {"EndPaint", EndPaint, 2},
+    {"DialogBoxParamA", DialogBoxParamA, 5},
+    {"EndDialog", EndDialog, 2},
+    {"GetMessageA", GetMessageW, 4},
     {NULL, NULL, 0},
 };
 

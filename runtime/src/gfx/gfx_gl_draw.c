@@ -580,11 +580,14 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     if (!draw_inited) draw_init();
     extern bool gfx_gl_drawlog;
     if (gfx_gl_drawlog)
-        x2_log("draw prim %u start %u count %u idx %d up %d / vs %u ps %u decl %u rt0 %u rt1 %u ds %u tex0 %u tex1 %u vb0 %u "
-               "stride %u / vp %.0f,%.0f %.0fx%.0f / blend %u %u-%u z %u cull %u atest %u cw %x",
-               prim, start, count, indexed, up_verts != NULL, st->vs, st->ps, st->decl, st->rt[0], st->rt[1], st->ds, st->tex[0],
-               st->tex[1], st->vb[0], st->vb_stride[0], st->vp.x, st->vp.y, st->vp.w, st->vp.h, st->rs[27], st->rs[19],
-               st->rs[20], st->rs[7], st->rs[22], st->rs[15], st->rs[168]);
+        x2_log("draw prim %u start %u count %u idx %d up %d / vs %u ps %u decl %u rt0 %u rt1 %u ds %u tex0 %u tex1 %u "
+               "vb0 %u "
+               "stride %u / vp %.0f,%.0f %.0fx%.0f z %.2f-%.2f / blend %u %u-%u z %u func %u write %u cull %u atest %u "
+               "cw %x",
+               prim, start, count, indexed, up_verts != NULL, st->vs, st->ps, st->decl, st->rt[0], st->rt[1], st->ds,
+               st->tex[0], st->tex[1], st->vb[0], st->vb_stride[0], st->vp.x, st->vp.y, st->vp.w, st->vp.h, st->vp.minz,
+               st->vp.maxz, st->rs[27], st->rs[19], st->rs[20], st->rs[7], st->rs[23], st->rs[14], st->rs[22],
+               st->rs[15], st->rs[168]);
     Shader *vs = st->vs < MAX_IDS ? shaders[st->vs] : NULL;
     Shader *ps = st->ps < MAX_IDS ? shaders[st->ps] : NULL;
     if (!vs || !ps || !vs->ok || !ps->ok) {

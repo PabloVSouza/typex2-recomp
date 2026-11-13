@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "core.h"
+#include "game_exe.h"
 
 const X2GameTables *x2_game;
 
@@ -115,7 +116,7 @@ X2Thread *x2_boot(const X2GameTables *game, const char *dir) {
     sigaction(SIGBUS, &sa, &prev_bus);
 
     char exe[1100];
-    snprintf(exe, sizeof exe, "%s/game.exe", dir);
+    x2_game_exe(dir, exe, sizeof exe);
     x2_gil_on = getenv("X2_GIL") != NULL;
     x2_mem_init();
     x2_load_image(exe);
@@ -128,3 +129,5 @@ X2Thread *x2_boot(const X2GameTables *game, const char *dir) {
     x2_watch_init();
     return t;
 }
+
+bool x2_game_letterboxed(void) { return x2_game && x2_game->id && !strcmp(x2_game->id, "kof13cl"); }

@@ -672,6 +672,8 @@ static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
     free(data);
 }
 
+/* D3DXGetShaderVersion(function): the version token that starts the bytecode */
+static void D3DXGetShaderVersion(X2Cpu *c) { RET(ARG(0) ? RD32(ARG(0)) : 0); }
 /* D3DXCreateTexture(dev, w, h, levels, usage, fmt, pool, out): levels 0 = full chain */
 static void D3DXCreateTexture(X2Cpu *c) {
     u32 w = ARG(1) ? ARG(1) : 256, h = ARG(2) ? ARG(2) : 256, levels = ARG(3);
@@ -759,6 +761,7 @@ const X2Hle x2_hle_d3dx9[] = {
     {"D3DXVec4Normalize", D3DXVec4Normalize, 2},
     {"D3DXVec3TransformCoord", D3DXVec3TransformCoord, 3},
     {"D3DXCreateTexture", D3DXCreateTexture, 8},
+    {"D3DXGetShaderVersion", D3DXGetShaderVersion, 1},
     {"D3DXCreateFontIndirectA", D3DXCreateFontIndirectA, 3},
     {"D3DXSaveSurfaceToFileA", D3DXSaveSurfaceToFileA, 6},
     {"D3DXCreateEffectPool", D3DXCreateEffectPool, 1},

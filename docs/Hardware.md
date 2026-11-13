@@ -54,7 +54,7 @@ games no longer run on Windows.
 |---|---|
 | x86 CPU | Code recompiled to C; one host thread per guest thread, running in parallel. On ARM, shared stores are ordered to keep x86 memory semantics (`X2_TSO`). |
 | Windows XP | Host implementations of the imported functions: kernel32, user32, gdi32, advapi32 crypto, ole32, winmm, Winsock stubs (`runtime/src/hle/`). |
-| GPU, Direct3D 9 | D3D9 / D3DX objects as host COM objects. Frames are recorded on the game thread and replayed with OpenGL 3.3 / GLES 3.2. Shaders are translated to GLSL from bytecode, assembly, HLSL source or compiled effects. |
+| GPU, Direct3D 9 | D3D9 / D3DX objects as host COM objects. Frames are recorded on the game thread and replayed with OpenGL 3.3 / GLES 3.2. Shaders are translated to GLSL from bytecode, assembly, HLSL source or compiled effects; the fixed-function pipeline becomes generated shaders. |
 | Sound | DirectSound mixed by the runtime, output through SDL3 or libretro. |
 | Movies | DirectShow graphs decoded with FFmpeg (WMV / WMA). |
 | JVS I/O board | Emulated on COM2 (`runtime/src/jvs.c`): addressing, switches, coins, analog, lamps. It also answers the controller handshake BlazBlue CT sends before JVS. |

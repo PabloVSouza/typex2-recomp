@@ -50,6 +50,7 @@ runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,               └�
 | Win32 | `hle/k32_*.c`, `hle/user32.c`, `hle/gdi32.c`, ... |
 | Direct3D 9, D3DX, effects | `hle/d3d9.c`, `hle/d3dx9.c`, `hle/d3dx_effect.c`, `gfx/fx.c` |
 | Shader translation | `gfx/sm3_glsl.c` (bytecode → GLSL), `gfx/d3dasm.c` (assembly, ps_1_x → ps_2_0), `gfx/hlsl_glsl.c` (HLSL source) |
+| Fixed-function pipeline | `gfx/ffp.c`: FVF → vertex declaration, vertex format and texture stage states → generated vs_2_0 / ps_2_0 bytecode (cached per state in `hle/d3d9.c`); its constants live in reserved registers (c248-c252, ps c222) that the game's own values are restored to before its next shader draw |
 | Renderer | `gfx/gfx_gl*.c`: commands recorded per frame by the guest, replayed on the platform thread |
 | Sound, movies | `hle/dsound.c`, `hle/dshow.c`, `video_ffmpeg.c` |
 | Inputs | `jvs.c` (the board), `padmap.c` (pads, `X2_PAD`, `X2_INPUT`) |

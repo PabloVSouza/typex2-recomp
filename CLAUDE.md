@@ -6,8 +6,8 @@ architecture, build steps and the full list of `X2_*` switches.
 
 ## What this is
 
-Static recompilation of Taito Type X2 arcade games (x86 Windows XP PCs) to
-native code for macOS and Android: `x2recomp` lifts `game.exe` to C, the C
+Static recompilation of Taito Type X and Type X2 arcade games (x86 Windows XP PCs) to
+native code for macOS and Android: `x2recomp` lifts `game.exe` (or `launcher.exe`) to C, the C
 runtime provides memory, threads, Win32 / D3D9 / D3DX / DirectSound /
 DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 (SDL3, launched by ES-DE) and a libretro core holding every game.
@@ -20,9 +20,10 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable on macOS; 60 fps in RetroArch on Android, longer load pauses than CS (being profiled) |
+| The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable on macOS (fixed-function D3D9, palettized sprites); Android untested |
 
-Planned next: KOF '98 Ultimate Match (Type X) and KOF
-Maximum Impact Regulation A (Type X2).
+Planned next: KOF
+Maximum Impact Regulation A (Type X2: needs MSVCR80.dll, Direct3D 8).
 
 Documentation lives in `docs/` (also published as the GitHub wiki by
 `tools/wiki_sync.sh`): `docs/Game-Status.md` tracks every Type X / X2 game,
@@ -58,7 +59,8 @@ gets an entry per milestone. Update them with the README.
 * `runtime/src/`: `loader.c` (PE + import binding; `hle_modules[]` maps DLL
   names to HLE tables), `thread.c`, `hle/*.c` (one file per DLL family),
   `gfx/` (`gfx_gl*.c` renderer, `sm3_glsl.c` bytecode → GLSL, `hlsl_glsl.c`
-  HLSL → GLSL, `d3dasm.c` shader assembly), `jvs.c` + `padmap.c` (inputs),
+  HLSL → GLSL, `d3dasm.c` shader assembly, `ffp.c` fixed-function pipeline as
+  generated shaders), `jvs.c` + `padmap.c` (inputs),
   `platform_sdl.c` / `platform_libretro.c` (front ends), `prof.c` (profiler).
 * `runtime/CMakeLists.txt`: one target per `games/*/gen`; the game's label
   is set in the `if(game STREQUAL ...)` chain.
@@ -109,7 +111,18 @@ gets an entry per milestone. Update them with the README.
   comparable), `X2_GPUTIME`, `X2_PACELOG`, `X2_PROF`, `X2_CSPROF`.
 * Tooling caution: `perl -0pi s|..|..|` with `|` or `.` in the pattern has
   inserted text at the top of files (several times); use an editor tool, or
-  `sed` on single lines, and check `git diff` afterwards.
+  `sed` on single lines, and check `git diff` afterwards. The interactive
+  shell's `grep` can print nothing on large binary-laced logs: use
+  `/usr/bin/grep -a`.
+* Stalled worker threads (no sound, a loader that never finishes): `X2_BT`
+  backtraces, then resolve the import they sit in via `gen/table.c`.
+  Windows semantics matter exactly: self-suspend + ResumeThread handshakes
+  (BlazBlue CT), `PulseEvent` releasing current waiters (KOF '98 UM's sound).
+* Geometry missing or misplaced: log a few vertices and the constants the
+  vertex shader reads. Pre-transformed (XYZRHW) vertices bypass the vertex
+  shader in D3D9 even when one is bound.
+* Screenshot comparisons across builds: run the same build twice first;
+  attract-mode frames with movies or timed fades are not deterministic.
 * Never pipe `x2recomp` into `head`: SIGPIPE kills it halfway and leaves a
   `gen/` whose `funcs.h` and `table.c` disagree (undeclared `f_xxxxxxxx`).
 * Compiled D3DX effects: `build/tools/fxdump [-v] game.exe` lists every

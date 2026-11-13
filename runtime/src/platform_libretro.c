@@ -28,11 +28,12 @@
 #endif
 
 #include "core.h"
+#include "game_exe.h"
 #include "gfx/gfx_gl.h"
 #include "hle/dsound.h"
 #include "jvs.h"
-#include "padmap.h"
 #include "libretro/libretro.h"
+#include "padmap.h"
 #include "x2_core_games.h" /* generated: x2_core_games[] = {name, tables} */
 
 #define EXPORT __attribute__((visibility("default")))
@@ -343,7 +344,7 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         if (slash) *slash = 0;
     }
     char exe[1100];
-    snprintf(exe, sizeof exe, "%s/game.exe", dir);
+    x2_game_exe(dir, exe, sizeof exe);
     x2_log("libretro: game folder %s", dir);
     game = identify(exe);
     if (!game) {
@@ -483,7 +484,7 @@ EXPORT void retro_run(void) {
      * the screen instead of letterboxing twice. */
     u32 oh = h;
     float v0 = 0, v1 = 1;
-    if (w * 3 == h * 4) {
+    if (w * 3 == h * 4 && x2_game_letterboxed()) {
         oh = w * 9 / 16;
         v0 = (float)((h - oh) / 2) / (float)h;
         v1 = v0 + (float)oh / (float)h;

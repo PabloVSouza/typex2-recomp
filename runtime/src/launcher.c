@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "game_exe.h"
 #include "x2_games.h" /* generated: x2_games[] = {lib, name, base, size, entry} */
 
 #define LOG(...) __android_log_print(ANDROID_LOG_INFO, "x2", __VA_ARGS__)
@@ -175,7 +176,7 @@ int main(int argc, char **argv) {
     LOG("game folder: %s%s", dir, from_intent ? " (from launch intent)" : "");
 
     char exe[1100];
-    snprintf(exe, sizeof exe, "%s/game.exe", dir);
+    x2_game_exe(dir, exe, sizeof exe);
     FILE *f = fopen(exe, "rb");
     if (!f && errno == EACCES && !all_files_access()) {
         /* shared storage (e.g. ES-DE's ROMs folder) needs "All files access" */
@@ -185,6 +186,7 @@ int main(int argc, char **argv) {
                                  NULL);
         request_all_files_access();
         for (int i = 0; i < 600 && !all_files_access(); i++) SDL_Delay(500);
+        x2_game_exe(dir, exe, sizeof exe); /* readable now: launcher.exe may be the one */
         f = fopen(exe, "rb");
     }
     if (!f) {

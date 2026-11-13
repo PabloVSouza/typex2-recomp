@@ -58,6 +58,7 @@ add_library(x2rt_common OBJECT
   src/hle/d3dx9.c
   src/hle/d3dx_effect.c
   src/gfx/fx.c
+  src/gfx/ffp.c
   src/hle/advapi32.c
   src/txac.c
   src/hle/dshow.c
@@ -186,6 +187,8 @@ function(x2_add_game target gen_dir)
     set(label "BlazBlue Continuum Shift")
   elseif(game STREQUAL "bbct")
     set(label "BlazBlue Calamity Trigger")
+  elseif(game STREQUAL "kof98um")
+    set(label "The King of Fighters '98 Ultimate Match")
   endif()
   set_property(GLOBAL APPEND PROPERTY X2_GAMES_BUILT ${game})
   set_property(GLOBAL PROPERTY X2_GAME_LABEL_${game} "${label}")
