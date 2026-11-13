@@ -18,6 +18,11 @@ start). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader
 bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
 translated to GLSL).
 
+**Documentation:** [`docs/`](docs/Home.md) (also the project wiki) has the
+status of every Type X / X2 game ([Game status](docs/Game-Status.md)), a page
+per game, the architecture, porting and debugging guides, and the
+[progress log](docs/Progress-Log.md).
+
 ## How it works
 
 ```

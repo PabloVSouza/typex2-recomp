@@ -21,8 +21,13 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable on macOS; 60 fps in RetroArch on Android, longer load pauses than CS (being profiled) |
 
-Not yet started: KOF '98 Ultimate Match, KOF
-Maximum Impact Regulation A (the last two are likely Type X+, not X2).
+Not yet started (dumps on hand): KOF '98 Ultimate Match (Type X) and KOF
+Maximum Impact Regulation A (Type X2).
+
+Documentation lives in `docs/` (also published as the GitHub wiki by
+`tools/wiki_sync.sh`): `docs/Game-Status.md` tracks every Type X / X2 game,
+each supported game has a `docs/Game-*.md` page, and `docs/Progress-Log.md`
+gets an entry per milestone. Update them with the README.
 
 ## Hard rules
 
@@ -42,7 +47,8 @@ Maximum Impact Regulation A (the last two are likely Type X+, not X2).
   `X2_NOPRESENT=1` for headless runs.
 * **Keep `README.md` current** with every user-visible change: game status,
   new `X2_*` switches (debugging table), known gaps. This file too, when a
-  rule, game status or workflow changes.
+  rule, game status or workflow changes, and `docs/` (game status, the
+  game's page, progress log); then run `tools/wiki_sync.sh`.
 
 ## Layout
 
