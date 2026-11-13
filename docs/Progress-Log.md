@@ -23,6 +23,12 @@ Milestones, newest first. `git log` has the details.
   10.5 ms of GPU time per frame against GL's 13 ms (the intro 10 against 11.6),
   60 fps throughout. `X2_GPUTIME=2` gives GPU time per render target on Vulkan
   too.
+- **Caches:** compiled SPIR-V and the pipeline cache are kept in the shader cache
+  folder (with GL's program binaries). Compiling during BlazBlue CS's opening
+  movie had starved its decoder of CPU time (blocky frames on the first run).
+- **Fair comparison:** fights are random stages, so GL and Vulkan are compared on
+  runs whose scene sequences match: fights 10.4 ms against 12.7 (18% less GPU
+  time), the intro 10.2 against 11.4; light UI scenes 2.0 against 1.66.
 
 ## 2026-11-13: Metal backend
 

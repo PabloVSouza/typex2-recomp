@@ -43,8 +43,9 @@
     X(vkCmdEndRendering)                                                                                               \
     X(vkCmdPipelineBarrier2)                                                                                           \
     X(vkCmdSetCullMode)                                                                                                \
-    X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable) X(vkCmdSetDepthCompareOp)              \
-        X(vkCmdSetStencilTestEnable) X(vkCmdSetStencilOp) X(vkCmdPushDescriptorSetKHR)
+    X(vkCmdSetFrontFace)                                                                                               \
+    X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable) X(vkCmdSetDepthCompareOp) X(vkCmdSetStencilTestEnable)      \
+        X(vkCmdSetStencilOp) X(vkCmdPushDescriptorSetKHR)
 #define X(f) static PFN_##f p##f;
 VK_FUNCS(X)
 #undef X
@@ -623,6 +624,13 @@ static void upload(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, con
 static void do_tex_upload(const TexUpload *k) {
     VTex *t = tex_get(k->id);
     if (!t) return;
+    {
+        static int ul = -1;
+        if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
+        if (ul)
+            x2_log("vulkan: upload tex %u fmt %u level %u %ux%u at %u,%u pitch %u (%u bytes)", k->id, t->fmt, k->level,
+                   k->w, k->h, k->x, k->y, k->pitch, k->bytes);
+    }
     if (t->fmt == GFX_FMT_DXT1 && !t->uploaded && !t->cube) {
         static int on = -1;
         if (on < 0) on = !getenv("X2_DXT565") || atoi(getenv("X2_DXT565")) != 0;
@@ -763,6 +771,45 @@ static void do_shader_destroy(GfxId id) {
     shaders[id] = NULL;
 }
 /* GLSL -> SPIR-V with defines inserted after #version */
+/* compiled shaders and pipelines are kept in the GL backend's cache folder (gfx_gl_set_cache_dir):
+ * glslang on a phone costs milliseconds per shader, and a stall during a movie made its
+ * decoder drop frames */
+extern char gfx_gl_cache_dir[512];
+static u64 fnv64(const void *p, size_t n) {
+    u64 h = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < n; i++) h = (h ^ ((const u8 *)p)[i]) * 0x100000001b3ull;
+    return h;
+}
+static bool write_file(const char *path, const void *data, size_t n) {
+    char tmp[700];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return false;
+    bool ok = fwrite(data, 1, n, f) == n;
+    ok = fclose(f) == 0 && ok;
+    if (ok)
+        rename(tmp, path);
+    else
+        remove(tmp);
+    return ok;
+}
+static void *read_file(const char *path, size_t *n) {
+    *n = 0;
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    void *d = len > 0 ? malloc((size_t)len) : NULL;
+    if (d && fread(d, 1, (size_t)len, f) != (size_t)len) {
+        free(d);
+        d = NULL;
+    }
+    fclose(f);
+    *n = d ? (size_t)len : 0;
+    return d;
+}
+
 static VkShaderModule compile(VShader *s, const char *defines) {
     size_t n = strlen(s->src), dl = strlen(defines);
     const char *nl = strchr(s->src, '\n');
@@ -771,6 +818,26 @@ static VkShaderModule compile(VShader *s, const char *defines) {
     memcpy(src, s->src, at);
     memcpy(src + at, defines, dl);
     memcpy(src + at + dl, s->src + at, n - at + 1);
+    char spv_path[700] = "";
+    if (gfx_gl_cache_dir[0]) {
+        snprintf(spv_path, sizeof spv_path, "%s/vk-%016llx-%c.spv", gfx_gl_cache_dir,
+                 (unsigned long long)fnv64(src, strlen(src)), s->pixel ? 'p' : 'v');
+        size_t sz;
+        void *code = read_file(spv_path, &sz);
+        if (code && sz >= 20 && sz % 4 == 0) {
+            VkShaderModuleCreateInfo mi = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+            mi.codeSize = sz;
+            mi.pCode = code;
+            VkShaderModule m = VK_NULL_HANDLE;
+            VkResult r = vkCreateShaderModule(dev, &mi, NULL, &m);
+            free(code);
+            if (r == VK_SUCCESS) {
+                free(src);
+                return m;
+            }
+        }
+        free(code);
+    }
     glslang_stage_t stage = s->pixel ? GLSLANG_STAGE_FRAGMENT : GLSLANG_STAGE_VERTEX;
     glslang_input_t in = {0};
     in.language = GLSLANG_SOURCE_GLSL;
@@ -799,6 +866,7 @@ static VkShaderModule compile(VShader *s, const char *defines) {
             mi.codeSize = glslang_program_SPIRV_get_size(p) * 4;
             mi.pCode = glslang_program_SPIRV_get_ptr(p);
             VK_CHECK(vkCreateShaderModule(dev, &mi, NULL, &m));
+            if (spv_path[0]) write_file(spv_path, mi.pCode, mi.codeSize);
         }
         glslang_program_delete(p);
     }
@@ -946,6 +1014,20 @@ static VkBlendOp blend_op(u32 o) {
     default: return VK_BLEND_OP_ADD;
     }
 }
+/* the pipeline cache, saved every 300 frames while new pipelines appear */
+static bool pcache_dirty;
+static void pcache_save(void) {
+    pcache_dirty = false;
+    size_t sz = 0;
+    if (!gfx_gl_cache_dir[0] || vkGetPipelineCacheData(dev, pcache, &sz, NULL) != VK_SUCCESS || !sz) return;
+    void *d = malloc(sz);
+    if (vkGetPipelineCacheData(dev, pcache, &sz, d) == VK_SUCCESS) {
+        char path[700];
+        snprintf(path, sizeof path, "%s/vk-pipelines.bin", gfx_gl_cache_dir);
+        write_file(path, d, sz);
+    }
+    free(d);
+}
 static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
     u32 h = fnv(k, sizeof *k) % PIPE_BUCKETS;
     for (PipeEnt *e = pipes[h]; e; e = e->next)
@@ -1044,6 +1126,7 @@ static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
         x2_log("vulkan: pipeline creation failed");
         e->p = VK_NULL_HANDLE;
     }
+    pcache_dirty = true;
     return e->p;
 }
 
@@ -1712,6 +1795,7 @@ static void run_frame(Frame *f) {
             drawlog = drawlog_at && st_frames + 2 == drawlog_at;
             if (drawlog) x2_log("---- frame %u (vulkan) ----", st_frames + 2);
             gfx_frame_replayed();
+            if (pcache_dirty && st_frames % 300 == 299) pcache_save();
             if (++st_frames % 120 == 0) {
                 x2_log("gfx: frame %u: %u draws, %u clears, %u passes in the last 120 frames (vulkan)", st_frames,
                        st_draws, st_clears, st_passes);
@@ -2046,7 +2130,21 @@ static void setup(u32 w, u32 h) {
     VkPipelineLayoutCreateInfo pl = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, 1, &dslayout, 0, NULL};
     VK_CHECK(vkCreatePipelineLayout(dev, &pl, NULL, &playout));
     VkPipelineCacheCreateInfo pci = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
-    VK_CHECK(vkCreatePipelineCache(dev, &pci, NULL, &pcache));
+    void *pdata = NULL;
+    if (gfx_gl_cache_dir[0]) { /* the driver checks it belongs to this GPU and driver */
+        char path[700];
+        snprintf(path, sizeof path, "%s/vk-pipelines.bin", gfx_gl_cache_dir);
+        size_t sz;
+        pdata = read_file(path, &sz);
+        pci.initialDataSize = sz;
+        pci.pInitialData = pdata;
+    }
+    if (vkCreatePipelineCache(dev, &pci, NULL, &pcache) != VK_SUCCESS) {
+        pci.initialDataSize = 0;
+        pci.pInitialData = NULL;
+        VK_CHECK(vkCreatePipelineCache(dev, &pci, NULL, &pcache));
+    }
+    free(pdata);
     VkCommandPoolCreateInfo cpi = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, NULL,
                                    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, qfam};
     VK_CHECK(vkCreateCommandPool(dev, &cpi, NULL, &cpool));
