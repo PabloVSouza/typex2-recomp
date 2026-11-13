@@ -130,7 +130,8 @@ build/tools/retro_host build/typex2_libretro.dylib "<game folder>"   # the core,
 Gamepads map to players 1–2 with the same button layout as the RetroArch core
 (below, `X2_PAD` to change it); Back = coin (hold 2 s: test menu), Back+Start quits (for ES-DE).
 On touch screens an on-screen pad appears while no gamepad is connected
-(`X2_TOUCH=1/0` forces it on/off).
+(`X2_TOUCH=1/0` forces it on/off), with the game's buttons: KOF A-D, SSF4 LP MP HP over
+LK MK HK, BlazBlue A B C over D.
 
 ## Android
 

@@ -240,7 +240,8 @@ static u32 fps_tex;
 static u32 fps_tw, fps_th;
 
 static const u8 *glyph5x7(char ch) {
-    static const struct { char c; u8 rows[7]; } font[] = {
+    static const struct { char c; u8 rows[7];
+    } font[] = {
         {'0', {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E}}, {'1', {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E}},
         {'2', {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F}}, {'3', {0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E}},
         {'4', {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02}}, {'5', {0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E}},
@@ -254,6 +255,8 @@ static const u8 *glyph5x7(char ch) {
         {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}}, {'B', {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}},
         {'N', {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11}}, {'O', {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}},
         {'R', {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}}, {'T', {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
+        {'H', {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}}, {'K', {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}},
+        {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}},
     };
     for (size_t i = 0; i < sizeof font / sizeof font[0]; i++)
         if (font[i].c == ch) return font[i].rows;
@@ -366,12 +369,14 @@ static int SDLCALL audio_thread(void *ud) {
  * in the top-right corner. Shown on touch devices while no gamepad is
  * connected; X2_TOUCH=1 forces it on (e.g. to try it with a mouse-less tablet
  * plus a pad), X2_TOUCH=0 off. Multi-touch: each finger holds one control. */
-enum { TC_STICK, TC_A, TC_B, TC_C, TC_D, TC_COIN, TC_START, TC_TEST, TC_COUNT };
+/* TC_BTN..TC_BTN+5: the game's attack buttons (padmap.c: x2_touch_buttons) */
+enum { TC_STICK, TC_BTN, TC_COIN = TC_BTN + 6, TC_START, TC_TEST, TC_COUNT };
 typedef struct {
-    float x, y, r; /* centre and radius, window pixels */
+    float x, y, r; /* centre and radius, window pixels (r 0: not shown) */
     const char *label;
     u32 tex; /* label texture (ov_tex) */
     u32 tw, th;
+    u16 bits; /* attack buttons: what they press */
 } TouchCtl;
 static TouchCtl tctl[TC_COUNT];
 static struct { SDL_FingerID id; int ctl; float x, y; bool on; } fingers[10];
@@ -392,15 +397,21 @@ static bool touch_visible(void) {
 static void touch_layout(int ww, int wh) {
     float s = (float)(ww < wh ? ww : wh);
     float br = s * 0.085f, sr = s * 0.19f;
-    tctl[TC_STICK] = (TouchCtl){s * 0.30f, wh - s * 0.30f, sr, NULL, tctl[TC_STICK].tex, 0, 0};
-    float bx = ww - s * 0.62f, by = wh - s * 0.16f, dx = br * 2.3f;
-    const struct { int id; float x, y; const char *l; } b[] = {
-        {TC_A, bx, by, "A"}, {TC_B, bx + dx, by - br * 0.5f, "B"},
-        {TC_C, bx + br * 0.4f, by - br * 2.3f, "C"}, {TC_D, bx + dx + br * 0.4f, by - br * 2.8f, "D"},
-    };
-    for (int i = 0; i < 4; i++) {
-        TouchCtl *c = &tctl[b[i].id];
-        c->x = b[i].x; c->y = b[i].y; c->r = br; c->label = b[i].l;
+    tctl[TC_STICK] = (TouchCtl){s * 0.30f, wh - s * 0.30f, sr, NULL, tctl[TC_STICK].tex, 0, 0, 0};
+    /* two rows of up to three, each column a little higher than the last (an arcade panel's curve) */
+    const char *label[6];
+    u16 bits[6];
+    x2_touch_buttons(label, bits);
+    bool three = label[2] || label[5];
+    float bx = ww - s * (three ? 0.70f : 0.62f), by = wh - s * 0.16f, dx = br * 2.3f;
+    for (int i = 0; i < 6; i++) {
+        TouchCtl *c = &tctl[TC_BTN + i];
+        int col = i % 3, top = i < 3;
+        c->x = bx + col * dx + (top ? br * 0.4f : 0);
+        c->y = by - col * br * 0.5f - (top ? br * 2.3f : 0);
+        c->r = label[i] ? br : 0;
+        c->label = label[i];
+        c->bits = bits[i];
     }
     float tr = s * 0.055f;
     tctl[TC_COIN].x = ww * 0.5f - tr * 1.6f; tctl[TC_COIN].y = tr * 1.3f; tctl[TC_COIN].r = tr; tctl[TC_COIN].label = "COIN";
@@ -411,7 +422,7 @@ static void touch_layout(int ww, int wh) {
 static int touch_hit(float x, float y) {
     for (int i = 0; i < TC_COUNT; i++) {
         float dx = x - tctl[i].x, dy = y - tctl[i].y, r = tctl[i].r * (i == TC_STICK ? 1.4f : 1.25f);
-        if (dx * dx + dy * dy <= r * r) return i;
+        if (tctl[i].r > 0 && dx * dx + dy * dy <= r * r) return i;
     }
     return -1;
 }
@@ -432,14 +443,11 @@ static void touch_recompute(void) {
                 if (ay > ax * 0.4142f) v |= dy < 0 ? JVS_UP : JVS_DOWN;
                 break;
             }
-            case TC_A: v |= X2_BTN_A; break;
-            case TC_B: v |= X2_BTN_B; break;
-            case TC_C: v |= X2_BTN_C; break;
-            case TC_D: v |= X2_BTN_D; break;
             case TC_START: v |= JVS_START; break;
             case TC_COIN: coin = true; break;
             case TC_TEST: test = true; break;
-        }
+            default: v |= tctl[fingers[i].ctl].bits; break; /* attack buttons */
+            }
     }
     touch_bits = v;
     touch_coin = coin;
@@ -468,7 +476,7 @@ static void touch_event(const SDL_Event *e, int ww, int wh) {
         /* a button finger slides onto a neighbouring button (e.g. A -> B) */
         if (fingers[slot].ctl != TC_STICK) {
             int c = touch_hit(x, y);
-            if (c > TC_STICK && c <= TC_D) fingers[slot].ctl = c;
+            if (c >= TC_BTN && c < TC_BTN + 6) fingers[slot].ctl = c;
         }
     } else if ((e->type == SDL_EVENT_FINGER_UP || e->type == SDL_EVENT_FINGER_CANCELED) && slot >= 0) {
         fingers[slot].on = false;
@@ -516,6 +524,7 @@ static void touch_draw(int ww, int wh) {
     touch_layout(ww, wh);
     for (int i = 0; i < TC_COUNT; i++) {
         TouchCtl *c = &tctl[i];
+        if (c->r <= 0) continue; /* no button in that slot for this game */
         bool held = false;
         for (int f = 0; f < 10; f++) held |= fingers[f].on && fingers[f].ctl == i;
         ov_quad(wh, c->x - c->r, c->y - c->r, 2 * c->r, 2 * c->r, 0, 0, 1, 1, 1, held ? 0.55f : 0.28f);

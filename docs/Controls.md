@@ -20,7 +20,9 @@
   - Held for 2 s: test menu.
   - With Start (standalone app): quit.
 - **L3 / R3** stay free for frontend hotkeys.
-- **Touch.** On touch screens without a pad, an on-screen pad appears.
+- **Touch.** On touch screens without a pad, an on-screen pad appears with
+  the game's buttons: KOF C D over A B, SSF4 LP MP HP over LK MK HK,
+  BlazBlue A B C over D.
 
 ### Default layouts
 

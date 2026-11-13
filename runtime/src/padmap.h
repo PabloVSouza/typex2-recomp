@@ -44,3 +44,6 @@ bool x2_padmap_hold_test(int slot, bool coin_down);
  * p draw capture, '-' nothing; upper case C S U D L R A B X Y act for player 2.
  * Adds to *p1 / *coin1 / *p2 / *coin2. */
 bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1, uint16_t *p2, bool *coin2);
+/* the game's touch buttons: slots 0-2 the top row, 3-5 the bottom row, left to
+ * right (label NULL: no button there), with the cabinet buttons each presses */
+void x2_touch_buttons(const char *label[6], uint16_t bits[6]);

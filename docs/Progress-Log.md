@@ -9,6 +9,8 @@ Milestones, newest first. `git log` has the details.
   device. All eight games' regression frames match GL (movie and fade frames
   vary from run to run on either renderer).
 - **Overlays:** Metal draws the FPS counter and touch controls too.
+- **Touch buttons per game:** SSF4 gets six (LP MP HP over LK MK HK) and
+  BlazBlue's A-D press its own buttons (they pressed KOF's, so B was D).
 - **Tools on every backend:** `X2_SHADER_DUMP` moved into the shared recorder;
   `X2_GPUTIME=1` reports Metal's GPU time per frame.
 

@@ -166,3 +166,22 @@ bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1, uint16_t *p2, bo
                 }
     return test;
 }
+
+void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
+    for (int i = 0; i < 6; i++) label[i] = NULL, bits[i] = 0;
+    if (!strcmp(game_id(), "ssf4ae")) { /* punches above kicks, light to heavy */
+        static const char *const l[6] = {"LP", "MP", "HP", "LK", "MK", "HK"};
+        static const uint16_t b[6] = {JVS_B1, JVS_B2, JVS_B3, JVS_B4, JVS_B5, JVS_B6};
+        for (int i = 0; i < 6; i++) label[i] = l[i], bits[i] = b[i];
+    } else if (is_blazblue()) { /* the "Type B" panel: A B C above, D under A */
+        label[0] = "A", bits[0] = JVS_B1;
+        label[1] = "B", bits[1] = JVS_B2;
+        label[2] = "C", bits[2] = JVS_B3;
+        label[3] = "D", bits[3] = JVS_B4;
+    } else { /* KOF: C D above A B */
+        label[0] = "C", bits[0] = X2_BTN_C;
+        label[1] = "D", bits[1] = X2_BTN_D;
+        label[3] = "A", bits[3] = X2_BTN_A;
+        label[4] = "B", bits[4] = X2_BTN_B;
+    }
+}
