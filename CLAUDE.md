@@ -66,6 +66,15 @@ gets an entry per milestone. Update them with the README.
   is set in the `if(game STREQUAL ...)` chain.
 * `tools/`: `arc`, `kofarc`, `lifttest` (Unicorn differential tests of the
   lifter), `retro_host`, Android packaging, ES-DE and libretro files.
+* `launcher/`: the desktop app (Tauri 2, React, Tailwind, shadcn/ui).
+  `src-tauri/src/`: `games.rs` (supported games, identified by PE image size +
+  entry; add new games there too), `recomp.rs` (build jobs: x2recomp, the game
+  library for `x2-player`, CMake exports), `toolchain.rs` (pinned tool
+  downloads), `kit.rs` (finds x2recomp / x2-player / sources: checkout or
+  bundled `kit/`). `examples/cli.rs` runs the jobs from the console.
+  `runtime/include/sdkless/` stands in for the C headers when the downloaded
+  clang compiles without an OS SDK; a game library is linked as a bundle against
+  `x2-player` on macOS.
 
 ## Adding a game
 
@@ -86,6 +95,9 @@ gets an entry per milestone. Update them with the README.
    document the `X2_PAD` line in the README.
 6. Regression-check the other games (attract mode at least) before
    committing.
+7. Add it to the launcher: `launcher/src-tauri/src/games.rs` (size and entry
+   are the 2nd and 3rd values of `x2_image` in `gen/table.c`), and to
+   `src/lib/mockApi.ts` for the browser preview.
 
 ## Debugging methods that worked
 

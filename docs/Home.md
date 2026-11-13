@@ -16,6 +16,7 @@ Each game then runs in one of two ways:
 | Page | What it covers |
 |---|---|
 | [Game status](Game-Status.md) | Status of every Type X / X+ and Type X2 game, and the next candidates |
+| [Launcher](Launcher.md) | The desktop app: play, export for Android / RetroArch, downloaded build tools |
 | [Hardware](Hardware.md) | The Type X and Type X2 boards, and how the runtime stands in for them |
 | [Architecture](Architecture.md) | Recompiler and runtime internals |
 | [Porting a game](Porting-a-Game.md) | Steps to bring up a new game |

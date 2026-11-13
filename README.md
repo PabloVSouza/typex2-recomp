@@ -56,6 +56,40 @@ runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,                 └
   `android/` (APK packaging, FFmpeg cross-build), `es-de/` (ES-DE system
   files), `libretro/` (core info file).
 
+## Launcher (the easy way)
+
+`launcher/` is a desktop app (Tauri: Rust + React) for macOS, Linux and Windows
+that does everything below without a terminal:
+
+* **Library:** add the folders of the games you own; each is recognised from
+  its `game.exe` / `launcher.exe`.
+* **Play on this computer:** the launcher recompiles the game into a library
+  (`x2recomp`, then clang) and starts it with `x2-player`, the runtime as an
+  executable that loads a game library. Per-game display, controller layout
+  (`X2_PAD` presets) and extra switches.
+* **Export:** the RetroArch core for Android, the Android app, or the
+  RetroArch core for this computer, with the chosen games (the project's CMake
+  build over the generated code).
+* **Build tools:** clang, CMake, Ninja and the Android NDK are downloaded on
+  demand into the launcher's own folder (pinned versions, checked against their
+  published checksums) and removed in one click; builds see only those tools.
+  Tools already installed are used when nothing was downloaded.
+
+Releases carry only this project's code: the launcher, `x2recomp`,
+`x2-player`, the runtime sources and the libraries they link. Games are
+recompiled on the user's computer from their own files; nothing generated
+leaves it except the exports they make.
+
+```sh
+cd launcher && npm install
+npm run tauri dev                        # uses the checkout: build/recompiler/x2recomp, build/x2-player
+scripts/stage-kit.sh && npx tauri build --config src-tauri/tauri.release.conf.json   # release app with the kit
+cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> library "<game dir>"   # jobs from the console
+```
+
+`npm run dev` alone serves the pages in a browser with mock data
+(`src/lib/mockApi.ts`); `#tools`, `#export`, `#game:kof13` open a page.
+
 ## Build (macOS / desktop)
 
 ```sh
@@ -72,7 +106,9 @@ from `launcher.exe`: give x2recomp that file; the runtime finds either name.
 
 This builds `build/x2-<game>` for every `games/<game>/gen` and the core
 `build/typex2_libretro.dylib` (`-DX2_LIBRETRO=OFF` / `-DX2_STANDALONE=OFF`
-to skip either).
+to skip either). It also builds `build/x2-player`, the launcher's host
+(`x2-player <game dir> --game-lib <library>`). `-DX2_GAMES_DIR=<folder>` takes
+the generated code from another folder than `games/`.
 
 ## Run (desktop)
 

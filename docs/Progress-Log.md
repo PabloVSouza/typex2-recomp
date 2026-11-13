@@ -2,6 +2,21 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: The launcher
+
+- **Desktop app** (`launcher/`, Tauri):
+  - a library of game folders, recognised by their executables;
+  - per-game settings;
+  - Play / Stop with the game's output in a log.
+- **Builds on the user's computer:**
+  - games are recompiled into a library that `x2-player` loads;
+  - RetroArch cores and the Android app are exported through the CMake build.
+- **Build tools downloaded on demand** (clang, CMake, Ninja, the Android NDK)
+  into the launcher's folder, checked against their published checksums.
+  The downloaded clang needs no OS SDK (`runtime/include/sdkless/`).
+- **Verified on macOS:** a KOF '98 UM library build, pixel-identical to the
+  CMake build, and an Android core export using only downloaded tools.
+
 ## 2026-11-13: KOF Maximum Impact Regulation A playable
 
 - **Direct3D 8 layer** over the D3D9 implementation (declaration-token vertex

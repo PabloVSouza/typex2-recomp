@@ -1,0 +1,27 @@
+[package]
+name = "typex2-launcher"
+version = "0.1.0"
+edition = "2021"
+description = "Launcher and build tool for typex2-recomp"
+
+[lib]
+name = "typex2_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sha1 = "0.10"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

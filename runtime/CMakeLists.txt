@@ -130,6 +130,19 @@ if(X2_STANDALONE)
   add_library(x2rt STATIC src/platform_sdl.c)
   target_compile_options(x2rt PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(x2rt PUBLIC x2rt_common SDL3::SDL3)
+  if(NOT ANDROID)
+    # x2-player: the launcher's host. Games are compiled on the player's machine
+    # into a library (launcher/src-tauri/src/recomp.rs) that it loads at start;
+    # the library's runtime calls (x2_mem, x2_dispatch_*, natives) bind to the
+    # symbols this executable exports.
+    add_executable(x2-player src/main.c)
+    target_compile_definitions(x2-player PRIVATE X2_PLAYER)
+    target_compile_options(x2-player PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_include_directories(x2-player PRIVATE src)
+    # whole archive: the natives are referenced only by the game library
+    target_link_libraries(x2-player PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,x2rt>" ${CMAKE_DL_LIBS})
+    set_target_properties(x2-player PROPERTIES ENABLE_EXPORTS ON RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+  endif()
 endif()
 
 # ---- libretro runtime ---------------------------------------------------------

@@ -66,7 +66,9 @@ set(X2_GEN_FLAGS "" CACHE STRING "Extra compile flags for generated code (e.g. -
 add_subdirectory(runtime)
 # every games/<name>/gen produced by x2recomp becomes an x2-<name> executable
 set(X2_GAMES "" CACHE STRING "Games to build (e.g. kof12;kof13); empty = every games/*/gen")
-file(GLOB X2_GAME_GENS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/games/*/gen)
+# the launcher keeps generated code outside the source tree (X2_GAMES_DIR=<work>/games)
+set(X2_GAMES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/games CACHE PATH "Folder holding <game>/gen")
+file(GLOB X2_GAME_GENS LIST_DIRECTORIES true ${X2_GAMES_DIR}/*/gen)
 foreach(gen ${X2_GAME_GENS})
   if(EXISTS ${gen}/sources.cmake)
     get_filename_component(game_dir ${gen} DIRECTORY)

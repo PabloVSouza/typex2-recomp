@@ -15,6 +15,7 @@
 - [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md)
 
 **Guides**
+- [Launcher](Launcher.md)
 - [Hardware](Hardware.md)
 - [Architecture](Architecture.md)
 - [Porting a game](Porting-a-Game.md)

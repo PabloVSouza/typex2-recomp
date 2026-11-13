@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/chakra-petch/500.css";
+@import "@fontsource/chakra-petch/700.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* One theme: an arcade at night. Ink blues for surfaces, amber for Play and primary actions
+   (the coin slot), cyan for focus and the current place, pink for errors. shadcn's tokens map
+   onto it. The icon (src-tauri/icon.svg) uses the same colors. */
+:root {
+  --radius: 0.75rem;
+  --background: #0b0a14;
+  --foreground: #ebe8f5;
+  --card: #15131f;
+  --card-foreground: #ebe8f5;
+  --popover: #1b1828;
+  --popover-foreground: #ebe8f5;
+  --primary: #ffb347;
+  --primary-foreground: #1a1206;
+  --secondary: #1d1a2b;
+  --secondary-foreground: #ebe8f5;
+  --muted: #1d1a2b;
+  --muted-foreground: #9893ad;
+  --accent: #252136;
+  --accent-foreground: #ebe8f5;
+  --destructive: #ff4f7b;
+  --border: rgb(255 255 255 / 0.07);
+  --input: rgb(255 255 255 / 0.12);
+  --ring: #3ee6ff;
+  --sidebar: #0e0c19;
+  --sidebar-foreground: #ebe8f5;
+  --sidebar-primary: #ffb347;
+  --sidebar-primary-foreground: #1a1206;
+  --sidebar-accent: rgb(62 230 255 / 0.09);
+  --sidebar-accent-foreground: #ebe8f5;
+  --sidebar-border: rgb(255 255 255 / 0.06);
+  --sidebar-ring: #3ee6ff;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-amber: #ffb347;
+  --color-cyan: #3ee6ff;
+  --color-pink: #ff4f7b;
+  --color-lime: #8cf57a;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased select-none;
+  }
+  ::selection {
+    @apply bg-cyan/30;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-accent;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+/* Panels are translucent over the page; insets are wells inside them. */
+@utility surface {
+  background-color: color-mix(in oklab, var(--card) 70%, transparent);
+  backdrop-filter: blur(4px);
+}
+@utility surface-inset {
+  background-color: color-mix(in oklab, var(--sidebar) 70%, transparent);
+}
+
+/* The title bar is hidden (overlay): these strips drag the window. */
+@utility drag {
+  -webkit-app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* The page's backdrop: a faint grid, like a cabinet's bezel art, fading out. */
+@utility arcade-grid {
+  background-image:
+    linear-gradient(rgb(62 230 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(62 230 255 / 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+}
