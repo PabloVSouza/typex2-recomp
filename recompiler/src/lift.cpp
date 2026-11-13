@@ -648,6 +648,16 @@ bool Lifter::lift_int(const string& m, const cs_insn& d, vector<string>& L) {
     }
     if (m == "pushfd") { L.push_back("esp-=4; WR32(esp,GET_EFLAGS());"); return true; }
     if (m == "popfd") { L.push_back("SET_EFLAGS(RD32(esp)); esp+=4;"); return true; }
+    /* 66-prefixed forms move 16 bits (KOF MI Regulation A's CPUID probe mixes
+     * them with 32-bit push / pop; the stack follows the real byte counts) */
+    if (m == "pushf") {
+        L.push_back("esp-=2; WR16(esp,(u16)GET_EFLAGS());");
+        return true;
+    }
+    if (m == "popf") {
+        L.push_back("SET_EFLAGS((GET_EFLAGS() & 0xFFFF0000u) | RD16(esp)); esp+=2;");
+        return true;
+    }
     if (m == "lahf") { L.push_back("SET8H(eax,GET_EFLAGS());"); return true; }
     if (m == "sahf") {
         L.push_back("{ u32 f=(eax>>8)&0xFF; cf=f&1; pfb=(f&4)?0:1; af=(f>>4)&1; zf=(f>>6)&1; sf=(f>>7)&1; }");

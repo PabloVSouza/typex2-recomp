@@ -66,6 +66,7 @@ static u32 rows_of(u32 f, u32 h) { return is_block(f) ? (h + 3) / 4 : h; }
 
 static GfxId next_gfx_id = 1;
 static GfxId new_id(void) { return __atomic_fetch_add(&next_gfx_id, 1, __ATOMIC_RELAXED); }
+GfxId x2_d3d9_new_id(void) { return new_id(); } /* for other modules' renderer objects (ddraw overlays) */
 
 /* ---- objects ---------------------------------------------------------------- */
 typedef struct Device Device;
@@ -119,6 +120,9 @@ struct Device {
     u32 backbuffer, auto_ds;
     u32 fvf;
     bool fvf_active; /* SetFVF came after SetVertexDeclaration: the FVF is the declaration */
+    bool d3d8;       /* created through IDirect3D8: hands out D3D8 vtables */
+    u32 vs8;         /* D3D8: current vertex shader handle (an FVF, or a CreateVertexShader handle) */
+    u32 base_vertex8; /* D3D8: SetIndices' base vertex index */
     /* fixed-function constants the GPU holds in the reserved registers (ffp.h) */
     bool ffp_vs_loaded, ffp_ps_loaded;
     float ffp_vc[FFP_VS_COUNT][4], ffp_pc[FFP_PS_COUNT][4];
@@ -132,12 +136,28 @@ struct Device {
 };
 
 static u32 vt_surface, vt_texture, vt_vb, vt_ib, vt_decl, vt_vs, vt_ps, vt_query, vt_sb, vt_device, vt_d3d, vt_swap;
+/* Direct3D 8 faces of the same objects (see "Direct3D 8" at the end) */
+static u32 vt_d3d8, vt_device8, vt_texture8, vt_surface8, vt_cube8;
+static bool creating_d3d8; /* CreateDevice runs on behalf of IDirect3D8 */
 
 static void init_vtables(void);
 
 /* ---- surfaces / textures ------------------------------------------------- */
 /* render scale for the next standalone surface (set while creating the backbuffer) */
 static u32 next_surface_scale = 1;
+/* a standalone surface owns its pixels and its renderer texture: games create
+ * and release them per frame (KOF MI Regulation A: an image surface a frame) */
+static void surface_destroy(X2ComObj *o) {
+    Surface *s = (Surface *)o;
+    Device *d = s->dev;
+    if (d) /* still bound (released early by a game that relies on the device's reference): keep it */
+        for (int i = 0; i < 4; i++)
+            if (d->rt_obj[i] == o->guest || d->ds_obj == o->guest || d->backbuffer == o->guest) return;
+    gfx_texture_destroy(s->tex);
+    x2_heap_free(x2_process_heap(), s->mem);
+    free(s->shadow);
+    free(s);
+}
 static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, GfxId tex, u32 level, u32 container) {
     if (!tex && (usage == 1 || usage == 2)) X2_TRACE("d3d9: %s surface %ux%u fmt %u", usage == 1 ? "render-target" : "depth", w, h, fmt);
     Surface *s = calloc(1, sizeof *s);
@@ -154,9 +174,10 @@ static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, G
     if (!tex) {  /* standalone render target / depth / offscreen surface */
         tex = new_id();
         gfx_texture_create_scaled(tex, gfx_fmt(fmt), w, h, 1, true, next_surface_scale);
+        s->com.destroy = surface_destroy;
     }
     s->tex = tex;
-    return x2_com_wrap(&s->com, vt_surface, "IDirect3DSurface9");
+    return x2_com_wrap(&s->com, d && d->d3d8 ? vt_surface8 : vt_surface, "IDirect3DSurface9");
 }
 
 static void S_GetDesc(X2Cpu *c) {
@@ -305,7 +326,7 @@ static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt,
     t->com.destroy = texture_destroy;
     gfx_texture_create(t->id, gfx_fmt(fmt), w, h, levels, (usage & 3) != 0 /* RENDERTARGET|DEPTHSTENCIL */);
     if (usage & 3) X2_TRACE("d3d9: %s texture %ux%u fmt %u", usage & 1 ? "render-target" : "depth", w, h, fmt);
-    u32 g = x2_com_wrap(&t->com, vt_texture, "IDirect3DTexture9");
+    u32 g = x2_com_wrap(&t->com, d->d3d8 ? vt_texture8 : vt_texture, "IDirect3DTexture9");
     for (u32 i = 0; i < levels; i++) {
         u32 lw = w >> i ? w >> i : 1, lh = h >> i ? h >> i : 1;
         t->surf[i] = make_surface(d, fmt, lw, lh, usage, pool, t->id, i, g);
@@ -381,7 +402,7 @@ static u32 make_cube(Device *d, u32 size, u32 levels, u32 usage, u32 fmt, u32 po
     t->id = new_id();
     t->com.destroy = cube_destroy;
     gfx_texture_create_cube(t->id, gfx_fmt(fmt), size, levels);
-    u32 g = x2_com_wrap(&t->com, vt_cube, "IDirect3DCubeTexture9");
+    u32 g = x2_com_wrap(&t->com, d->d3d8 ? vt_cube8 : vt_cube, "IDirect3DCubeTexture9");
     for (u32 f = 0; f < 6; f++)
         for (u32 i = 0; i < levels; i++) {
             u32 s = size >> i ? size >> i : 1;
@@ -504,7 +525,11 @@ static void D_GetCreationParameters(X2Cpu *c) {
 }
 static void D_ShowCursor(X2Cpu *c) { RET(0); }
 static void D_Reset(X2Cpu *c) { RET(D3D_OK); }
+static GfxId surface_tex(u32 g);
 static void D_Present(X2Cpu *c) {
+    DEV;
+    extern void x2_ddraw_compose(GfxId backbuffer);
+    x2_ddraw_compose(surface_tex(d->backbuffer)); /* a DirectDraw overlay shown over the window */
     gfx_present();
     RET(D3D_OK);
 }
@@ -1241,7 +1266,8 @@ static void A_CreateDevice(X2Cpu *c) {
     g_height = bh;
     x2_log("d3d9: CreateDevice %ux%u fmt %u windowed %u autodepth %u/%u interval %x (called from %08x)", bw, bh, RD32(pp + 8),
            RD32(pp + 32), RD32(pp + 36), RD32(pp + 40), RD32(pp + 52), RD32(c->esp));
-    u32 dev = x2_com_wrap(&d->com, vt_device, "IDirect3DDevice9");
+    d->d3d8 = creating_d3d8;
+    u32 dev = x2_com_wrap(&d->com, d->d3d8 ? vt_device8 : vt_device, "IDirect3DDevice9");
     /* default render state (only what differs from zero) */
     u32 *rs = d->st.rs;
     rs[7] = 1;            /* ZENABLE */
@@ -1470,12 +1496,694 @@ const X2Hle x2_hle_d3d9[] = {
     {NULL, NULL, 0},
 };
 
-/* Direct3D 8: KOF MI Regulation A's movie middleware probes for it; the game
- * itself renders with Direct3D 9. "Not available" sends the probe its way. */
-static void Direct3DCreate8(X2Cpu *c) {
-    x2_log("d3d8: Direct3DCreate8(%u): not available", ARG(0));
-    RET(0);
+/* ---- Direct3D 8 ------------------------------------------------------------------- */
+/* IDirect3D8 / IDirect3DDevice8 over the Direct3D 9 implementation above
+ * (KOF Maximum Impact Regulation A renders with D3D8). The objects are the
+ * same; a device created through IDirect3D8 hands out D3D8 vtables. Most
+ * methods are their D3D9 twins in other vtable slots; the rest adapt:
+ *   - vertex shaders: the D3D8 declaration (stream / register tokens) becomes
+ *     a D3D9 vertex declaration, input register N matched by usage TEXCOORD N
+ *     (dcl tokens inserted into the vs_1_x code); a declaration without code
+ *     is fixed function, drawn through the equivalent FVF
+ *   - sampler states live among the texture stage states
+ *   - SetIndices carries the base vertex for DrawIndexedPrimitive
+ *   - state blocks are tokens: snapshots of the device state plus a mask of
+ *     what they hold (recording leaves the device as it was, as in D3D) */
+
+/* calls a D3D9 method with a fresh argument frame (args[0] = this) below the caller's */
+static u32 call9(X2Cpu *c, X2HostFn fn, u32 n, const u32 *args) {
+    u32 save = c->esp;
+    c->esp -= 4 * (n + 2);
+    for (u32 i = 0; i < n; i++) WR32(c->esp + 4 + 4 * i, args[i]);
+    fn(c);
+    c->esp = save;
+    return c->eax;
 }
+#define CALL9(fn, ...)                                                                                                 \
+    do {                                                                                                               \
+        const u32 a_[] = {__VA_ARGS__};                                                                                \
+        call9(c, fn, sizeof a_ / sizeof *a_, a_);                                                                      \
+    } while (0)
+/* small guest scratch area for out-parameters the D3D8 caller does not have */
+static u32 scratch8(void) {
+    static u32 s;
+    if (!s) s = x2_galloc(256);
+    return s;
+}
+
+/* ---- IDirect3D8 ---- */
+static void init_vtables8(void);
+static void caps8(u32 p) {
+    static u32 tmp;
+    if (!tmp) tmp = x2_galloc(512);
+    fill_caps(tmp);
+    memcpy(X2P(p), X2P(tmp), 212); /* D3DCAPS8 is D3DCAPS9's first 212 bytes */
+    WR32(p + 196, 0xFFFE0101u);    /* VertexShaderVersion 1.1 */
+    WR32(p + 200, 96);             /* MaxVertexShaderConst */
+    WR32(p + 204, 0xFFFF0104u);    /* PixelShaderVersion 1.4 */
+}
+static void A8_GetAdapterIdentifier(X2Cpu *c) { /* D3DADAPTER_IDENTIFIER8 has no DeviceName */
+    u32 p = ARG(3);
+    memset(X2P(p), 0, 1068);
+    strcpy(GSTR(p), "nv4_disp.dll");
+    strcpy(GSTR(p + 512), "NVIDIA GeForce 7600 GS");
+    WR32(p + 1032, 0x10DE);
+    WR32(p + 1036, 0x02E1);
+    RET(D3D_OK);
+}
+static void A8_GetAdapterModeCount(X2Cpu *c) { RET(2); }
+static void A8_EnumAdapterModes(X2Cpu *c) {
+    CALL9(A_EnumAdapterModes, ARG(0), ARG(1), D3DFMT_X8R8G8B8, ARG(2), ARG(3));
+}
+static void A8_CheckDeviceMultiSampleType(X2Cpu *c) {
+    CALL9(A_CheckDeviceMultiSampleType, ARG(0), ARG(1), ARG(2), ARG(3), ARG(4), ARG(5), 0);
+}
+static void A8_GetDeviceCaps(X2Cpu *c) {
+    caps8(ARG(3));
+    RET(D3D_OK);
+}
+/* CreateDevice(this, adapter, type, hwnd, flags, pp8, ppDevice): D3DPRESENT_PARAMETERS8
+ * lacks MultiSampleQuality after MultiSampleType */
+static void A8_CreateDevice(X2Cpu *c) {
+    u32 p8 = ARG(5), p9 = scratch8();
+    memset(X2P(p9), 0, 56);
+    for (u32 i = 0; i < 5; i++) WR32(p9 + 4 * i, RD32(p8 + 4 * i));
+    for (u32 i = 5; i < 13; i++) WR32(p9 + 4 * (i + 1), RD32(p8 + 4 * i));
+    creating_d3d8 = true;
+    CALL9(A_CreateDevice, ARG(0), ARG(1), ARG(2), ARG(3), ARG(4), p9, ARG(6));
+    creating_d3d8 = false;
+    WR32(p8, RD32(p9));
+    WR32(p8 + 4, RD32(p9 + 4));
+}
+static void Direct3DCreate8(X2Cpu *c) {
+    init_vtables();
+    init_vtables8();
+    gfx_init();
+    D3D *d = calloc(1, sizeof *d);
+    x2_log("d3d8: Direct3DCreate8(%u)", ARG(0));
+    RET(x2_com_wrap(&d->com, vt_d3d8, "IDirect3D8"));
+}
+
+/* ---- surfaces and textures: D3DSURFACE_DESC8 has Size after Pool ---- */
+static void desc8(u32 p, Surface *s) {
+    WR32(p, s->fmt);
+    WR32(p + 4, 1); /* D3DRTYPE_SURFACE */
+    WR32(p + 8, s->usage);
+    WR32(p + 12, s->pool);
+    WR32(p + 16, s->pitch * rows_of(s->fmt, s->h));
+    WR32(p + 20, 0);
+    WR32(p + 24, s->w);
+    WR32(p + 28, s->h);
+}
+static void S8_GetDesc(X2Cpu *c) {
+    desc8(ARG(1), COM_THIS(Surface));
+    RET(D3D_OK);
+}
+static void T8_GetLevelDesc(X2Cpu *c) {
+    Texture *t = COM_THIS(Texture);
+    if (ARG(1) >= t->levels) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    desc8(ARG(2), (Surface *)x2_com_get(t->surf[ARG(1)]));
+    RET(D3D_OK);
+}
+static void C8_GetLevelDesc(X2Cpu *c) {
+    CubeTexture *t = COM_THIS(CubeTexture);
+    if (ARG(1) >= t->levels) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    desc8(ARG(2), (Surface *)x2_com_get(t->surf[0][ARG(1)]));
+    RET(D3D_OK);
+}
+
+/* ---- device: methods whose arguments changed ---- */
+static void D8_Ok(X2Cpu *c) { RET(D3D_OK); }
+static void D8_GetInfo(X2Cpu *c) { RET(0x80004005u); } /* E_FAIL: no device info */
+static void D8_GetDeviceCaps(X2Cpu *c) {
+    caps8(ARG(1));
+    RET(D3D_OK);
+}
+static void D8_GetDisplayMode(X2Cpu *c) { CALL9(D_GetDisplayMode, ARG(0), 0, ARG(1)); }
+static void D8_GetBackBuffer(X2Cpu *c) { CALL9(D_GetBackBuffer, ARG(0), 0, ARG(1), ARG(2), ARG(3)); }
+static void D8_GetRasterStatus(X2Cpu *c) { CALL9(D_GetRasterStatus, ARG(0), 0, ARG(1)); }
+static void D8_CreateRenderTarget(X2Cpu *c) { /* (w, h, fmt, ms, lockable, pp) */
+    CALL9(D_CreateRenderTarget, ARG(0), ARG(1), ARG(2), ARG(3), ARG(4), 0, ARG(5), ARG(6), 0);
+}
+static void D8_CreateDepthStencilSurface(X2Cpu *c) { /* (w, h, fmt, ms, pp) */
+    CALL9(D_CreateDepthStencilSurface, ARG(0), ARG(1), ARG(2), ARG(3), ARG(4), 0, 0, ARG(5), 0);
+}
+static void D8_CreateImageSurface(X2Cpu *c) { /* (w, h, fmt, pp): system memory */
+    CALL9(D_CreateOffscreenPlainSurface, ARG(0), ARG(1), ARG(2), ARG(3), 2 /* D3DPOOL_SYSTEMMEM */, ARG(4), 0);
+}
+/* CopyRects(src, rects, n, dst, points): GPU copies when a render target is
+ * involved, CPU copies (UpdateSurface) otherwise */
+static void D8_CopyRects(X2Cpu *c) {
+    Surface *s = (Surface *)x2_com_get(ARG(1)), *d = (Surface *)x2_com_get(ARG(4));
+    if (!s || !d) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    u32 n = ARG(2) ? ARG(3) : 1, tmp = scratch8() + 64;
+    bool gpu = s->usage == 1 || d->usage == 1;
+    for (u32 i = 0; i < n; i++) {
+        u32 sr = ARG(2) ? ARG(2) + 16 * i : 0, pt = ARG(5) ? ARG(5) + 8 * i : 0;
+        u32 sx = sr ? RD32(sr) : 0, sy = sr ? RD32(sr + 4) : 0;
+        u32 w = sr ? RD32(sr + 8) - sx : s->w, h = sr ? RD32(sr + 12) - sy : s->h;
+        u32 dx = pt ? RD32(pt) : sx, dy = pt ? RD32(pt + 4) : sy;
+        if (gpu) {
+            WR32(tmp, sx);
+            WR32(tmp + 4, sy);
+            WR32(tmp + 8, sx + w);
+            WR32(tmp + 12, sy + h);
+            WR32(tmp + 16, dx);
+            WR32(tmp + 20, dy);
+            WR32(tmp + 24, dx + w);
+            WR32(tmp + 28, dy + h);
+            CALL9(D_StretchRect, ARG(0), ARG(1), tmp, ARG(4), tmp + 16, 1 /* D3DTEXF_POINT */);
+        } else {
+            WR32(tmp, sx);
+            WR32(tmp + 4, sy);
+            WR32(tmp + 8, sx + w);
+            WR32(tmp + 12, sy + h);
+            WR32(tmp + 16, dx);
+            WR32(tmp + 20, dy);
+            CALL9(D_UpdateSurface, ARG(0), ARG(1), tmp, ARG(4), tmp + 16);
+        }
+    }
+    RET(D3D_OK);
+}
+static void D8_SetRenderTarget(X2Cpu *c) { /* (rt, ds): a NULL rt keeps the current one */
+    if (ARG(1)) CALL9(D_SetRenderTarget, ARG(0), 0, ARG(1));
+    CALL9(D_SetDepthStencilSurface, ARG(0), ARG(2));
+    RET(D3D_OK);
+}
+static void D8_GetRenderTarget(X2Cpu *c) { CALL9(D_GetRenderTarget, ARG(0), 0, ARG(1)); }
+
+/* texture stage state types that are sampler states in D3D9 */
+static int tss8_sampler(u32 type) {
+    switch (type) {
+    case 13: return 1;  /* ADDRESSU */
+    case 14: return 2;  /* ADDRESSV */
+    case 25: return 3;  /* ADDRESSW */
+    case 15: return 4;  /* BORDERCOLOR */
+    case 16: return 5;  /* MAGFILTER */
+    case 17: return 6;  /* MINFILTER */
+    case 18: return 7;  /* MIPFILTER */
+    case 19: return 8;  /* MIPMAPLODBIAS */
+    case 20: return 9;  /* MAXMIPLEVEL */
+    case 21: return 10; /* MAXANISOTROPY */
+    default: return -1;
+    }
+}
+static void D8_SetTextureStageState(X2Cpu *c) {
+    int s = tss8_sampler(ARG(2));
+    if (s >= 0)
+        CALL9(D_SetSamplerState, ARG(0), ARG(1), (u32)s, ARG(3));
+    else
+        D_SetTextureStageState(c);
+}
+static void D8_GetTextureStageState(X2Cpu *c) {
+    int s = tss8_sampler(ARG(2));
+    if (s >= 0)
+        CALL9(D_GetSamplerState, ARG(0), ARG(1), (u32)s, ARG(3));
+    else
+        D_GetTextureStageState(c);
+}
+static void D8_DrawIndexedPrimitive(X2Cpu *c) { /* (prim, minIndex, numVertices, startIndex, primCount) */
+    DEV;
+    CALL9(D_DrawIndexedPrimitive, ARG(0), ARG(1), d->base_vertex8, ARG(2), ARG(3), ARG(4), ARG(5));
+}
+static void D8_SetStreamSource(X2Cpu *c) { CALL9(D_SetStreamSource, ARG(0), ARG(1), ARG(2), 0, ARG(3)); }
+static void D8_GetStreamSource(X2Cpu *c) { CALL9(D_GetStreamSource, ARG(0), ARG(1), ARG(2), scratch8(), ARG(3)); }
+static void D8_SetIndices(X2Cpu *c) { /* (ib, baseVertexIndex) */
+    DEV;
+    d->base_vertex8 = ARG(2);
+    CALL9(D_SetIndices, ARG(0), ARG(1));
+}
+static void D8_GetIndices(X2Cpu *c) {
+    DEV;
+    CALL9(D_GetIndices, ARG(0), ARG(1));
+    if (ARG(2)) WR32(ARG(2), d->base_vertex8);
+    RET(D3D_OK);
+}
+
+/* ---- vertex shaders ---- */
+typedef struct {
+    bool used;
+    u32 decl;   /* IDirect3DVertexDeclaration9 (shader code only) */
+    u32 vs;     /* IDirect3DVertexShader9, 0 = fixed function */
+    u32 fvf;    /* fixed function: the FVF the declaration describes */
+    u32 nconst; /* constants the declaration loads: (start, count, guest data) triples */
+    u32 consts[8][3];
+} Vs8;
+#define MAX_VS8 256
+static Vs8 vs8s[MAX_VS8];
+#define VS8_HANDLE(i) (0x00100001u + 2u * (u32)(i)) /* odd, unlike every FVF */
+static Vs8 *vs8_get(u32 h) {
+    u32 i = (h - 0x00100001u) / 2;
+    return (h & 1) && h >= 0x00100001u && i < MAX_VS8 && vs8s[i].used ? &vs8s[i] : NULL;
+}
+static u32 vsdt_size(u32 t) {
+    static const u8 sz[8] = {4, 8, 12, 16, 4, 4, 4, 8}; /* FLOAT1-4, D3DCOLOR, UBYTE4, SHORT2, SHORT4 */
+    return t < 8 ? sz[t] : 4;
+}
+/* CreateVertexShader(declaration, function, pHandle, usage) */
+static void D8_CreateVertexShader(X2Cpu *c) {
+    u32 dev = ARG(0), decl = ARG(1), func = ARG(2);
+    u32 slot = 0;
+    while (slot < MAX_VS8 && vs8s[slot].used) slot++;
+    if (slot == MAX_VS8) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    Vs8 *v = &vs8s[slot];
+    memset(v, 0, sizeof *v);
+    struct {
+        u32 stream, offset, type, reg;
+    } el[32];
+    u32 nel = 0, stream = 0, off[16] = {0};
+    for (u32 p = decl; p && RD32(p) != 0xFFFFFFFFu; p += 4) {
+        u32 t = RD32(p), kind = t >> 29;
+        if (kind == 1) { /* STREAM */
+            stream = t & 0xF;
+        } else if (kind == 2) { /* STREAMDATA: a register load, or skipped dwords */
+            if (t & 0x10000000u) {
+                off[stream] += 4 * ((t >> 16) & 0xF);
+            } else if (nel < 32) {
+                u32 type = (t >> 16) & 0xF;
+                el[nel++] = (typeof(el[0])){stream, off[stream], type, t & 0x1F};
+                off[stream] += vsdt_size(type);
+            }
+        } else if (kind == 4) { /* CONSTMEM: count x 4 floats from address */
+            u32 count = (t >> 25) & 0xF, addr = t & 0x7F;
+            if (v->nconst < 8) {
+                u32 data = x2_galloc(16 * count);
+                memcpy(X2P(data), X2P(p + 4), 16 * count);
+                v->consts[v->nconst][0] = addr;
+                v->consts[v->nconst][1] = count;
+                v->consts[v->nconst][2] = data;
+                v->nconst++;
+            }
+            p += 16 * count;
+        } else if (kind == 5) { /* EXT: skip its data */
+            p += 4 * ((t >> 24) & 0x1F);
+        }
+    }
+    if (func) {
+        /* the D3D9 declaration: input register N carries usage TEXCOORD, index N */
+        u32 e = x2_galloc(8 * (nel + 1));
+        for (u32 i = 0; i < nel; i++) {
+            u16 s16 = (u16)el[i].stream, o16 = (u16)el[i].offset;
+            memcpy(X2P(e + 8 * i), &s16, 2);
+            memcpy(X2P(e + 8 * i + 2), &o16, 2);
+            WR8(e + 8 * i + 4, (u8)el[i].type);
+            WR8(e + 8 * i + 5, 0);
+            WR8(e + 8 * i + 6, 5); /* D3DDECLUSAGE_TEXCOORD */
+            WR8(e + 8 * i + 7, (u8)el[i].reg);
+        }
+        u16 end_s = 0xFF, zero = 0;
+        memcpy(X2P(e + 8 * nel), &end_s, 2);
+        memcpy(X2P(e + 8 * nel + 2), &zero, 2);
+        WR32(e + 8 * nel + 4, 17); /* D3DDECLTYPE_UNUSED */
+        CALL9(D_CreateVertexDeclaration, dev, e, scratch8());
+        v->decl = RD32(scratch8());
+        /* the code with dcl tokens for those registers after the version token */
+        u32 n = shader_len(func), code = x2_galloc(4 * (n + 3 * nel));
+        WR32(code, RD32(func));
+        for (u32 i = 0; i < nel; i++) {
+            WR32(code + 4 + 12 * i, 31);                                    /* dcl */
+            WR32(code + 8 + 12 * i, 0x80000000u | 5u | el[i].reg << 16);    /* texcoord N */
+            WR32(code + 12 + 12 * i, 0x90000000u | 0xFu << 16 | el[i].reg); /* vN */
+        }
+        memcpy(X2P(code + 4 + 12 * nel), X2P(func + 4), 4 * (n - 1));
+        CALL9(D_CreateVertexShader, dev, code, scratch8());
+        v->vs = RD32(scratch8());
+    } else {
+        /* fixed function: registers are D3DVSDE_* positions; describe them as an FVF */
+        u32 fvf = 0, ntex = 0;
+        for (u32 i = 0; i < nel; i++) {
+            u32 r = el[i].reg, t = el[i].type;
+            if (r == 0)
+                fvf |= t == 3 ? 0x004 : 0x002; /* XYZRHW / XYZ */
+            else if (r == 3)
+                fvf |= 0x010;
+            else if (r == 4)
+                fvf |= 0x020;
+            else if (r == 5)
+                fvf |= 0x040;
+            else if (r == 6)
+                fvf |= 0x080;
+            else if (r >= 7 && r <= 14) {
+                static const u32 sizebits[4] = {3, 0, 1, 2}; /* FLOAT1..4 -> D3DFVF_TEXCOORDSIZE */
+                fvf |= (t < 4 ? sizebits[t] : 0) << (16 + 2 * (r - 7));
+                if (r - 6 > ntex) ntex = r - 6;
+            }
+        }
+        v->fvf = fvf | ntex << 8;
+        if (ffp_fvf_size(v->fvf) != off[0]) {
+            static bool warned;
+            if (!warned) x2_log("d3d8: fixed-function declaration does not follow FVF order (fvf %x)", v->fvf);
+            warned = true;
+        }
+    }
+    v->used = true;
+    WR32(ARG(3), VS8_HANDLE(slot));
+    RET(D3D_OK);
+}
+static void D8_SetVertexShader(X2Cpu *c) {
+    DEV;
+    u32 h = ARG(1);
+    Vs8 *v = vs8_get(h);
+    d->vs8 = h;
+    if (v && v->vs) {
+        CALL9(D_SetVertexDeclaration, ARG(0), v->decl);
+        CALL9(D_SetVertexShader, ARG(0), v->vs);
+        for (u32 i = 0; i < v->nconst; i++)
+            CALL9(D_SetVertexShaderConstantF, ARG(0), v->consts[i][0], v->consts[i][2], v->consts[i][1]);
+    } else {
+        CALL9(D_SetVertexShader, ARG(0), 0);
+        CALL9(D_SetFVF, ARG(0), v ? v->fvf : h);
+    }
+    d->vs8 = h; /* SetFVF / SetVertexDeclaration keep their own state */
+    RET(D3D_OK);
+}
+static void D8_GetVertexShader(X2Cpu *c) {
+    DEV;
+    WR32(ARG(1), d->vs8);
+    RET(D3D_OK);
+}
+static void D8_DeleteVertexShader(X2Cpu *c) {
+    Vs8 *v = vs8_get(ARG(1));
+    if (v) v->used = false; /* the D3D9 objects are left alone: a game may delete while bound */
+    RET(D3D_OK);
+}
+static void D8_Invalid(X2Cpu *c) { RET(D3DERR_INVALIDCALL); }
+
+/* ---- state blocks ---- */
+typedef struct {
+    GfxState st;
+    u32 tss[8][33];
+    u32 tex_obj[GFX_MAX_SAMPLERS], vb_obj[GFX_MAX_STREAMS];
+    u32 ib_obj, decl_obj, vs_obj, ps_obj, fvf, vs8, base_vertex8;
+    bool fvf_active;
+    float transforms[260][16];
+    float vsc[96][4], psc[8][4];
+} State8;
+typedef struct {
+    State8 val;
+    u8 mask[sizeof(State8)];
+} Block8;
+#define MAX_BLOCKS8 256
+static Block8 *blocks8[MAX_BLOCKS8];
+static State8 recording_start8;
+static bool recording8;
+
+static void state8_save(const Device *d, State8 *s) {
+    memset(s, 0, sizeof *s);
+    s->st = d->st;
+    memcpy(s->tss, d->tss, sizeof s->tss);
+    memcpy(s->tex_obj, d->tex_obj, sizeof s->tex_obj);
+    memcpy(s->vb_obj, d->vb_obj, sizeof s->vb_obj);
+    s->ib_obj = d->ib_obj;
+    s->decl_obj = d->decl_obj;
+    s->vs_obj = d->vs_obj;
+    s->ps_obj = d->ps_obj;
+    s->fvf = d->fvf;
+    s->vs8 = d->vs8;
+    s->base_vertex8 = d->base_vertex8;
+    s->fvf_active = d->fvf_active;
+    memcpy(s->transforms, d->transforms, sizeof s->transforms);
+    memcpy(s->vsc, d->vsc, sizeof s->vsc);
+    memcpy(s->psc, d->psc, sizeof s->psc);
+}
+static void state8_load(Device *d, const State8 *s) {
+    d->st = s->st;
+    memcpy(d->tss, s->tss, sizeof s->tss);
+    memcpy(d->tex_obj, s->tex_obj, sizeof s->tex_obj);
+    memcpy(d->vb_obj, s->vb_obj, sizeof s->vb_obj);
+    d->ib_obj = s->ib_obj;
+    d->decl_obj = s->decl_obj;
+    d->vs_obj = s->vs_obj;
+    d->ps_obj = s->ps_obj;
+    d->fvf = s->fvf;
+    d->vs8 = s->vs8;
+    d->base_vertex8 = s->base_vertex8;
+    d->fvf_active = s->fvf_active;
+    memcpy(d->transforms, s->transforms, sizeof s->transforms);
+    memcpy(d->vsc, s->vsc, sizeof s->vsc);
+    memcpy(d->psc, s->psc, sizeof s->psc);
+    gfx_set_consts(false, 0, &d->vsc[0][0], 96); /* the GPU follows the restored constants */
+    gfx_set_consts(true, 0, &d->psc[0][0], 8);
+}
+/* the device takes the block's values wherever its mask is set */
+static void block8_apply(Device *d, const Block8 *b) {
+    State8 cur;
+    state8_save(d, &cur);
+    u8 *dst = (u8 *)&cur;
+    const u8 *src = (const u8 *)&b->val;
+    for (size_t i = 0; i < sizeof cur; i++)
+        if (b->mask[i]) dst[i] = src[i];
+    state8_load(d, &cur);
+}
+static u32 block8_new(void) {
+    for (u32 i = 0; i < MAX_BLOCKS8; i++)
+        if (!blocks8[i]) {
+            blocks8[i] = calloc(1, sizeof(Block8));
+            return i + 1;
+        }
+    return 0;
+}
+static Block8 *block8_get(u32 token) { return token && token <= MAX_BLOCKS8 ? blocks8[token - 1] : NULL; }
+static void D8_BeginStateBlock(X2Cpu *c) {
+    DEV;
+    state8_save(d, &recording_start8);
+    recording8 = true;
+    RET(D3D_OK);
+}
+static void D8_EndStateBlock(X2Cpu *c) { /* (pToken): what changed since Begin; the device goes back */
+    DEV;
+    if (!recording8) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    recording8 = false;
+    u32 tok = block8_new();
+    Block8 *b = block8_get(tok);
+    if (!b) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    state8_save(d, &b->val);
+    const u8 *a = (const u8 *)&recording_start8, *z = (const u8 *)&b->val;
+    for (size_t i = 0; i < sizeof(State8); i++) b->mask[i] = a[i] != z[i];
+    state8_load(d, &recording_start8);
+    WR32(ARG(1), tok);
+    RET(D3D_OK);
+}
+static void D8_CreateStateBlock(X2Cpu *c) { /* (type, pToken): every state, whatever the type */
+    DEV;
+    u32 tok = block8_new();
+    Block8 *b = block8_get(tok);
+    if (!b) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    state8_save(d, &b->val);
+    memset(b->mask, 1, sizeof b->mask);
+    WR32(ARG(2), tok);
+    RET(D3D_OK);
+}
+static void D8_CaptureStateBlock(X2Cpu *c) {
+    DEV;
+    Block8 *b = block8_get(ARG(1));
+    if (!b) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    state8_save(d, &b->val);
+    RET(D3D_OK);
+}
+static void D8_ApplyStateBlock(X2Cpu *c) {
+    DEV;
+    Block8 *b = block8_get(ARG(1));
+    if (!b) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    block8_apply(d, b);
+    RET(D3D_OK);
+}
+static void D8_DeleteStateBlock(X2Cpu *c) {
+    Block8 *b = block8_get(ARG(1));
+    if (b) {
+        free(b);
+        blocks8[ARG(1) - 1] = NULL;
+    }
+    RET(D3D_OK);
+}
+
+static void init_vtables8(void) {
+    if (vt_device8) return;
+    static const X2Method d3d[] = {
+        IUNKNOWN,
+        U(RegisterSoftwareDevice, 2),
+        M(GetAdapterCount, A_GetAdapterCount, 1),
+        M(GetAdapterIdentifier, A8_GetAdapterIdentifier, 4),
+        M(GetAdapterModeCount, A8_GetAdapterModeCount, 2),
+        M(EnumAdapterModes, A8_EnumAdapterModes, 4),
+        M(GetAdapterDisplayMode, A_GetAdapterDisplayMode, 3),
+        M(CheckDeviceType, A_Check_OK, 6),
+        M(CheckDeviceFormat, A_CheckDeviceFormat, 7),
+        M(CheckDeviceMultiSampleType, A8_CheckDeviceMultiSampleType, 6),
+        M(CheckDepthStencilMatch, A_Check_OK, 6),
+        M(GetDeviceCaps, A8_GetDeviceCaps, 4),
+        M(GetAdapterMonitor, A_GetAdapterMonitor, 2),
+        M(CreateDevice, A8_CreateDevice, 7),
+    };
+    vt_d3d8 = x2_com_vtable("IDirect3D8", d3d, sizeof d3d / sizeof *d3d);
+
+    static const X2Method dev[] = {
+        IUNKNOWN,
+        M(TestCooperativeLevel, D_TestCooperativeLevel, 1),
+        M(GetAvailableTextureMem, D_GetAvailableTextureMem, 1),
+        M(ResourceManagerDiscardBytes, D8_Ok, 2),
+        M(GetDirect3D, D_GetDirect3D, 2),
+        M(GetDeviceCaps, D8_GetDeviceCaps, 2),
+        M(GetDisplayMode, D8_GetDisplayMode, 2),
+        M(GetCreationParameters, D_GetCreationParameters, 2),
+        M(SetCursorProperties, Res_Nop, 4),
+        M(SetCursorPosition, Res_Nop, 4),
+        M(ShowCursor, D_ShowCursor, 2),
+        U(CreateAdditionalSwapChain, 3),
+        M(Reset, D_Reset, 2),
+        M(Present, D_Present, 5),
+        M(GetBackBuffer, D8_GetBackBuffer, 4),
+        M(GetRasterStatus, D8_GetRasterStatus, 2),
+        M(SetGammaRamp, Res_Nop, 3),
+        M(GetGammaRamp, Res_Nop, 2),
+        M(CreateTexture, D_CreateTexture, 8),
+        U(CreateVolumeTexture, 9),
+        M(CreateCubeTexture, D_CreateCubeTexture, 7),
+        M(CreateVertexBuffer, D_CreateVertexBuffer, 6),
+        M(CreateIndexBuffer, D_CreateIndexBuffer, 6),
+        M(CreateRenderTarget, D8_CreateRenderTarget, 7),
+        M(CreateDepthStencilSurface, D8_CreateDepthStencilSurface, 6),
+        M(CreateImageSurface, D8_CreateImageSurface, 5),
+        M(CopyRects, D8_CopyRects, 6),
+        M(UpdateTexture, D_UpdateTexture, 3),
+        M(GetFrontBuffer, D8_Ok, 2),
+        M(SetRenderTarget, D8_SetRenderTarget, 3),
+        M(GetRenderTarget, D8_GetRenderTarget, 2),
+        M(GetDepthStencilSurface, D_GetDepthStencilSurface, 2),
+        M(BeginScene, D_BeginScene, 1),
+        M(EndScene, D_EndScene, 1),
+        M(Clear, D_Clear, 7),
+        M(SetTransform, D_SetTransform, 3),
+        M(GetTransform, D_GetTransform, 3),
+        U(MultiplyTransform, 3),
+        M(SetViewport, D_SetViewport, 2),
+        M(GetViewport, D_GetViewport, 2),
+        M(SetMaterial, Res_Nop, 2),
+        U(GetMaterial, 2),
+        M(SetLight, Res_Nop, 3),
+        U(GetLight, 3),
+        M(LightEnable, Res_Nop, 3),
+        U(GetLightEnable, 3),
+        M(SetClipPlane, Res_Nop, 3),
+        U(GetClipPlane, 3),
+        M(SetRenderState, D_SetRenderState, 3),
+        M(GetRenderState, D_GetRenderState, 3),
+        M(BeginStateBlock, D8_BeginStateBlock, 1),
+        M(EndStateBlock, D8_EndStateBlock, 2),
+        M(ApplyStateBlock, D8_ApplyStateBlock, 2),
+        M(CaptureStateBlock, D8_CaptureStateBlock, 2),
+        M(DeleteStateBlock, D8_DeleteStateBlock, 2),
+        M(CreateStateBlock, D8_CreateStateBlock, 3),
+        M(SetClipStatus, D8_Ok, 2),
+        M(GetClipStatus, D8_Ok, 2),
+        M(GetTexture, D_GetTexture, 3),
+        M(SetTexture, D_SetTexture, 3),
+        M(GetTextureStageState, D8_GetTextureStageState, 4),
+        M(SetTextureStageState, D8_SetTextureStageState, 4),
+        M(ValidateDevice, D_ValidateDevice, 2),
+        M(GetInfo, D8_GetInfo, 4),
+        M(SetPaletteEntries, D8_Ok, 3),
+        M(GetPaletteEntries, D8_Ok, 3),
+        M(SetCurrentTexturePalette, D8_Ok, 2),
+        M(GetCurrentTexturePalette, D8_Ok, 2),
+        M(DrawPrimitive, D_DrawPrimitive, 4),
+        M(DrawIndexedPrimitive, D8_DrawIndexedPrimitive, 6),
+        M(DrawPrimitiveUP, D_DrawPrimitiveUP, 5),
+        M(DrawIndexedPrimitiveUP, D_DrawIndexedPrimitiveUP, 9),
+        U(ProcessVertices, 6),
+        M(CreateVertexShader, D8_CreateVertexShader, 5),
+        M(SetVertexShader, D8_SetVertexShader, 2),
+        M(GetVertexShader, D8_GetVertexShader, 2),
+        M(DeleteVertexShader, D8_DeleteVertexShader, 2),
+        M(SetVertexShaderConstant, D_SetVertexShaderConstantF, 4),
+        M(GetVertexShaderConstant, D_GetVertexShaderConstantF, 4),
+        M(GetVertexShaderDeclaration, D8_Invalid, 4),
+        M(GetVertexShaderFunction, D8_Invalid, 4),
+        M(SetStreamSource, D8_SetStreamSource, 4),
+        M(GetStreamSource, D8_GetStreamSource, 4),
+        M(SetIndices, D8_SetIndices, 3),
+        M(GetIndices, D8_GetIndices, 3),
+        M(CreatePixelShader, D_CreatePixelShader, 3),
+        M(SetPixelShader, D_SetPixelShader, 2),
+        M(GetPixelShader, D_GetPixelShader, 2),
+        M(DeletePixelShader, D8_Ok, 2),
+        M(SetPixelShaderConstant, D_SetPixelShaderConstantF, 4),
+        M(GetPixelShaderConstant, D_GetPixelShaderConstantF, 4),
+        M(GetPixelShaderFunction, D8_Invalid, 4),
+        U(DrawRectPatch, 4),
+        U(DrawTriPatch, 4),
+        U(DeletePatch, 2),
+    };
+    _Static_assert(sizeof dev / sizeof *dev == 97, "IDirect3DDevice8 has 97 methods");
+    vt_device8 = x2_com_vtable("IDirect3DDevice8", dev, sizeof dev / sizeof *dev);
+
+    static const X2Method surf[] = {
+        IUNKNOWN,
+        M(GetDevice, Res_GetDevice, 2),
+        M(SetPrivateData, Res_Nop, 5),
+        U(GetPrivateData, 4),
+        M(FreePrivateData, Res_Nop, 2),
+        M(GetContainer, S_GetContainer, 3),
+        M(GetDesc, S8_GetDesc, 2),
+        M(LockRect, S_LockRect, 4),
+        M(UnlockRect, S_UnlockRect, 1),
+    };
+    vt_surface8 = x2_com_vtable("IDirect3DSurface8", surf, sizeof surf / sizeof *surf);
+    static const X2Method tex[] = {
+        RESOURCE,
+        M(GetType, T_GetType, 1),
+        M(SetLOD, Res_Zero, 2),
+        M(GetLOD, Res_Zero, 1),
+        M(GetLevelCount, T_GetLevelCount, 1),
+        M(GetLevelDesc, T8_GetLevelDesc, 3),
+        M(GetSurfaceLevel, T_GetSurfaceLevel, 3),
+        M(LockRect, T_LockRect, 5),
+        M(UnlockRect, T_UnlockRect, 2),
+        M(AddDirtyRect, Res_Nop, 2),
+    };
+    vt_texture8 = x2_com_vtable("IDirect3DTexture8", tex, sizeof tex / sizeof *tex);
+    static const X2Method cube[] = {
+        RESOURCE,
+        M(GetType, C_GetType, 1),
+        M(SetLOD, Res_Zero, 2),
+        M(GetLOD, Res_Zero, 1),
+        M(GetLevelCount, T_GetLevelCount, 1),
+        M(GetLevelDesc, C8_GetLevelDesc, 3),
+        M(GetCubeMapSurface, C_GetCubeMapSurface, 4),
+        M(LockRect, C_LockRect, 6),
+        M(UnlockRect, C_UnlockRect, 3),
+        M(AddDirtyRect, Res_Nop, 3),
+    };
+    vt_cube8 = x2_com_vtable("IDirect3DCubeTexture8", cube, sizeof cube / sizeof *cube);
+}
+
 const X2Hle x2_hle_d3d8[] = {
     {"Direct3DCreate8", Direct3DCreate8, 1},
     {NULL, NULL, 0},

@@ -4,45 +4,46 @@
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |
 | `games/` id | `kofmira` |
-| Status | **In progress**: starts up to renderer creation, then needs Direct3D 8 |
-| Executable | `game.exe` (PE32, 28 MB image; data in `diskimg/`) |
+| Status | **Playable** on macOS: opening movie, attract demo, test menu, character select and fights. Android not tested yet. |
+| Executable | `game.exe` (PE32, 28 MB image; RenderWare engine; data in `data/`, `diskimg/`) |
 
-## Done
+## Controls
 
-- **Recompiled:** 20,464 functions, 96% of the code.
-- **C runtime as a DLL.** The game links `MSVCR80.dll` instead of carrying
-  its C runtime inside the executable. `hle/msvcrt.c` implements the 93
-  functions it imports:
-  - memory and strings;
-  - maths, including the x87-register `_CI*` helpers;
-  - `stdio` files;
-  - `printf` / `sscanf` over guest arguments;
-  - `qsort` with the guest's comparator;
-  - threads and CRT start-up.
-  `_acmdln` and `_adjust_fdiv` are variables, which the loader now binds as
+Same panel and default layout as [KOF XII](Game-KOF-XII.md). The game's INPUT
+TEST confirms A B C D on cabinet SHOT1, SHOT4, SHOT2 and SHOT5.
+
+## What it needed
+
+- **C runtime as a DLL.** It links `MSVCR80.dll` instead of carrying the CRT
+  in the executable. `hle/msvcrt.c` implements its 93 imports. Two of them
+  (`_acmdln`, `_adjust_fdiv`) are variables, which the loader now binds as
   data imports.
-- **Multimedia file I/O:** `mmio*` (`hle/mmio.c`) reads its WAV files the way
-  the DirectX SDK's `CWaveFile` does, including the buffered
-  `mmioGetInfo` / `mmioAdvance` access.
-- **Windows bits:** window and GDI stubs (debug text on the window DC),
-  `lstr*`, `MoveFileExA`, `GetSystemMetrics`, `joyGetNumDevs`,
-  `D3DXCreateTextureFromFileA`.
-- **Start-up:** the game opens its JVS port, starts its threads and creates
-  its window.
+- **Direct3D 8.** The game renders with D3D8. `hle/d3d9.c` has a D3D8 layer
+  over the D3D9 implementation:
+  - IDirect3D8 / IDirect3DDevice8 and the D3D8 texture and surface vtables;
+  - vertex shaders from D3D8 declaration tokens (input registers bound by
+    inserted `dcl` instructions);
+  - sampler states set through texture stage states;
+  - `SetIndices` with a base vertex, `CopyRects`;
+  - token-based state blocks.
+- **DirectDraw overlay movies.** The opening movie plays in a YUY2 overlay
+  surface: `hle/ddraw.c` provides the surfaces and flipping. The overlay is
+  drawn over the frame at `Present` and disappears when the game releases it.
+- **Recompiler:**
+  - code in a second section (`PSFD00`, the movie middleware) is now
+    discovered;
+  - MMX / SSE2 saturating, averaging, multiply-add, pack and word-shuffle
+    instructions, used by the movie decoder;
+  - 16-bit `pushf` / `popf` (a CPUID probe).
+- **Files:** `mmio*` WAV reading, and drive-relative paths (`C:data\x.bmp`,
+  RenderWare's file system).
+- **Memory:** surfaces are freed when released. The game creates an image
+  surface every frame.
 
-## Next: Direct3D 8
+## Known issues
 
-The game renders with Direct3D 8 (`Direct3DCreate8(220)`). Its Direct3D 9
-init exists but is never called. The plan is a D3D8 layer over the existing
-D3D9 implementation:
-- the IDirect3D8 / IDirect3DDevice8 vtables;
-- vertex shaders with D3D8 declaration tokens;
-- sampler states that live among the texture stage states;
-- `SetStreamSource` without an offset, and `SetIndices` with a base vertex;
-- `CopyRects`;
-- ps_1_x pixel shaders, which the translator already handles.
-
-## Not supported in the C runtime
-
-- `longjmp` (it stops with a named error).
-- C++ / SEH exception dispatch.
+- Not yet tested on Android.
+- Some test-menu sound effects are missing from the dump (`mmioOpen` fails,
+  harmlessly).
+- In the C runtime, `longjmp` and C++ / SEH exception dispatch are not
+  supported; they stop with a named error.

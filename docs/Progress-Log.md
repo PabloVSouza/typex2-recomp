@@ -2,6 +2,15 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: KOF Maximum Impact Regulation A playable
+
+- **Direct3D 8 layer** over the D3D9 implementation (declaration-token vertex
+  shaders, sampler states via texture stage states, state blocks).
+- **DirectDraw YUY2 overlay** for the opening movie (`hle/ddraw.c`).
+- **Recompiler:** extra code sections are discovered; MMX / SSE2 saturating,
+  averaging, multiply-add and pack instructions; 16-bit `pushf` / `popf`.
+- **Runtime:** drive-relative paths; released surfaces are freed.
+
 ## 2026-11-13: KOF Maximum Impact Regulation A started
 
 - **C runtime as a DLL:** `MSVCR80.dll`'s 93 imports implemented

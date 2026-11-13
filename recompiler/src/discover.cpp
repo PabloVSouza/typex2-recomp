@@ -279,6 +279,10 @@ void Discovery::run(const std::vector<uint32_t>& extra) {
     std::vector<uint32_t> work{img.entry};
     work.insert(work.end(), img.tls_callbacks.begin(), img.tls_callbacks.end());
     work.insert(work.end(), extra.begin(), extra.end());
+    // every other executable section starts with code: middleware linked as its
+    // own section (KOF MI Regulation A's PSFD00) may be reached only through pointers
+    for (auto &s : img.sections)
+        if (s.exec && !(img.entry >= s.start && img.entry < s.end)) work.push_back(s.start);
     auto ptrs = data_code_pointers();
     work.insert(work.end(), ptrs.begin(), ptrs.end());
     entries.clear();

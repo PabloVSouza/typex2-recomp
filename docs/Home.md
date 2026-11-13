@@ -32,7 +32,7 @@ Game pages:
 - [BlazBlue CS](Game-BlazBlue-CS.md)
 - [BlazBlue CT](Game-BlazBlue-CT.md)
 - [KOF '98 UM](Game-KOF-98-UM.md)
-- In progress: [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
+- [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
 
 ## Quick start
 

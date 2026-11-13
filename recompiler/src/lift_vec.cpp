@@ -122,26 +122,52 @@ bool Lifter::lift_vec(const string& m, const cs_insn& d, vector<string>& L) {
         {"cvtpi2ps", {"r.f[0]=(f32)s.i[0]; r.f[1]=(f32)s.i[1];", 8}},
         {"cvtps2pi", {"r.i[0]=x2_cvt_f2i(c,s.f[0]); r.i[1]=x2_cvt_f2i(c,s.f[1]);", 8}},
         {"cvttps2pi", {"r.i[0]=x2_cvtt_f2i(s.f[0]); r.i[1]=x2_cvtt_f2i(s.f[1]);", 8}},
-        {"andps", {lanes(2, "r.q[{k}]&=s.q[{k}];"), 0}}, {"andpd", {lanes(2, "r.q[{k}]&=s.q[{k}];"), 0}},
+        {"andps", {lanes(2, "r.q[{k}]&=s.q[{k}];"), 0}},
+        {"andpd", {lanes(2, "r.q[{k}]&=s.q[{k}];"), 0}},
         {"pand", {lanes(2, "r.q[{k}]&=s.q[{k}];"), 0}},
-        {"orps", {lanes(2, "r.q[{k}]|=s.q[{k}];"), 0}}, {"orpd", {lanes(2, "r.q[{k}]|=s.q[{k}];"), 0}},
+        {"orps", {lanes(2, "r.q[{k}]|=s.q[{k}];"), 0}},
+        {"orpd", {lanes(2, "r.q[{k}]|=s.q[{k}];"), 0}},
         {"por", {lanes(2, "r.q[{k}]|=s.q[{k}];"), 0}},
-        {"xorps", {lanes(2, "r.q[{k}]^=s.q[{k}];"), 0}}, {"xorpd", {lanes(2, "r.q[{k}]^=s.q[{k}];"), 0}},
+        {"xorps", {lanes(2, "r.q[{k}]^=s.q[{k}];"), 0}},
+        {"xorpd", {lanes(2, "r.q[{k}]^=s.q[{k}];"), 0}},
         {"pxor", {lanes(2, "r.q[{k}]^=s.q[{k}];"), 0}},
         {"andnps", {lanes(2, "r.q[{k}]=~r.q[{k}]&s.q[{k}];"), 0}},
         {"andnpd", {lanes(2, "r.q[{k}]=~r.q[{k}]&s.q[{k}];"), 0}},
         {"pandn", {lanes(2, "r.q[{k}]=~r.q[{k}]&s.q[{k}];"), 0}},
-        {"paddd", {lanes(4, "r.u[{k}]+=s.u[{k}];"), 0}}, {"psubd", {lanes(4, "r.u[{k}]-=s.u[{k}];"), 0}},
-        {"paddq", {lanes(2, "r.q[{k}]+=s.q[{k}];"), 0}}, {"psubq", {lanes(2, "r.q[{k}]-=s.q[{k}];"), 0}},
-        {"paddw", {lanes(8, "r.w[{k}]+=s.w[{k}];"), 0}}, {"psubw", {lanes(8, "r.w[{k}]-=s.w[{k}];"), 0}},
+        {"paddd", {lanes(4, "r.u[{k}]+=s.u[{k}];"), 0}},
+        {"psubd", {lanes(4, "r.u[{k}]-=s.u[{k}];"), 0}},
+        {"paddq", {lanes(2, "r.q[{k}]+=s.q[{k}];"), 0}},
+        {"psubq", {lanes(2, "r.q[{k}]-=s.q[{k}];"), 0}},
+        {"paddw", {lanes(8, "r.w[{k}]+=s.w[{k}];"), 0}},
+        {"psubw", {lanes(8, "r.w[{k}]-=s.w[{k}];"), 0}},
         {"pcmpeqd", {lanes(4, "r.u[{k}]=r.u[{k}]==s.u[{k}]?~0u:0;"), 0}},
         {"pcmpgtw", {lanes(8, "r.w[{k}]=r.sw[{k}]>s.sw[{k}]?0xffff:0;"), 0}},
         {"pmaxsw", {lanes(8, "r.sw[{k}]=r.sw[{k}]>s.sw[{k}]?r.sw[{k}]:s.sw[{k}];"), 0}},
-        {"punpcklbw", {"x2_punpckl(&r,&s,1,VW);", 0}}, {"punpckhbw", {"x2_punpckh(&r,&s,1,VW);", 0}},
-        {"punpcklwd", {"x2_punpckl(&r,&s,2,VW);", 0}}, {"punpckhwd", {"x2_punpckh(&r,&s,2,VW);", 0}},
-        {"punpckldq", {"x2_punpckl(&r,&s,4,VW);", 0}}, {"punpckhdq", {"x2_punpckh(&r,&s,4,VW);", 0}},
-        {"punpcklqdq", {"r.q[1]=s.q[0];", 0}}, {"punpckhqdq", {"r.q[0]=r.q[1]; r.q[1]=s.q[1];", 0}},
+        {"punpcklbw", {"x2_punpckl(&r,&s,1,VW);", 0}},
+        {"punpckhbw", {"x2_punpckh(&r,&s,1,VW);", 0}},
+        {"punpcklwd", {"x2_punpckl(&r,&s,2,VW);", 0}},
+        {"punpckhwd", {"x2_punpckh(&r,&s,2,VW);", 0}},
+        {"punpckldq", {"x2_punpckl(&r,&s,4,VW);", 0}},
+        {"punpckhdq", {"x2_punpckh(&r,&s,4,VW);", 0}},
+        {"punpcklqdq", {"r.q[1]=s.q[0];", 0}},
+        {"punpckhqdq", {"r.q[0]=r.q[1]; r.q[1]=s.q[1];", 0}},
         {"packssdw", {"x2_packssdw(&r,&s,VW);", 0}},
+        {"packuswb", {"x2_packuswb(&r,&s,VW);", 0}},
+        /* saturating and averaging byte / word arithmetic (MMX / SSE2 video code) */
+        {"paddusb", {lanes(16, "{ u32 v=(u32)r.b[{k}]+s.b[{k}]; r.b[{k}]=(u8)(v>255?255:v); }"), 0}},
+        {"psubusb", {lanes(16, "r.b[{k}]=r.b[{k}]>s.b[{k}]?(u8)(r.b[{k}]-s.b[{k}]):0;"), 0}},
+        {"paddusw", {lanes(8, "{ u32 v=(u32)r.w[{k}]+s.w[{k}]; r.w[{k}]=(u16)(v>65535?65535:v); }"), 0}},
+        {"psubusw", {lanes(8, "r.w[{k}]=r.w[{k}]>s.w[{k}]?(u16)(r.w[{k}]-s.w[{k}]):0;"), 0}},
+        {"paddsw", {lanes(8, "r.sw[{k}]=x2_sat16((s32)r.sw[{k}]+s.sw[{k}]);"), 0}},
+        {"psubsw", {lanes(8, "r.sw[{k}]=x2_sat16((s32)r.sw[{k}]-s.sw[{k}]);"), 0}},
+        {"paddb", {lanes(16, "r.b[{k}]+=s.b[{k}];"), 0}},
+        {"psubb", {lanes(16, "r.b[{k}]-=s.b[{k}];"), 0}},
+        {"pavgb", {lanes(16, "r.b[{k}]=(u8)(((u32)r.b[{k}]+s.b[{k}]+1)>>1);"), 0}},
+        {"pavgw", {lanes(8, "r.w[{k}]=(u16)(((u32)r.w[{k}]+s.w[{k}]+1)>>1);"), 0}},
+        {"pmullw", {lanes(8, "r.w[{k}]=(u16)((s32)r.sw[{k}]*s.sw[{k}]);"), 0}},
+        {"pmulhw", {lanes(8, "r.w[{k}]=(u16)(((s32)r.sw[{k}]*s.sw[{k}])>>16);"), 0}},
+        {"pmulhuw", {lanes(8, "r.w[{k}]=(u16)(((u32)r.w[{k}]*s.w[{k}])>>16);"), 0}},
+        {"pmaddwd", {lanes(4, "r.i[{k}]=(s32)r.sw[2*{k}]*s.sw[2*{k}]+(s32)r.sw[2*{k}+1]*s.sw[2*{k}+1];"), 0}},
     };
     if (auto it = simple.find(m); it != simple.end()) {
         string body = it->second.body;
@@ -222,13 +248,18 @@ bool Lifter::lift_vec(const string& m, const cs_insn& d, vector<string>& L) {
         L.push_back(wr(o[0], e));
         return true;
     }
-    if (m == "shufps" || m == "pshufd" || m == "shufpd" || m == "pshufw") {
+    if (m == "shufps" || m == "pshufd" || m == "shufpd" || m == "pshufw" || m == "pshuflw" || m == "pshufhw") {
         auto [pre, post] = dst(o[0]);
         string body;
         if (m == "shufps")
             body = "X2Vec t=r; r.u[0]=t.u[i&3]; r.u[1]=t.u[(i>>2)&3]; r.u[2]=s.u[(i>>4)&3]; r.u[3]=s.u[(i>>6)&3];";
         else if (m == "pshufd")
             body = "r.u[0]=s.u[i&3]; r.u[1]=s.u[(i>>2)&3]; r.u[2]=s.u[(i>>4)&3]; r.u[3]=s.u[(i>>6)&3];";
+        else if (m == "pshuflw")
+            body = "r.w[0]=s.w[i&3]; r.w[1]=s.w[(i>>2)&3]; r.w[2]=s.w[(i>>4)&3]; r.w[3]=s.w[(i>>6)&3]; r.q[1]=s.q[1];";
+        else if (m == "pshufhw")
+            body = "r.q[0]=s.q[0]; r.w[4]=s.w[4+(i&3)]; r.w[5]=s.w[4+((i>>2)&3)]; r.w[6]=s.w[4+((i>>4)&3)]; "
+                   "r.w[7]=s.w[4+((i>>6)&3)];";
         else if (m == "shufpd")
             body = "X2Vec t=r; r.q[0]=t.q[i&1]; r.q[1]=s.q[(i>>1)&1];";
         else

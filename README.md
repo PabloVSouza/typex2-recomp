@@ -16,7 +16,8 @@ movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
 RetroArch on Android (attract, select, fights; 0.3-0.5 s load pauses at fight
 start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
-macOS and in RetroArch on Android (60 fps on the test tablet). Rendering is
+macOS and in RetroArch on Android (60 fps on the test tablet); KOF Maximum
+Impact Regulation A (`games/kofmira`, Direct3D 8) is playable on macOS. Rendering is
 D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
 HLSL, compiled D3DX effects and the fixed-function pipeline all translated to
 GLSL).
@@ -65,7 +66,7 @@ build/recompiler/x2recomp "<game dir>/game.exe" games/kof12/gen
 cmake -S . -B build && cmake --build build
 ```
 
-Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `kof98um`, `ssf4ae`,
+Game folder names: `kof12`, `kof13`, `kof13cl` (XIII Climax), `kof98um`, `kofmira`, `ssf4ae`,
 `bbcs`, `bbct` (BlazBlue Continuum Shift / Calamity Trigger). KOF '98 UM starts
 from `launcher.exe`: give x2recomp that file; the runtime finds either name.
 

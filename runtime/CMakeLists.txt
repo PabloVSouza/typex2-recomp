@@ -57,6 +57,7 @@ add_library(x2rt_common OBJECT
   src/hle/dsound.c
   src/hle/msvcrt.c
   src/hle/mmio.c
+  src/hle/ddraw.c
   src/hle/d3dx9.c
   src/hle/d3dx_effect.c
   src/gfx/fx.c

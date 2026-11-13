@@ -18,7 +18,6 @@ game that belongs here? Please open an issue.
 | **Playable** | Attract mode, coin / start, character select and full matches at 60 fps, with no known blocker. |
 | **Playable, issues** | Plays start to finish, with problems listed on the game's page (slowdown, missing feature). |
 | **Boots** | Reaches attract mode or a menu, but gameplay is incomplete or broken. |
-| **In progress** | Being ported: starts up, but does not reach attract mode yet. |
 | **Planned** | Chosen as a next port; its requirements are researched on its page. |
 | Not started | Not developed yet. |
 
@@ -42,16 +41,11 @@ Mali-G57 MC2) for Android.
 | BlazBlue: Continuum Shift | Type X2 | 2009 | `bbcs` | Playable | not tested | Playable | [BlazBlue CS](Game-BlazBlue-CS.md) |
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | not tested | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |
+| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | not tested | not tested | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
 for KOF '98 UM).
-
-## In progress
-
-| Game | Board | Year | What it needs | Page |
-|---|---|---|---|---|
-| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | The C runtime DLL (`MSVCR80.dll`), `mmio` and the Windows calls are done; it starts up and stops at renderer creation. It renders with Direct3D 8, which needs a D3D8 layer over the D3D9 implementation. | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
 
 ## Type X2 library
 
@@ -69,7 +63,7 @@ for KOF '98 UM).
 | Gouketsuji Ichizoku: Senzo Kuyou | 2009 | Not started |
 | Haunted Museum | 2009 | Not started |
 | Haunted Museum II | 2010 | Not started |
-| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **In progress** |
+| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Playable** |
 | **The King of Fighters XII** | 2009 | **Playable** |
 | **The King of Fighters XIII** | 2010 | **Playable** |
 | **The King of Fighters XIII Climax** | 2012 | **Playable** |

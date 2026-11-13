@@ -55,6 +55,13 @@ static u32 text_start, text_end;
 static void build_direct(void) {
     text_start = x2_game->image->text_start;
     text_end = x2_game->image->text_end;
+    /* functions may live in other code sections too (KOF MI Regulation A's
+     * middleware): the table spans all of them */
+    for (unsigned i = 0; i < x2_game->nfuncs; i++) {
+        u32 a = x2_game->funcs[i].addr;
+        if (a < text_start) text_start = a;
+        if (a >= text_end) text_end = a + 1;
+    }
     X2Func *d = calloc(text_end - text_start, sizeof *d);
     for (unsigned i = 0; i < x2_game->nfuncs; i++) {
         u32 a = x2_game->funcs[i].addr;

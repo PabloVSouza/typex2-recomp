@@ -359,6 +359,13 @@ static inline void x2_packssdw(X2Vec *r, const X2Vec *s, int w) {
     for (int i = 0; i < n; i++) r->sw[i] = x2_sat16(t.i[i]);
     for (int i = 0; i < n; i++) r->sw[n + i] = x2_sat16(s->i[i]);
 }
+static inline u8 x2_satu8(s32 v) { return v > 255 ? 255 : v < 0 ? 0 : (u8)v; }
+static inline void x2_packuswb(X2Vec *r, const X2Vec *s, int w) { /* words -> unsigned saturated bytes */
+    X2Vec t = *r;
+    int n = w / 2;
+    for (int i = 0; i < n; i++) r->b[i] = x2_satu8(t.sw[i]);
+    for (int i = 0; i < n; i++) r->b[n + i] = x2_satu8(s->sw[i]);
+}
 static inline u32 x2_pmovmskb(const X2Vec *v, int w) {
     u32 m = 0;
     for (int i = 0; i < w; i++) m |= (u32)(v->b[i] >> 7) << i;

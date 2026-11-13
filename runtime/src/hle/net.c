@@ -1,12 +1,11 @@
-/* ws2_32, iphlpapi, dinput8 and ddraw: just enough for a game that can link cabinets
+/* ws2_32, iphlpapi and dinput8: just enough for a game that can link cabinets
  * and read a debug keyboard, running alone.
  *
  * Winsock: the network is down (socket() fails with WSAENETDOWN), so link play
  * stays off. IP helper: one Ethernet adapter with a fixed MAC and a private
  * address, for games that derive a cabinet id from it. DirectInput 8: an
  * object that enumerates no devices and creates idle ones (inputs come through
- * JVS). DirectDraw: an object that
- * reports video memory and nothing else. */
+ * JVS). (DirectDraw is in ddraw.c.) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -229,73 +228,3 @@ const X2Hle x2_hle_dinput8[] = {
     {NULL, NULL, 0},
 };
 
-/* ---- ddraw: games only probe it (BlazBlue reads DDCAPS.dwVidMemTotal) ------------ */
-#define VIDMEM (256u << 20)
-static void DD_Fail(X2Cpu *c) { RET(0x80004001u); } /* E_NOTIMPL */
-static void DD_Ok(X2Cpu *c) { RET(S_OK); }
-/* GetCaps(this, DDCAPS *driver, DDCAPS *hel): sizes come from dwSize */
-static void DD_GetCaps(X2Cpu *c) {
-    for (int i = 1; i <= 2; i++) {
-        u32 caps = ARG(i);
-        if (!caps) continue;
-        u32 size = RD32(caps);
-        for (u32 o = 4; o + 4 <= size; o += 4) WR32(caps + o, 0);
-        if (size >= 0x44) {
-            WR32(caps + 0x3c, VIDMEM); /* dwVidMemTotal */
-            WR32(caps + 0x40, VIDMEM); /* dwVidMemFree */
-        }
-    }
-    RET(S_OK);
-}
-/* GetAvailableVidMem(this, DDSCAPS2 *, total, free) */
-static void DD_GetAvailableVidMem(X2Cpu *c) {
-    if (ARG(2)) WR32(ARG(2), VIDMEM);
-    if (ARG(3)) WR32(ARG(3), VIDMEM);
-    RET(S_OK);
-}
-static void DirectDrawCreateEx(X2Cpu *c) {
-    static u32 vt;
-    if (!vt) {
-        static const X2Method m[] = {
-            M(QueryInterface, x2_com_QueryInterface_self, 3),
-            M(AddRef, x2_com_AddRef, 1),
-            M(Release, x2_com_Release, 1),
-            M(Compact, DD_Ok, 1),
-            M(CreateClipper, DD_Fail, 4),
-            M(CreatePalette, DD_Fail, 5),
-            M(CreateSurface, DD_Fail, 4),
-            M(DuplicateSurface, DD_Fail, 3),
-            M(EnumDisplayModes, DD_Ok, 5),
-            M(EnumSurfaces, DD_Ok, 5),
-            M(FlipToGDISurface, DD_Ok, 1),
-            M(GetCaps, DD_GetCaps, 3),
-            M(GetDisplayMode, DD_Fail, 2),
-            M(GetFourCCCodes, DD_Fail, 3),
-            M(GetGDISurface, DD_Fail, 2),
-            M(GetMonitorFrequency, DD_Fail, 2),
-            M(GetScanLine, DD_Fail, 2),
-            M(GetVerticalBlankStatus, DD_Fail, 2),
-            M(Initialize, DD_Ok, 2),
-            M(RestoreDisplayMode, DD_Ok, 1),
-            M(SetCooperativeLevel, DD_Ok, 3),
-            M(SetDisplayMode, DD_Ok, 6),
-            M(WaitForVerticalBlank, DD_Ok, 3),
-            M(GetAvailableVidMem, DD_GetAvailableVidMem, 4),
-            M(GetSurfaceFromDC, DD_Fail, 3),
-            M(RestoreAllSurfaces, DD_Ok, 1),
-            M(TestCooperativeLevel, DD_Ok, 1),
-            M(GetDeviceIdentifier, DD_Fail, 3),
-            M(StartModeTest, DD_Fail, 4),
-            M(EvaluateMode, DD_Fail, 3),
-        };
-        vt = x2_com_vtable("IDirectDraw7", m, sizeof m / sizeof *m);
-    }
-    X2ComObj *o = calloc(1, sizeof *o);
-    WR32(ARG(1), x2_com_wrap(o, vt, "IDirectDraw7"));
-    RET(S_OK);
-}
-
-const X2Hle x2_hle_ddraw[] = {
-    {"DirectDrawCreateEx", DirectDrawCreateEx, 4},
-    {NULL, NULL, 0},
-};

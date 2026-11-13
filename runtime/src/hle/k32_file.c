@@ -45,7 +45,11 @@ void x2_host_path(const char *g, char *out, size_t n) {
         p += 2;
     }
     while (p[0] == '.' && p[1] == '/') p += 2;
-    if (drive == 'c' && !strncasecmp(p, "/game/", 6)) {
+    if (drive == 'c' && p[0] != '/') {
+        /* drive-relative ("C:data\x.bmp", RenderWare's file system): relative to
+         * drive C's current directory, C:\game */
+        drive = 0;
+    } else if (drive == 'c' && !strncasecmp(p, "/game/", 6)) {
         p += 6;
         drive = 0;
     } else if (drive == 'c' && !strcasecmp(p, "/game")) {
