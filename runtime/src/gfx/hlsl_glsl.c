@@ -157,7 +157,7 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
 /* MSL: the same body; declarations as sm3_glsl.c's MSL (interface in sm3_glsl.h) */
 bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget target, char **out, Sm3Info *info,
                     char *err, size_t errlen) {
-    bool gles = target == SH_ESSL, msl = target == SH_MSL;
+    bool gles = target == SH_ESSL, msl = target == SH_MSL, vk = target == SH_VKGLSL;
     /* MSL: textures and samplers, stage-in and stage-out members, and the defines
      * naming them for the body (after the structs, whose members they would rename) */
     Str params = {0}, ins = {0}, outs = {0}, defs = {0};
@@ -185,11 +185,19 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
     Str hdr = {0}, body = {0};
     if (msl)
         sf(&hdr, "%stypedef float4x4 mat4;\n", sh_msl_prelude);
+    else if (vk)
+        sf(&hdr, "#version 450\n");
     else
         sf(&hdr, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
     sf(&hdr, "%s", prelude);
     if (pixel) sf(&hdr, "%s", prelude_ps);
-    if (!msl)
+    if (vk && pixel) /* sm3_glsl.h: SH_VKGLSL */
+        sf(&hdr, "layout(std140, set=0, binding=1) uniform X2PsU { vec4 ps_c[224]; ivec4 ps_i[16]; ivec4 ps_b[16]; "
+                 "int u_alpha_func; float u_alpha_ref; };\n");
+    else if (vk)
+        sf(&hdr, "layout(std140, set=0, binding=0) uniform X2VsU { vec4 vs_c[256]; ivec4 vs_i[16]; ivec4 vs_b[16]; "
+                 "vec4 u_vp_fix; int u_bgra_mask; };\n");
+    else if (!msl)
         sf(&hdr, "uniform vec4 %s_c[%d];\n", P, pixel ? 224 : 256);
     else if (pixel)
         sf(&hdr, "struct X2PsU { float4 c[224]; int4 i[16]; int b[16]; int alpha_func; float alpha_ref; };\n"
@@ -228,6 +236,8 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
                 if (msl)
                     sf(&params, ", texture2d<float> s%d_t [[texture(%d)]], sampler s%d_s [[sampler(%d)]]", reg, reg,
                        reg, reg);
+                else if (vk)
+                    sf(&hdr, "layout(set=1, binding=%d) uniform sampler2D s%d;\n", pixel ? reg : 16 + reg, reg);
                 else
                     sf(&hdr, "uniform sampler2D s%d;\n", reg);
                 info->samplers_used |= 1u << reg;
@@ -292,7 +302,10 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
             if (msl) {
                 sf(&ins, "  X2_VT%d vs_v%d [[attribute(%d)]];\n", loc, loc, loc);
                 sf(&defs, "#define vs_v%d float4(in_.vs_v%d)\n", loc, loc);
-            } else
+            } else if (vk)
+                sf(&hdr, "#ifndef X2_VT%d\n#define X2_VT%d vec4\n#endif\nlayout(location=%d) in X2_VT%d vs_v%d;\n", loc,
+                   loc, loc, loc, loc);
+            else
                 sf(&hdr, "layout(location=%d) in vec4 vs_v%d;\n", loc, loc);
             info->vs_in_mask |= 1u << loc;
             info->vs_in_usage[loc] = q->usage;
@@ -302,13 +315,19 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
             if (msl) {
                 sf(&outs, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", q->usage, q->index, q->usage, q->index);
                 sf(&defs, "#define x_%d_%d out_.x_%d_%d\n", q->usage, q->index, q->usage, q->index);
-            } else
+            } else if (vk)
+                sf(&hdr, "layout(location=%d) out vec4 x_%d_%d;\n", sh_vk_location(q->usage, q->index), q->usage,
+                   q->index);
+            else
                 sf(&hdr, "out vec4 x_%d_%d;\n", q->usage, q->index);
         } else if (pixel && !q->out) {
             if (msl) {
                 sf(&ins, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", q->usage, q->index, q->usage, q->index);
                 sf(&defs, "#define x_%d_%d in_.x_%d_%d\n", q->usage, q->index, q->usage, q->index);
-            } else
+            } else if (vk)
+                sf(&hdr, "layout(location=%d) in vec4 x_%d_%d;\n", sh_vk_location(q->usage, q->index), q->usage,
+                   q->index);
+            else
                 sf(&hdr, "in vec4 x_%d_%d;\n", q->usage, q->index);
         }
     }
@@ -329,6 +348,9 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
            "#undef texture\nvertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) "
            "{\n" SH_MSL_TEXTURE_DEF "  X2VsOut out_ = {};\n",
            params.s);
+    } else if (vk) {
+        if (pixel) sf(&hdr, "layout(location=0) out vec4 oC0;\n");
+        sf(&body, "void main() {\n");
     } else {
         if (pixel)
             sf(&hdr, "layout(location=0) out vec4 oC0;\nuniform int u_alpha_func;\nuniform float u_alpha_ref;\n");
@@ -347,7 +369,10 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
         if (!q->out) {
             if (pixel) sf(&body, "  %s %s = x_%d_%d%s;\n", q->type, q->name, q->usage, q->index, sw);
             else {
-                sf(&body, "  vec4 in%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? vs_v%d.zyxw : vs_v%d;\n", loc, loc, loc, loc);
+                sf(&body,
+                   vk ? "  vec4 in%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? vec4(vs_v%d).zyxw : vec4(vs_v%d);\n"
+                      : "  vec4 in%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? vs_v%d.zyxw : vs_v%d;\n",
+                   loc, loc, loc, loc);
                 sf(&body, "  %s %s = in%d_%s;\n", q->type, q->name, loc, sw);
                 loc++;
             }
@@ -413,6 +438,8 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
                   "  }\n#endif\n");
     } else if (msl) { /* D3D's clip space is Metal's */
         sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n");
+    } else if (vk) { /* Vulkan: y down, D3D's depth range */
+        sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n  gl_Position.y = -gl_Position.y;\n");
     } else {
         sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n"
                   "  gl_Position.y = -gl_Position.y;\n"

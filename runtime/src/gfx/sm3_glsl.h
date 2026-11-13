@@ -31,7 +31,14 @@ typedef struct {
  *   colour outputs [[color(#)]]. Clip space is D3D's (z 0..1, y up, top-left
  *   origin), as Metal's: no flip or depth remap, only D3D9's half-pixel offset.
  *   X2_ATEST (preprocessor macro) compiles the alpha test in, as in GLSL. */
-typedef enum { SH_GLSL, SH_ESSL, SH_MSL } ShTarget;
+/* SH_VKGLSL: GLSL 450 for Vulkan (compiled to SPIR-V by the backend). Uniforms:
+ * set 0 binding 0 X2VsU { vec4 vs_c[256]; ivec4 vs_i[16]; ivec4 vs_b[16] (bool in .x, all
+ * four set); vec4 u_vp_fix; int u_bgra_mask; }, binding 1 X2PsU { vec4 ps_c[224]; ivec4
+ * ps_i[16]; ivec4 ps_b[16]; int u_alpha_func; float u_alpha_ref; } (std140); samplers
+ * set 1 binding s# (pixel) / 16 + s# (vertex); varyings at sh_vk_location(); vertex
+ * input types X2_VT# as in MSL; clip space flipped to Vulkan's y-down. */
+typedef enum { SH_GLSL, SH_ESSL, SH_MSL, SH_VKGLSL } ShTarget;
+int sh_vk_location(int usage, int index);
 
 bool sm3_translate(const uint32_t *tokens, uint32_t n, ShTarget target, char **out, Sm3Info *info, char *err,
                    size_t errlen);

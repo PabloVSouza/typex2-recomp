@@ -593,6 +593,140 @@ static const char *msl_tex_type(int samp_type) {
     return samp_type == 3 ? "texturecube<float>" : samp_type == 4 ? "texture3d<float>" : "texture2d<float>";
 }
 
+int sh_vk_location(int usage, int index) {
+    if (usage == 5 && index < 8) return index;      /* TEXCOORD0-7 */
+    if (usage == 10 && index < 2) return 8 + index; /* COLOR0-1 */
+    return 10 + (usage * 7 + index) % 6;            /* anything else: 10-15 */
+}
+
+/* The Vulkan GLSL wrapper around the shared body (interface: sm3_glsl.h). As the
+ * GLSL declarations, with descriptor bindings, locations and Vulkan's clip space. */
+static void vk_wrap(Ctx *c, Sm3Info *info, Str *s) {
+    sf(s, "#version 450\n#define X2_HP\n%s", prelude_common);
+    if (c->pixel)
+        sf(s, "layout(std140, set=0, binding=1) uniform X2PsU { vec4 ps_c[224]; ivec4 ps_i[16]; ivec4 ps_b[16]; "
+              "int u_alpha_func; float u_alpha_ref; };\n");
+    else
+        sf(s, "layout(std140, set=0, binding=0) uniform X2VsU { vec4 vs_c[256]; ivec4 vs_i[16]; ivec4 vs_b[16]; "
+              "vec4 u_vp_fix; int u_bgra_mask; };\n");
+    for (int i = 0; i < 16; i++) {
+        if (!(info->samplers_used & (1u << i))) continue;
+        const char *ty = c->samp_type[i] == 3 ? "samplerCube" : c->samp_type[i] == 4 ? "sampler3D" : "sampler2D";
+        sf(s, "layout(set=1, binding=%d) uniform %s %s%d;\n", c->pixel ? i : 16 + i, ty, c->pixel ? "s" : "vs_s", i);
+    }
+    if (c->pixel) {
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (c->in_usage[i] < 0) continue;
+                info->ps_in_usage[i] = c->in_usage[i];
+                info->ps_in_index[i] = c->in_index[i];
+                sf(s, "layout(location=%d) in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n",
+                   sh_vk_location(c->in_usage[i], c->in_index[i]), c->in_usage[i], c->in_index[i], i, c->in_usage[i],
+                   c->in_index[i]);
+                info->ps_in_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++)
+                if (c->tex_used[i] || info->ps_in_mask & (1u << i))
+                    sf(s, "layout(location=%d) in vec4 x_5_%d;\n", sh_vk_location(5, i), i);
+            for (int i = 0; i < 2; i++)
+                if (info->ps_in_mask & (1u << (16 + i)))
+                    sf(s, "layout(location=%d) in vec4 x_10_%d;\n", sh_vk_location(10, i), i);
+        }
+        for (int i = 0; i < 4; i++)
+            if (c->color_out_used[i] || i == 0) sf(s, "layout(location=%d) out vec4 oC%d;\n", i, i);
+    } else {
+        for (int i = 0; i < 16; i++) {
+            if (!c->input_used[i] && c->in_usage[i] < 0) continue;
+            sf(s, "#ifndef X2_VT%d\n#define X2_VT%d vec4\n#endif\nlayout(location=%d) in X2_VT%d vs_v%d;\n", i, i, i, i,
+               i);
+            info->vs_in_usage[i] = c->in_usage[i] < 0 ? 0 : c->in_usage[i];
+            info->vs_in_index[i] = c->in_index[i] < 0 ? 0 : c->in_index[i];
+            info->vs_in_mask |= 1u << i;
+        }
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0) continue;
+                if (u < 0) {
+                    u = 5;
+                    x = i;
+                }
+                if (u == 4) continue;
+                sf(s, "layout(location=%d) out vec4 x_%d_%d;\n", sh_vk_location(u, x), u, x);
+                info->vs_out_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++) sf(s, "layout(location=%d) out vec4 x_5_%d;\n", sh_vk_location(5, i), i);
+            for (int i = 0; i < 2; i++) sf(s, "layout(location=%d) out vec4 x_10_%d;\n", sh_vk_location(10, i), i);
+        }
+    }
+    sf(s, "void main() {\n");
+    for (int i = 0; i < 32; i++)
+        if (c->temp_used[i]) sf(s, "  vec4 r%d = vec4(0.0);\n", i);
+    if (c->addr_used) sf(s, "  ivec4 a0 = ivec4(0);\n");
+    if (c->loop_used) sf(s, "  int aL = 0;\n");
+    if (c->vpos) sf(s, "  vec4 vPos = vec4(gl_FragCoord.xy - 0.5, 0.0, 0.0);\n");
+    if (!c->pixel) {
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i))
+                sf(s, "  vec4 vs_v%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? vec4(vs_v%d).zyxw : vec4(vs_v%d);\n", i, i, i,
+                   i);
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i)) sf(s, "  #define vs_v%d vs_v%d_\n", i, i);
+        sf(s, "  vec4 o_pos = vec4(0.0,0.0,0.0,1.0); vec4 o_fog = vec4(0.0); vec4 o_pts = vec4(1.0);\n");
+        if (c->major >= 3)
+            for (int i = 0; i < 16; i++)
+                if (c->output_used[i]) sf(s, "  vec4 o%d = vec4(0.0);\n", i);
+        if (c->major < 3) {
+            for (int i = 0; i < 2; i++) sf(s, "  x_10_%d = vec4(0.0);\n", i);
+            for (int i = 0; i < 8; i++) sf(s, "  x_5_%d = vec4(0.0);\n", i);
+        }
+    } else {
+        sf(s, "  float o_depth = gl_FragCoord.z;\n");
+        for (int i = 1; i < 4; i++)
+            if (c->color_out_used[i]) sf(s, "  oC%d = vec4(0.0);\n", i);
+        sf(s, "  oC0 = vec4(0.0);\n");
+    }
+    sf(s, "%s", c->body.s ? c->body.s : "");
+    if (!c->pixel) {
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0)
+                    sf(s, "  o_pos = o%d;\n", i);
+                else if (u == 4)
+                    sf(s, "  o_pts = o%d;\n", i);
+                else {
+                    if (u < 0) {
+                        u = 5;
+                        x = i;
+                    }
+                    sf(s, "  x_%d_%d = o%d;\n", u, x, i);
+                }
+            }
+        }
+        /* Vulkan's NDC has y down; its depth range is D3D's */
+        sf(s, "  gl_Position = o_pos;\n"
+              "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n"
+              "  gl_Position.y = -gl_Position.y;\n");
+    } else {
+        sf(s,
+           "#ifdef X2_ATEST\n  if (u_alpha_func != 0) {\n"
+           "    float a_ = floor(oC0.a * 255.0 + 0.5), r_ = u_alpha_ref;\n"
+           "    bool pass_ = u_alpha_func == 1 ? false : u_alpha_func == 2 ? a_ < r_ : u_alpha_func == 3 ? a_ == r_ :\n"
+           "                 u_alpha_func == 4 ? a_ <= r_ : u_alpha_func == 5 ? a_ > r_ : u_alpha_func == 6 ? a_ != r_ "
+           ":\n"
+           "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
+           "    if (!pass_) discard;\n"
+           "  }\n#endif\n");
+        if (c->depth_out) sf(s, "  gl_FragDepth = o_depth;\n");
+    }
+    sf(s, "}\n");
+}
+
 /* The MSL wrapper around the shared body (interface: sm3_glsl.h). Fills `info`
  * as the GLSL declarations do. */
 static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
@@ -787,6 +921,10 @@ bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out,
     Str s = {0};
     if (target == SH_MSL) {
         msl_wrap(c, info, &s);
+        goto done;
+    }
+    if (target == SH_VKGLSL) {
+        vk_wrap(c, info, &s);
         goto done;
     }
     /* pixel shaders compile with or without X2_MEDIUMP (gfx_gl_draw.c): fp16

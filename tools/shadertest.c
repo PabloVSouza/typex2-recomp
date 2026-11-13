@@ -1,6 +1,6 @@
 /* shadertest: translate a collection of D3D shaders offline.
  *
- *   shadertest <glsl|essl|msl> <tok dir> <out dir>
+ *   shadertest <glsl|essl|msl|vk> <tok dir> <out dir>
  *
  * <tok dir> holds shaders saved by a game run with X2_SHADER_DUMP=<dir>
  * (<hash>.vs.tok / <hash>.ps.tok: D3D9 tokens, or x2's HLSL blob). Each is
@@ -28,8 +28,10 @@ int main(int argc, char **argv) {
     if (argc == 4 && !strcmp(argv[1], "glsl")) target = SH_GLSL;
     else if (argc == 4 && !strcmp(argv[1], "essl")) target = SH_ESSL;
     else if (argc == 4 && !strcmp(argv[1], "msl")) target = SH_MSL;
+    else if (argc == 4 && !strcmp(argv[1], "vk"))
+        target = SH_VKGLSL;
     else {
-        fprintf(stderr, "usage: shadertest <glsl|essl|msl> <tok dir> <out dir>\n");
+        fprintf(stderr, "usage: shadertest <glsl|essl|msl|vk> <tok dir> <out dir>\n");
         return 2;
     }
     DIR *d = opendir(argv[2]);
