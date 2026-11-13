@@ -32,9 +32,9 @@ gets an entry per milestone. Update them with the README.
 
 ## Hard rules
 
-* **C or C++ only.** Recompiler and tools are C++20, the runtime is C. No
-  Python anywhere in the repo, including helper scripts (shell for throwaway
-  scripts is fine).
+* **No Python.** Anywhere in the repo, helper scripts included (shell is fine
+  for throwaway scripts). The recompiler and tools are C++20, the runtime C;
+  the launcher (`launcher/`) is Tauri: Rust and TypeScript.
 * **Nothing copyrighted in git.** Game executables, assets, dumps, generated
   code (`games/*/gen/`, gitignored) and screenshots of games never get
   committed. Only our own source and docs.
