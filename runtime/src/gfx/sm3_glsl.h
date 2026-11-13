@@ -42,3 +42,8 @@ bool sm3_to_glsl(const uint32_t *tokens, uint32_t n, bool gles, char **out, Sm3I
 /* Translates the HLSL source carried in an x2 D3DXCompileShader blob. */
 bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, char **out, Sm3Info *info, char *err,
                   size_t errlen);
+/* hlsl_to_glsl for any target */
+bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget target, char **out, Sm3Info *info,
+                    char *err, size_t errlen);
+/* the MSL prelude both translators start with: GLSL names for the shared body */
+extern const char *const sh_msl_prelude;

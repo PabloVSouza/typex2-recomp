@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
         perror(argv[2]);
         return 1;
     }
-    int total = 0, incomplete = 0, skipped = 0, rejected = 0;
+    int total = 0, incomplete = 0, rejected = 0;
     struct dirent *e;
     while ((e = readdir(d))) {
         size_t len = strlen(e->d_name);
@@ -60,13 +60,8 @@ int main(int argc, char **argv) {
         memset(&info, 0, sizeof info);
         bool ok;
         if (is_hlsl(tok, n)) {
-            if (target == SH_MSL) {
-                skipped++;
-                free(tok);
-                continue;
-            }
-            ok = hlsl_to_glsl((const char *)&tok[11], (const char *)&tok[3], pixel, target == SH_ESSL, &out, &info, err,
-                              sizeof err);
+            ok = hlsl_translate((const char *)&tok[11], (const char *)&tok[3], pixel, target, &out, &info, err,
+                                sizeof err);
         } else {
             ok = sm3_translate(tok, n, target, &out, &info, err, sizeof err);
         }
@@ -94,7 +89,7 @@ int main(int argc, char **argv) {
         free(tok);
     }
     closedir(d);
-    printf("%d shaders, %d incomplete, %d skipped (HLSL)%s", total, incomplete, skipped, target == SH_MSL ? "" : "\n");
+    printf("%d shaders, %d incomplete%s", total, incomplete, target == SH_MSL ? "" : "\n");
     if (target == SH_MSL) printf(", %d rejected by Metal\n", rejected);
     return incomplete || rejected ? 1 : 0;
 }

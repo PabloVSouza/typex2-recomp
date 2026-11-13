@@ -540,7 +540,7 @@ static const char *prelude_common =
     "#define saturate(x) clamp(x,0.0,1.0)\n";
 
 /* MSL: the GLSL names the body uses, as types, helpers and macros (MSL is C++14) */
-static const char *prelude_msl =
+const char *const sh_msl_prelude =
     "#include <metal_stdlib>\nusing namespace metal;\n"
     "typedef float4 vec4; typedef float3 vec3; typedef float2 vec2;\n"
     "typedef int4 ivec4; typedef int3 ivec3; typedef int2 ivec2;\n"
@@ -580,7 +580,7 @@ static const char *msl_tex_type(int samp_type) {
 /* The MSL wrapper around the shared body (interface: sm3_glsl.h). Fills `info`
  * as the GLSL declarations do. */
 static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
-    sf(s, "%s%s", prelude_msl, prelude_common);
+    sf(s, "%s%s", sh_msl_prelude, prelude_common);
     char params[2048] = "";
     size_t pl = 0;
     for (int i = 0; i < 16; i++) {

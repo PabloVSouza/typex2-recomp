@@ -151,6 +151,20 @@ static char *float_literals(const char *s) {
 
 bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, char **out, Sm3Info *info, char *err,
                   size_t errlen) {
+    return hlsl_translate(src, entry, pixel, gles ? SH_ESSL : SH_GLSL, out, info, err, errlen);
+}
+
+/* MSL: the same body; declarations as sm3_glsl.c's MSL (interface in sm3_glsl.h) */
+bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget target, char **out, Sm3Info *info,
+                    char *err, size_t errlen) {
+    bool gles = target == SH_ESSL, msl = target == SH_MSL;
+    /* MSL: textures and samplers, stage-in and stage-out members, and the defines
+     * naming them for the body (after the structs, whose members they would rename) */
+    Str params = {0}, ins = {0}, outs = {0}, defs = {0};
+    sf(&defs, "%s", "");
+    sf(&params, "%s", "");
+    sf(&ins, "%s", "");
+    sf(&outs, "%s", "");
     memset(info, 0, sizeof *info);
     info->const_count = pixel ? 224 : 256; /* not tracked for HLSL: upload them all */
     info->pixel = pixel;
@@ -169,10 +183,21 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
         subs[ns++].array = false;
     }
     Str hdr = {0}, body = {0};
-    sf(&hdr, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
+    if (msl)
+        sf(&hdr, "%stypedef float4x4 mat4;\n", sh_msl_prelude);
+    else
+        sf(&hdr, gles ? "#version 300 es\nprecision highp float;\nprecision highp int;\n" : "#version 330 core\n");
     sf(&hdr, "%s", prelude);
     if (pixel) sf(&hdr, "%s", prelude_ps);
-    sf(&hdr, "uniform vec4 %s_c[%d];\n", P, pixel ? 224 : 256);
+    if (!msl)
+        sf(&hdr, "uniform vec4 %s_c[%d];\n", P, pixel ? 224 : 256);
+    else if (pixel)
+        sf(&hdr, "struct X2PsU { float4 c[224]; int4 i[16]; int b[16]; int alpha_func; float alpha_ref; };\n"
+                 "#define ps_c u_.c\n#define u_alpha_func u_.alpha_func\n#define u_alpha_ref u_.alpha_ref\n");
+    else
+        sf(&hdr, "struct X2VsU { float4 c[256]; int4 i[16]; int b[16]; float4 vp_fix; int bgra_mask; };\n"
+                 "#define vs_c u_.c\n#define u_vp_fix u_.vp_fix\n#define u_bgra_mask u_.bgra_mask\n"
+                 "#define gl_Position out_.x2_pos\n");
 
     /* globals: walk statements before "void <entry>(" */
     char sig[64];
@@ -200,7 +225,11 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
             const char *br = strchr(stmt, '[');
             if (br && br < r) arr = atoi(br + 1);
             if (kind == 's') {
-                sf(&hdr, "uniform sampler2D s%d;\n", reg);
+                if (msl)
+                    sf(&params, ", texture2d<float> s%d_t [[texture(%d)]], sampler s%d_s [[sampler(%d)]]", reg, reg,
+                       reg, reg);
+                else
+                    sf(&hdr, "uniform sampler2D s%d;\n", reg);
                 info->samplers_used |= 1u << reg;
                 info->samp_type[reg] = 2;
                 snprintf(subs[ns].from, sizeof subs[ns].from, "%s", name);
@@ -260,21 +289,57 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
     for (int i = 0; i < np; i++) {
         Param *q = &prm[i];
         if (!pixel && !q->out) {
-            sf(&hdr, "layout(location=%d) in vec4 vs_v%d;\n", loc, loc);
+            if (msl) {
+                sf(&ins, "  float4 vs_v%d [[attribute(%d)]];\n", loc, loc);
+                sf(&defs, "#define vs_v%d in_.vs_v%d\n", loc, loc);
+            } else
+                sf(&hdr, "layout(location=%d) in vec4 vs_v%d;\n", loc, loc);
             info->vs_in_mask |= 1u << loc;
             info->vs_in_usage[loc] = q->usage;
             info->vs_in_index[loc] = q->index;
             loc++;
         } else if (!pixel && q->out && q->usage != 0) {
-            sf(&hdr, "out vec4 x_%d_%d;\n", q->usage, q->index);
+            if (msl) {
+                sf(&outs, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", q->usage, q->index, q->usage, q->index);
+                sf(&defs, "#define x_%d_%d out_.x_%d_%d\n", q->usage, q->index, q->usage, q->index);
+            } else
+                sf(&hdr, "out vec4 x_%d_%d;\n", q->usage, q->index);
         } else if (pixel && !q->out) {
-            sf(&hdr, "in vec4 x_%d_%d;\n", q->usage, q->index);
+            if (msl) {
+                sf(&ins, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", q->usage, q->index, q->usage, q->index);
+                sf(&defs, "#define x_%d_%d in_.x_%d_%d\n", q->usage, q->index, q->usage, q->index);
+            } else
+                sf(&hdr, "in vec4 x_%d_%d;\n", q->usage, q->index);
         }
     }
-    if (pixel) sf(&hdr, "layout(location=0) out vec4 oC0;\nuniform int u_alpha_func;\nuniform float u_alpha_ref;\n");
-    else sf(&hdr, "uniform vec4 u_vp_fix;\nuniform int u_bgra_mask;\n");
-
-    sf(&body, "void main() {\n");
+    if (msl && pixel) {
+        sf(&hdr,
+           "struct X2PsIn {\n  float4 x2_pos [[position]];\n%s};\nstruct X2PsOut { float4 oC0 [[color(0)]]; "
+           "};\n%s#define oC0 out_.oC0\n",
+           ins.s, defs.s);
+        sf(&body,
+           "fragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) {\n"
+           "  X2PsOut out_ = {};\n",
+           params.s);
+    } else if (msl) {
+        if (!loc) sf(&ins, "  float4 x2_unused [[attribute(15)]];\n");
+        sf(&hdr, "struct X2VsIn {\n%s};\nstruct X2VsOut {\n  float4 x2_pos [[position]];\n%s};\n%s", ins.s, outs.s,
+           defs.s);
+        sf(&body,
+           "vertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) {\n"
+           "  X2VsOut out_ = {};\n",
+           params.s);
+    } else {
+        if (pixel)
+            sf(&hdr, "layout(location=0) out vec4 oC0;\nuniform int u_alpha_func;\nuniform float u_alpha_ref;\n");
+        else
+            sf(&hdr, "uniform vec4 u_vp_fix;\nuniform int u_bgra_mask;\n");
+        sf(&body, "void main() {\n");
+    }
+    free(params.s);
+    free(ins.s);
+    free(outs.s);
+    free(defs.s);
     loc = 0;
     for (int i = 0; i < np; i++) {
         Param *q = &prm[i];
@@ -346,12 +411,14 @@ bool hlsl_to_glsl(const char *src, const char *entry, bool pixel, bool gles, cha
                   "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
                   "    if (!pass_) discard;\n"
                   "  }\n#endif\n");
+    } else if (msl) { /* D3D's clip space is Metal's */
+        sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n");
     } else {
         sf(&body, "  gl_Position.xy += u_vp_fix.xy * gl_Position.w;\n"
                   "  gl_Position.y = -gl_Position.y;\n"
                   "  gl_Position.z = gl_Position.z * 2.0 - gl_Position.w;\n");
     }
-    sf(&body, "}\n");
+    sf(&body, msl ? "  return out_;\n}\n" : "}\n");
     sf(&hdr, "%s", body.s);
     free(body.s);
     *out = hdr.s;
