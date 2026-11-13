@@ -21,7 +21,7 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable on macOS; 60 fps in RetroArch on Android, longer load pauses than CS (being profiled) |
 
-Not yet started (dumps on hand): KOF '98 Ultimate Match (Type X) and KOF
+Planned next: KOF '98 Ultimate Match (Type X) and KOF
 Maximum Impact Regulation A (Type X2).
 
 Documentation lives in `docs/` (also published as the GitHub wiki by

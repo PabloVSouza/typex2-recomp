@@ -41,7 +41,7 @@ X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 - **Shaders.** D3D9 shader assembly (`gfx/d3dasm.c`), translated like
   bytecode.
 - **Multiple render targets.** Without them the bloom was missing.
-- **Network.** Winsock stubs report the network as down. This dump is the
+- **Network.** Winsock stubs report the network as down. This build is the
   "stand-alone" build, so link play is off.
 - **Frame limiter.** The game spins on `QueryPerformanceCounter` until 1/60 s
   has passed. Against RetroArch's own clock that lost frames, so a byte patch
@@ -59,4 +59,4 @@ X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 
 - A few stages are GPU-bound at 50-55 fps on the Galaxy Tab A11 (Mali-G57 MC2).
 - Link play is off: this is the stand-alone build.
-- The opening movie's separate English audio track is missing from the dump.
+- The opening movie's separate English audio track is not in this build's files.

@@ -242,7 +242,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   8-button stick whose rows are L1 Y X R1 / L2 B A R2 use
   `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456` in its
   `x2.env` (digits are cabinet SHOT1-6, see `runtime/src/padmap.h`). The
-  opening movie's separate English audio track is missing from the dump.
+  opening movie's separate English audio track is not in this build's files.
 * BlazBlue CS: four buttons, cabinet SHOT1-4 = A B C D (its INPUT DEVICE
   TEST names them BUTTON 1-4), with a per-game default layout. On an 8-button
   stick whose rows are L1 Y X R1 / L2 B A R2, its "Type B" panel (A B C on

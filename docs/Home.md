@@ -31,7 +31,7 @@ Game pages:
 - [SSF4 AE](Game-SSF4-AE.md)
 - [BlazBlue CS](Game-BlazBlue-CS.md)
 - [BlazBlue CT](Game-BlazBlue-CT.md)
-- Not started yet: [KOF '98 UM](Game-KOF-98-UM.md),
+- Planned: [KOF '98 UM](Game-KOF-98-UM.md),
   [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
 
 ## Quick start
@@ -43,5 +43,5 @@ are in [CLAUDE.md](../CLAUDE.md).
 ## Legal
 
 The repository holds only the project's own code and documentation. You need
-your own game dumps. Game executables, assets, generated C code
+your own copy of each game. Game executables, assets, generated C code
 (`games/*/gen/`) and screenshots are never committed.

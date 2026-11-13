@@ -1,8 +1,8 @@
 # Game status
 
-Progress for every known Taito Type X / X+ and Type X2 title, whether or not
-we have a dump. The later Taito PC boards are listed at the end for
-completeness.
+Progress for every known game on the Taito Type X family of boards. Every
+game has a status: playable, planned, or not started yet. Type X / X+ and
+Type X2 are the project's target; the later Taito PC boards follow at the end.
 
 No single source lists every game. These lists merge the following
 (read November 2026):
@@ -24,8 +24,8 @@ source. If you know a missing game or a wrong board, please open an issue.
 | **Playable** | Attract mode, coin / start, character select and full matches at 60 fps, with no known blocker. |
 | **Playable, issues** | Plays start to finish, with problems listed on the game's page (slowdown, missing feature). |
 | **Boots** | Reaches attract mode or a menu, but gameplay is incomplete or broken. |
-| **Dump on hand** | Not started, but a dump is available for testing. |
-| — | Not started, no dump available. |
+| **Planned** | Chosen as a next port; its requirements are researched on its page. |
+| Not started | Not developed yet. |
 
 Platforms:
 - **macOS**: the standalone SDL3 executable (`build/x2-<id>`).
@@ -50,7 +50,7 @@ Mali-G57 MC2) for Android.
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its `game.exe`.
 
-## Next candidates (dumps on hand)
+## Planned
 
 | Game | Board | Year | What it needs | Page |
 |---|---|---|---|---|
@@ -64,103 +64,103 @@ may need a different loader than disc / HDD builds.
 
 | Game | Year | Status |
 |---|---|---|
-| Akai Katana Shin ★ | 2012 | — |
-| Aquapazza: Aquaplus Dream Match ★ | 2011 | — |
-| Aquarian Age Alternative | 2007 | — |
-| Arcana Heart 2 ★ | 2012 | — |
-| Arcana Heart 3 Love Max!!!!! ★ | 2013 | — |
-| Arcana Heart 3 Love Max Six Stars!!!!!! ★ | 2014 | — |
-| Battle Fantasia | 2007 | — |
-| Battle Fantasia Network Edition ★ | 2011 | — |
-| Battle Gear 4 Tuned 2010 | 2010 | — |
+| Akai Katana Shin ★ | 2012 | Not started |
+| Aquapazza: Aquaplus Dream Match ★ | 2011 | Not started |
+| Aquarian Age Alternative | 2007 | Not started |
+| Arcana Heart 2 ★ | 2012 | Not started |
+| Arcana Heart 3 Love Max!!!!! ★ | 2013 | Not started |
+| Arcana Heart 3 Love Max Six Stars!!!!!! ★ | 2014 | Not started |
+| Battle Fantasia | 2007 | Not started |
+| Battle Fantasia Network Edition ★ | 2011 | Not started |
+| Battle Gear 4 Tuned 2010 | 2010 | Not started |
 | **BlazBlue: Calamity Trigger** | 2008 | **Playable, issues** |
-| BlazBlue: Central Fiction ★ | 2015 | — |
-| BlazBlue: Chrono Phantasma ★ | 2012 | — |
+| BlazBlue: Central Fiction ★ | 2015 | Not started |
+| BlazBlue: Chrono Phantasma ★ | 2012 | Not started |
 | **BlazBlue: Continuum Shift** | 2009 | **Playable** |
-| BlazBlue: Continuum Shift II ★ | 2010 | — |
-| Chaos Breaker ★ | 2012 | — |
-| Chaos Code: New Sign of Catastrophe ★ | 2013 | — |
-| Chase H.Q. 2 | 2007 | — |
-| Cho Chabudai Gaeshi! | 2009 | — |
-| Cho Chabudai Gaeshi! 2 | 2010 | — |
-| Cho Chabudai Gaeshi! Kyojinnohoshi | 2011 | — |
-| Crimzon Clover ★ | 2013 | — |
-| Cyber Diver | 2009 | — |
-| D1GP Arcade | 2007 | — |
-| Daemon Bride - Additional Gain ★ | 2011 | — |
-| Darius Burst: Another Chronicle | 2010 | — |
-| Darius Burst: Another Chronicle EX | 2011 | — |
-| Dark Awake ★ | 2012 | — |
-| Do Not Fall ★ | 2013 | — |
-| Dragon Dance ★ | 2011 | — |
-| Dragon Quest Monster Battle Road | 2007 | — |
-| Dragon Quest Monster Battle Road II Legends | 2009 | — |
-| Dragon Quest Monster Battle Road Victory | 2010 | — |
-| E-Mahjong ★ | 2013 | — |
-| Elevator Action Death Parade | 2009 | — |
-| Elevator Action ★ | 2014 | — |
-| EN-Eins Perfektewelt ★ | 2012 | — |
-| Exception ★ | 2011 | — |
-| Gaia Attack 4 | 2010 | — |
-| Gouketsuji Ichizoku: Matsuri Senzo Kuyou ★ | 2012 | — |
-| Homura ★ | 2012 | — |
-| Hopping Road | 2009 | — |
-| Hopping Road Kids | 2010 | — |
-| Hyper Street Fighter II: The Anniversary Edition ★ | 2014 | — |
-| Ikaruga ★ | 2013 | — |
-| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Dump on hand** |
-| Legendary Block King | 2012 | — |
-| Lord of Vermilion | 2008 | — |
-| Lord of Vermilion II | 2009 | — |
-| Lord of Vermilion Re:2 | 2011 | — |
-| Lupin the 3rd † (community list only; exact title unconfirmed) | — | — |
-| Magical Beat ★ | 2012 | — |
-| Monster Hunter Nikki Angrily Pooh Ghee Race | 2013 | — |
-| Music Gun Gun! | 2009 | — |
-| Music Gun Gun! 2 | 2011 | — |
-| Music Gun Gun!: Uta ga Ippai Cho Zokaban | 2010 | — |
-| Nitroplus Blasterz: Heroines Infinite Duel ★ | 2015 | — |
-| Oppopo Booom | 2009 | — |
-| Panic Museum / Haunted Museum | 2009 | — |
-| Persona 4: The Ultimate in Mayonaka Arena ★ | 2012 | — |
-| Persona 4: The Ultimax Ultra Suplex Hold ★ | 2013 | — |
-| Pretty Rhythm | 2010 | — |
-| Psychic Force 2012 ★ | 2012 | — |
-| Puzzle Bobble ★ | 2012 | — |
-| Raiden III ★ | 2012 | — |
-| Raiden IV ★ | 2012 | — |
-| Samurai Shodown: Edge of Destiny / Samurai Spirits Sen | 2008 | — |
-| Samurai Spirits Sen ★ | 2011 | — |
-| Senko no Ronde Duo - Dis-United Order | 2009 | — |
-| Senko no Ronde Duo - Dis-United Order ★ | 2011 | — |
-| Senor Nippon! | 2009 | — |
-| Shh...! Welcome to Frightfearland / Haunted Museum II | 2010 | — |
-| Skullgirls 2nd Encore ★ | 2015 | — |
-| Sonic Blast Heroes | 2011 | — |
-| Sonic Blast Heroes Dash | 2012 | — |
-| Space Invaders ★ | 2012 | — |
-| Spica Adventure ★ | 2011 | — |
-| Strania -The Stella Machina- ★ | 2011 | — |
-| Street Fighter III 3rd Strike: Fight for the Future ★ | 2014 | — |
-| Street Fighter IV | 2008 | — |
-| Street Fighter Zero 3 ★ | 2014 | — |
-| Suggoi! Arcana Heart 2 ★ | 2012 | — |
+| BlazBlue: Continuum Shift II ★ | 2010 | Not started |
+| Chaos Breaker ★ | 2012 | Not started |
+| Chaos Code: New Sign of Catastrophe ★ | 2013 | Not started |
+| Chase H.Q. 2 | 2007 | Not started |
+| Cho Chabudai Gaeshi! | 2009 | Not started |
+| Cho Chabudai Gaeshi! 2 | 2010 | Not started |
+| Cho Chabudai Gaeshi! Kyojinnohoshi | 2011 | Not started |
+| Crimzon Clover ★ | 2013 | Not started |
+| Cyber Diver | 2009 | Not started |
+| D1GP Arcade | 2007 | Not started |
+| Daemon Bride - Additional Gain ★ | 2011 | Not started |
+| Darius Burst: Another Chronicle | 2010 | Not started |
+| Darius Burst: Another Chronicle EX | 2011 | Not started |
+| Dark Awake ★ | 2012 | Not started |
+| Do Not Fall ★ | 2013 | Not started |
+| Dragon Dance ★ | 2011 | Not started |
+| Dragon Quest Monster Battle Road | 2007 | Not started |
+| Dragon Quest Monster Battle Road II Legends | 2009 | Not started |
+| Dragon Quest Monster Battle Road Victory | 2010 | Not started |
+| E-Mahjong ★ | 2013 | Not started |
+| Elevator Action Death Parade | 2009 | Not started |
+| Elevator Action ★ | 2014 | Not started |
+| EN-Eins Perfektewelt ★ | 2012 | Not started |
+| Exception ★ | 2011 | Not started |
+| Gaia Attack 4 | 2010 | Not started |
+| Gouketsuji Ichizoku: Matsuri Senzo Kuyou ★ | 2012 | Not started |
+| Homura ★ | 2012 | Not started |
+| Hopping Road | 2009 | Not started |
+| Hopping Road Kids | 2010 | Not started |
+| Hyper Street Fighter II: The Anniversary Edition ★ | 2014 | Not started |
+| Ikaruga ★ | 2013 | Not started |
+| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Planned** |
+| Legendary Block King | 2012 | Not started |
+| Lord of Vermilion | 2008 | Not started |
+| Lord of Vermilion II | 2009 | Not started |
+| Lord of Vermilion Re:2 | 2011 | Not started |
+| Lupin the 3rd † (community list only; exact title unconfirmed) | — | Not started |
+| Magical Beat ★ | 2012 | Not started |
+| Monster Hunter Nikki Angrily Pooh Ghee Race | 2013 | Not started |
+| Music Gun Gun! | 2009 | Not started |
+| Music Gun Gun! 2 | 2011 | Not started |
+| Music Gun Gun!: Uta ga Ippai Cho Zokaban | 2010 | Not started |
+| Nitroplus Blasterz: Heroines Infinite Duel ★ | 2015 | Not started |
+| Oppopo Booom | 2009 | Not started |
+| Panic Museum / Haunted Museum | 2009 | Not started |
+| Persona 4: The Ultimate in Mayonaka Arena ★ | 2012 | Not started |
+| Persona 4: The Ultimax Ultra Suplex Hold ★ | 2013 | Not started |
+| Pretty Rhythm | 2010 | Not started |
+| Psychic Force 2012 ★ | 2012 | Not started |
+| Puzzle Bobble ★ | 2012 | Not started |
+| Raiden III ★ | 2012 | Not started |
+| Raiden IV ★ | 2012 | Not started |
+| Samurai Shodown: Edge of Destiny / Samurai Spirits Sen | 2008 | Not started |
+| Samurai Spirits Sen ★ | 2011 | Not started |
+| Senko no Ronde Duo - Dis-United Order | 2009 | Not started |
+| Senko no Ronde Duo - Dis-United Order ★ | 2011 | Not started |
+| Senor Nippon! | 2009 | Not started |
+| Shh...! Welcome to Frightfearland / Haunted Museum II | 2010 | Not started |
+| Skullgirls 2nd Encore ★ | 2015 | Not started |
+| Sonic Blast Heroes | 2011 | Not started |
+| Sonic Blast Heroes Dash | 2012 | Not started |
+| Space Invaders ★ | 2012 | Not started |
+| Spica Adventure ★ | 2011 | Not started |
+| Strania -The Stella Machina- ★ | 2011 | Not started |
+| Street Fighter III 3rd Strike: Fight for the Future ★ | 2014 | Not started |
+| Street Fighter IV | 2008 | Not started |
+| Street Fighter Zero 3 ★ | 2014 | Not started |
+| Suggoi! Arcana Heart 2 ★ | 2012 | Not started |
 | **Super Street Fighter IV: Arcade Edition** | 2010 | **Playable, issues** |
-| Super Street Fighter IV: Arcade Edition Ver.2012 | 2011 | — |
-| The King of Fighters '98 Ultimate Match Final Edition ★ | 2011 | — |
-| The King of Fighters 2002 Unlimited Match ★ | 2011 | — |
+| Super Street Fighter IV: Arcade Edition Ver.2012 | 2011 | Not started |
+| The King of Fighters '98 Ultimate Match Final Edition ★ | 2011 | Not started |
+| The King of Fighters 2002 Unlimited Match ★ | 2011 | Not started |
 | **The King of Fighters XII** | 2009 | **Playable** |
 | **The King of Fighters XIII** | 2010 | **Playable** |
 | **The King of Fighters XIII Climax** | 2012 | **Playable** |
-| The King of Fighters XIII Climax ★ | 2013 | — |
-| The pieces Naimmentanpin-Doradorara~tsu miss! ★ | 2014 | — |
-| The Rumble Fish 2 ★ | 2012 | — |
-| Trouble Witches AC ★ | 2012 | — |
-| Ultra Street Fighter IV ★ | 2014 | — |
-| Vampire Savior ★ | 2014 | — |
-| Wacky Races | 2009 | — |
-| Yatagarasu: Attack on Cataclysm ★ | 2015 | — |
-| Yuukyuu no Sharin: Eternal Wheel | 2007 | — |
+| The King of Fighters XIII Climax ★ | 2013 | Not started |
+| The pieces Naimmentanpin-Doradorara~tsu miss! ★ | 2014 | Not started |
+| The Rumble Fish 2 ★ | 2012 | Not started |
+| Trouble Witches AC ★ | 2012 | Not started |
+| Ultra Street Fighter IV ★ | 2014 | Not started |
+| Vampire Savior ★ | 2014 | Not started |
+| Wacky Races | 2009 | Not started |
+| Yatagarasu: Attack on Cataclysm ★ | 2015 | Not started |
+| Yuukyuu no Sharin: Eternal Wheel | 2007 | Not started |
 
 ### Release variants
 
@@ -195,97 +195,125 @@ the board's I/O setup. Type X+ is Type X with a stronger graphics card.
 
 | Game | Year | Status |
 |---|---|---|
-| Battle Gear 4 | 2005 | — |
-| Battle Gear 4 Tuned | 2006 | — |
-| Chaos Breaker | 2004 | — |
-| Dance Dance!! | 2003 | — |
-| Dance Dance!! Plus | 2006 | — |
-| Data Carddass Dragon Ball Z | 2005 | — |
-| Data Carddass Dragon Ball Z 2 | 2006 | — |
-| Dinoking Battle / King of Jurassic | 2005 | — |
-| Dinoking Battle II | 2006 | — |
-| Dinoking Battle III | 2007 | — |
-| Dinomax | 2006 | — |
-| Dinomax Ver.1.5 | 2007 | — |
-| Giga Wing Generations | 2004 | — |
-| Goketsuji Ichizoku: Matsuri Senzo Kuyou | 2009 | — |
-| Half-Life 2: Survivor | 2006 | — |
-| Half-Life 2: Survivor Ver.2.0 | 2007 | — |
-| Harikiri Online Professional Baseball | 2004 | — |
-| Homura | 2005 | — |
-| Inazuma Eleven ~ explosive football battle ~ | 2010 | — |
-| Inazuma Eleven Go Battle Stadium | 2011 | — |
-| Inazuma Eleven Go Batrism | 2013 | — |
-| K-ON! Post-school rhythm time | 2013 | — |
-| Katekyo Hitman Reborn! Southern Cross Battle | 2008 | — |
-| Kirarin Revolution Happy Idol Life | 2006 | — |
-| Mobile Suit Gundam: Spirits of Zeon | 2006 | — |
-| Mobile Suit Gundam: Spirits of Zeon Memories | 2007 | — |
-| Pokémon Battrio | 2007 | — |
-| Raiden III | 2005 | — |
-| Raiden IV | 2007 | — |
-| Shikigami no Shiro III | 2006 | — |
-| Spica Adventure | 2005 | — |
-| Supreme!! Mecha Mote Chairperson Kurmote Girls Contest! | 2009 | — |
-| Taisen Hot Gimmick 5 | 2006 | — |
-| Taisen Hot Gimmick: Mirai Eigou † (Japanese Wikipedia; possibly the same game as Hot Gimmick 5) | 2006 | — |
-| Taisen Hot Gimmick Mix Party | 2005 | — |
-| Tetris The Grand Master 3: Terror Instinct | 2005 | — |
-| Tetsudamasy | 2011 | — |
-| **The King of Fighters '98 Ultimate Match** | 2008 | **Dump on hand** |
-| The King of Fighters: Sky Stage | 2010 | — |
-| Trouble Witches AC | 2009 | — |
-| Usagi: Yasei no Toupai Online | 2005 | — |
-| Valve Limit R | 2006 | — |
-| War of the Grail | 2006 | — |
-| Won!Tertainment Music Channel | 2006 | — |
-| Zoids Card Colosseum | 2005 | — |
+| Battle Gear 4 | 2005 | Not started |
+| Battle Gear 4 Tuned | 2006 | Not started |
+| Chaos Breaker | 2004 | Not started |
+| Dance Dance!! | 2003 | Not started |
+| Dance Dance!! Plus | 2006 | Not started |
+| Data Carddass Dragon Ball Z | 2005 | Not started |
+| Data Carddass Dragon Ball Z 2 | 2006 | Not started |
+| Dinoking Battle / King of Jurassic | 2005 | Not started |
+| Dinoking Battle II | 2006 | Not started |
+| Dinoking Battle III | 2007 | Not started |
+| Dinomax | 2006 | Not started |
+| Dinomax Ver.1.5 | 2007 | Not started |
+| Giga Wing Generations | 2004 | Not started |
+| Goketsuji Ichizoku: Matsuri Senzo Kuyou | 2009 | Not started |
+| Half-Life 2: Survivor | 2006 | Not started |
+| Half-Life 2: Survivor Ver.2.0 | 2007 | Not started |
+| Harikiri Online Professional Baseball | 2004 | Not started |
+| Homura | 2005 | Not started |
+| Inazuma Eleven ~ explosive football battle ~ | 2010 | Not started |
+| Inazuma Eleven Go Battle Stadium | 2011 | Not started |
+| Inazuma Eleven Go Batrism | 2013 | Not started |
+| K-ON! Post-school rhythm time | 2013 | Not started |
+| Katekyo Hitman Reborn! Southern Cross Battle | 2008 | Not started |
+| Kirarin Revolution Happy Idol Life | 2006 | Not started |
+| Mobile Suit Gundam: Spirits of Zeon | 2006 | Not started |
+| Mobile Suit Gundam: Spirits of Zeon Memories | 2007 | Not started |
+| Pokémon Battrio | 2007 | Not started |
+| Raiden III | 2005 | Not started |
+| Raiden IV | 2007 | Not started |
+| Shikigami no Shiro III | 2006 | Not started |
+| Spica Adventure | 2005 | Not started |
+| Supreme!! Mecha Mote Chairperson Kurmote Girls Contest! | 2009 | Not started |
+| Taisen Hot Gimmick 5 | 2006 | Not started |
+| Taisen Hot Gimmick: Mirai Eigou † (Japanese Wikipedia; possibly the same game as Hot Gimmick 5) | 2006 | Not started |
+| Taisen Hot Gimmick Mix Party | 2005 | Not started |
+| Tetris The Grand Master 3: Terror Instinct | 2005 | Not started |
+| Tetsudamasy | 2011 | Not started |
+| **The King of Fighters '98 Ultimate Match** | 2008 | **Planned** |
+| The King of Fighters: Sky Stage | 2010 | Not started |
+| Trouble Witches AC | 2009 | Not started |
+| Usagi: Yasei no Toupai Online | 2005 | Not started |
+| Valve Limit R | 2006 | Not started |
+| War of the Grail | 2006 | Not started |
+| Won!Tertainment Music Channel | 2006 | Not started |
+| Zoids Card Colosseum | 2005 | Not started |
 
 Many of these, such as card dispensers, network titles and medal games,
 depend on peripherals beyond a joystick panel. Those are out of scope unless
 someone brings the hardware protocol.
 
-## Later Taito PC boards (out of scope for now)
+## Later Taito PC boards
 
-These lists are for reference only. The later boards move to Windows 7 / 8
-Embedded and, from Type X3 on, often 64-bit executables. Supporting them
-would take a different runtime: the current recompiler only handles 32-bit
-x86 code for XP-era DirectX 9. English Wikipedia gives no game list for Type
-X7.
+Every game below is **Not started**. These boards move to Windows 7 / 8
+Embedded and, from Type X3 on, often to 64-bit executables. That needs a
+different runtime: the current recompiler only handles 32-bit x86 code for
+XP-era DirectX 9, so these come after the Type X / X2 library. English
+Wikipedia lists no games for Type X7.
 
 ### Type X Zero (2011–)
 
-Card de Renketsu! Densha de Go! (2012) · Groove Coaster (2013) · Groove
-Coaster EX (2014) · Groove Coaster 2 Heavenly Festival (2015) · Groove
-Coaster 3 Link Fever (2016) · Groove Coaster 3 EX Dream Party (2017) ·
-Groove Coaster 4 Starlight Road (2018) · Groove Coaster 4 EX Infinity
-Highway (2019) · Groove Coaster 4 MAX Diamond Galaxy (2020) · Kickthrough
-Racers (2011) · Mogutte Horehore (2011)
+| Game | Year | Status |
+|---|---|---|
+| Card de Renketsu! Densha de Go! | 2012 | Not started |
+| Groove Coaster | 2013 | Not started |
+| Groove Coaster EX | 2014 | Not started |
+| Groove Coaster 2 Heavenly Festival | 2015 | Not started |
+| Groove Coaster 3 Link Fever | 2016 | Not started |
+| Groove Coaster 3 EX Dream Party | 2017 | Not started |
+| Groove Coaster 4 Starlight Road | 2018 | Not started |
+| Groove Coaster 4 EX Infinity Highway | 2019 | Not started |
+| Groove Coaster 4 MAX Diamond Galaxy | 2020 | Not started |
+| Kickthrough Racers | 2011 | Not started |
+| Mogutte Horehore | 2011 | Not started |
 
 ### Type X3 (2012–)
 
-BlazBlue: Central Fiction for NESiCAxLive2 (2017) · BlazBlue: Cross Tag
-Battle (2019) · Chousoku Henkei Gyrozetter (2012) · Dragon Quest Monster
-Battle Scanner (2016) · EN-Eins Perfektewelt Anastasis (2023) · Fight!
-Dragon Quest Scan Butlers (2017) · Fighting EX Layer (2018) · Figure Heads
-Aces (2017) · Gunslinger Stratos (2012) · Gunslinger Stratos 2 (2014) ·
-Gunslinger Stratos 3 (2016) · Gunslinger Stratos Σ (2017) · Left 4 Dead
--Survivors- (2014) · Lord of Vermilion III (2013) · Lord of Vermilion III
-ArK-cell (2014) · Lord of Vermilion III Chain-Gene (2015) · Lord of
-Vermilion III Twin Lance (2014) · Lord of Vermilion IV (2017) · Lord of
-Vermilion Re:3 (2015) · Lord of Vermilion Re:3 Dear Servant (2016) · Lord of
-Vermilion Re:3 Dear Servant -Saviour of the 13 Swords- (2016) · Ma Dolomiti
-Dragon Solazur Kingdom -Puzzle & Dragons Battle Tournament- (2014) · Million
-Arthur: Arcana Blood (2017) · Samurai Spirits (2019) · School of Ragnarok
-(2015) · School of Ragnarok Re:Boot (2015) · SNK Heroines AC: Tag Team
-Frenzy (2018) · Theatrhythm Final Fantasy – All-Star Carnival (2016) · The
-King of Fighters XIV Arcade Ver. (2017) · Ultra Street Fighter IV (2014,
-also listed under Type X2)
+| Game | Year | Status |
+|---|---|---|
+| BlazBlue: Central Fiction (NESiCAxLive2) | 2017 | Not started |
+| BlazBlue: Cross Tag Battle | 2019 | Not started |
+| Chousoku Henkei Gyrozetter | 2012 | Not started |
+| Dragon Quest Monster Battle Scanner | 2016 | Not started |
+| EN-Eins Perfektewelt Anastasis | 2023 | Not started |
+| Fight! Dragon Quest Scan Butlers | 2017 | Not started |
+| Fighting EX Layer | 2018 | Not started |
+| Figure Heads Aces | 2017 | Not started |
+| Gunslinger Stratos | 2012 | Not started |
+| Gunslinger Stratos 2 | 2014 | Not started |
+| Gunslinger Stratos 3 | 2016 | Not started |
+| Gunslinger Stratos Σ | 2017 | Not started |
+| Left 4 Dead -Survivors- | 2014 | Not started |
+| Lord of Vermilion III | 2013 | Not started |
+| Lord of Vermilion III ArK-cell | 2014 | Not started |
+| Lord of Vermilion III Twin Lance | 2014 | Not started |
+| Lord of Vermilion III Chain-Gene | 2015 | Not started |
+| Lord of Vermilion IV | 2017 | Not started |
+| Lord of Vermilion Re:3 | 2015 | Not started |
+| Lord of Vermilion Re:3 Dear Servant | 2016 | Not started |
+| Lord of Vermilion Re:3 Dear Servant -Saviour of the 13 Swords- | 2016 | Not started |
+| Ma Dolomiti Dragon Solazur Kingdom -Puzzle & Dragons Battle Tournament- | 2014 | Not started |
+| Million Arthur: Arcana Blood | 2017 | Not started |
+| Samurai Spirits | 2019 | Not started |
+| School of Ragnarok | 2015 | Not started |
+| School of Ragnarok Re:Boot | 2015 | Not started |
+| SNK Heroines AC: Tag Team Frenzy | 2018 | Not started |
+| Theatrhythm Final Fantasy – All-Star Carnival | 2016 | Not started |
+| The King of Fighters XIV Arcade Ver. | 2017 | Not started |
+| Ultra Street Fighter IV (also listed under Type X2) | 2014 | Not started |
 
 ### Type X4 (2016–)
 
-Densha de Go!! (2017) · Love Live! School Idol Festival: After School
-Activity (2016) · … Next Stage (2018) · Magicians Dead (2016) · Magicians
-Dead Next Blazing (2017) · Metal Slug 8 3D (Wikipedia's year is unreliable)
-· Starwing Paradox (2018) · Street Fighter V: Type Arcade (2019) · Street
-Fighter 6: Type Arcade (2023)
+| Game | Year | Status |
+|---|---|---|
+| Densha de Go!! | 2017 | Not started |
+| Love Live! School Idol Festival: After School Activity | 2016 | Not started |
+| Love Live! School Idol Festival: After School Activity Next Stage | 2018 | Not started |
+| Magicians Dead | 2016 | Not started |
+| Magicians Dead Next Blazing | 2017 | Not started |
+| Metal Slug 8 3D (year unconfirmed) | — | Not started |
+| Starwing Paradox | 2018 | Not started |
+| Street Fighter V: Type Arcade | 2019 | Not started |
+| Street Fighter 6: Type Arcade | 2023 | Not started |

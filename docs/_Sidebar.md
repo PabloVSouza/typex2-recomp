@@ -11,8 +11,8 @@
 - [SSF4 AE](Game-SSF4-AE.md)
 - [BlazBlue CS](Game-BlazBlue-CS.md)
 - [BlazBlue CT](Game-BlazBlue-CT.md)
-- [KOF '98 UM](Game-KOF-98-UM.md) *(not started)*
-- [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md) *(not started)*
+- [KOF '98 UM](Game-KOF-98-UM.md) *(planned)*
+- [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md) *(planned)*
 
 **Guides**
 - [Hardware](Hardware.md)

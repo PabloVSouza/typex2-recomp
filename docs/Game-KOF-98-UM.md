@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X (2008, SNK Playmore) |
 | `games/` id | none yet |
-| Status | **Dump on hand**, not started |
+| Status | **Planned** |
 | Executable | `launcher.exe` (PE32, 25 MB image) |
 
 ## What we know

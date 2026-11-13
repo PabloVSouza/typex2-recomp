@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |
 | `games/` id | none yet |
-| Status | **Dump on hand**, not started |
+| Status | **Planned** |
 | Executable | `game.exe` (PE32, 28 MB image; data in `diskimg/`) |
 
 ## What we know
