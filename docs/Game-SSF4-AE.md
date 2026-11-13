@@ -57,6 +57,6 @@ X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 
 ## Known issues
 
-- A few stages are GPU-bound at 50-55 fps on the Mali-G57 tablet.
+- A few stages are GPU-bound at 50-55 fps on the Galaxy Tab A11 (Mali-G57 MC2).
 - Link play is off: this is the stand-alone build.
 - The opening movie's separate English audio track is missing from the dump.

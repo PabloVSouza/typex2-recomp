@@ -140,7 +140,8 @@ gets an entry per milestone. Update them with the README.
 
 ## Android test device
 
-The maintainer tests on a Samsung Galaxy Tab (SM-X130: Mali-G57 MC2, no
+The maintainer tests on an Apple M3 Pro Mac and a Samsung Galaxy Tab A11
+(SM-X130, 8 GB / 128 GB: Helio G99, Mali-G57 MC2, no
 S3TC, 2 big + 6 little cores, Android 16) with RetroArch
 (`com.retroarch.aarch64`, video driver `gl`) and ES-DE
 (`org.es_de.frontend`). Games live in

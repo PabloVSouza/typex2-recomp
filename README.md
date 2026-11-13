@@ -9,7 +9,7 @@ as standalone apps (launched by ES-DE) or as a RetroArch/libretro core.
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
 Android: 60 fps through attract mode, character select and most fights on a
-Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
+Galaxy Tab A11; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
 Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
@@ -160,7 +160,8 @@ Running:
 
 ## Performance on Android (tile-based GPUs)
 
-What the renderer does for Mali-class GPUs, each measured on the tablet with
+What the renderer does for Mali-class GPUs, each measured on the test tablet
+(Samsung Galaxy Tab A11, 8 GB / 128 GB, Mali-G57 MC2) with
 `X2_AB` (both halves of the same run, since the game picks random stages):
 
 * **Alpha test in shader variants only**: a `discard` anywhere in a pixel
@@ -257,7 +258,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   (packets to address 0, commands 0-8), answered by `jvs.c`. The build has
   MSVC run-time checks (`_RTC_CheckEsp` reads the caller's flags; see
   "flag importers" in `lift.cpp`); a failed check now stops with "the game
-  called DebugBreak". Not yet measured on the tablet.
+  called DebugBreak". On the tablet: 60 fps, with 0.3-0.7 s load pauses.
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
 * Guest threads run truly parallel. On ARM, shared (non-stack) guest stores
   are release (and loads acquire, with `X2_TSO=1`) so x86 TSO-dependent code

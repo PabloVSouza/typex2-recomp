@@ -1,9 +1,25 @@
 # Hardware
 
+## Test devices
+
+Every status and performance figure in these docs was measured on these two
+machines:
+
+| Device | Details | Used for |
+|---|---|---|
+| Mac with Apple M3 Pro | macOS, OpenGL 3.3 through the standalone SDL3 build | Development, regression screenshots, headless test runs |
+| Samsung Galaxy Tab A11, 8 GB RAM / 128 GB (SM-X130) | MediaTek Helio G99: 2 big + 6 little cores, Mali-G57 MC2 (GLES 3.2, no S3TC), Android 16 | Android performance: RetroArch (`gl` driver) and the standalone app, launched from ES-DE |
+
+The tablet is a modest mid-range device, so "60 fps on the tablet" leaves
+headroom on most current phones. Faster GPUs should also clear the stages that
+are GPU-bound here, such as some SSF4 AE stages at 50-55 fps.
+
+## Original boards
+
 Specifications are from Wikipedia's
 [Taito Type X](https://en.wikipedia.org/wiki/Taito_Type_X) article.
 
-## Type X / Type X+ (2004–)
+### Type X / Type X+ (2004–)
 
 | | |
 |---|---|
@@ -16,7 +32,7 @@ Specifications are from Wikipedia's
 
 Type X+ is the same board with a stronger graphics card.
 
-## Type X2 (2007–2015)
+### Type X2 (2007–2015)
 
 | | |
 |---|---|

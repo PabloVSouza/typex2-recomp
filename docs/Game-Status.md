@@ -20,8 +20,9 @@ Platforms:
 - **Android app**: the standalone `com.typex2.recomp` app, launched by ES-DE.
 - **RetroArch**: the `typex2_libretro` core.
 
-Android results are measured on the reference tablet: Samsung Galaxy Tab
-SM-X130, Mali-G57 MC2.
+Results come from the two [test devices](Hardware.md#test-devices): a Mac
+with an Apple M3 Pro for macOS, and a Samsung Galaxy Tab A11 (8 GB / 128 GB,
+Mali-G57 MC2) for Android.
 
 ## Supported games
 

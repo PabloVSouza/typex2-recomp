@@ -59,7 +59,9 @@ MAME stays the default, which is why step 3 is needed.
 
 ## Performance work on tile-based GPUs (Mali)
 
-Each change was measured on the reference tablet with `X2_AB`, which runs
+Each change was measured on the test tablet, a Samsung Galaxy Tab A11
+(8 GB / 128 GB, Mali-G57 MC2; see [test devices](Hardware.md#test-devices)),
+with `X2_AB`, which runs
 both variants in the same session because the games pick random stages.
 
 | Change | Effect |
