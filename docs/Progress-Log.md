@@ -15,6 +15,10 @@ Milestones, newest first. `git log` has the details.
   `PulseEvent` releases the threads waiting at that moment.
 - **Executable:** found as `game.exe` or `launcher.exe`. The 16:9 crop only
   applies to KOF XIII Climax, so true 4:3 games keep their full frame.
+- **On the tablet:** KOF '98 UM at 60 fps in RetroArch, five minutes without
+  a stall. That needed reusable timer threads: one-shot timers exhausted the
+  handle table. BlazBlue CT's crash fix is confirmed over three full scripted
+  fights; its load pauses are now 0.3-0.5 s.
 
 ## 2026-11-13: BlazBlue CT on Android
 

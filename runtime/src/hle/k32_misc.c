@@ -849,46 +849,71 @@ const X2Hle x2_hle_kernel32[] = {
     {NULL, NULL, 0},
 };
 
-/* timeSetEvent: each timer is a guest thread running a host loop that calls the
- * guest's TIMECALLBACK(uTimerID, uMsg, dwUser, dw1, dw2) (stdcall) on schedule */
+/* timeSetEvent: each of the 16 timer slots has one guest thread, started on
+ * the slot's first use and reused afterwards, running a host loop that calls
+ * the guest's TIMECALLBACK(uTimerID, uMsg, dwUser, dw1, dw2) (stdcall) on
+ * schedule. Games re-arm one-shot timers every tick (KOF '98 UM: every 16 ms),
+ * so a thread per timer would mean thousands of threads a minute. */
 typedef struct {
     u32 delay, cb, user;
     bool periodic;
     volatile bool used, killed;
     u32 event_mode; /* TIME_CALLBACK_EVENT_SET (0x10) / _PULSE (0x20): cb is an event handle */
+    bool armed, has_thread;
 } MmTimer;
 static MmTimer mm_timers[16];
+static pthread_mutex_t mm_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t mm_cond = PTHREAD_COND_INITIALIZER;
 static void mm_timer_thread(X2Cpu *c) {
     u32 id = ARG(0);
     MmTimer *t = &mm_timers[id - 1];
-    u64 next = x2_time_ns() + (u64)t->delay * 1000000ull;
-    while (!t->killed) {
-        u64 now = x2_time_ns();
-        if (now < next) { usleep((useconds_t)((next - now) / 1000)); continue; }
-        if (t->event_mode) {
-            x2_event_set(t->cb);
-            if (t->event_mode == 0x20) { usleep(1000); x2_event_reset(t->cb); } /* pulse */
-        } else {
-            x2_guest_call(c, t->cb, 5, id, 0, t->user, 0, 0);
+    for (;;) {
+        pthread_mutex_lock(&mm_lock);
+        while (!t->armed) pthread_cond_wait(&mm_cond, &mm_lock);
+        pthread_mutex_unlock(&mm_lock);
+        u64 next = x2_time_ns() + (u64)t->delay * 1000000ull;
+        while (!t->killed) {
+            u64 now = x2_time_ns();
+            if (now < next) {
+                usleep((useconds_t)((next - now) / 1000));
+                continue;
+            }
+            if (t->event_mode) {
+                x2_event_set(t->cb);
+                if (t->event_mode == 0x20) { /* pulse */
+                    usleep(1000);
+                    x2_event_reset(t->cb);
+                }
+            } else {
+                x2_guest_call(c, t->cb, 5, id, 0, t->user, 0, 0);
+            }
+            if (!t->periodic) break;
+            next += (u64)(t->delay ? t->delay : 1) * 1000000ull;
+            if (x2_time_ns() > next + 100000000ull) next = x2_time_ns(); /* fell far behind: don't burst */
         }
-        if (!t->periodic) break;
-        next += (u64)(t->delay ? t->delay : 1) * 1000000ull;
-        if (x2_time_ns() > next + 100000000ull) next = x2_time_ns(); /* fell far behind: don't burst */
+        pthread_mutex_lock(&mm_lock);
+        t->armed = false;
+        t->used = false;
+        pthread_mutex_unlock(&mm_lock);
     }
-    t->used = false;
-    RET(0);
 }
 static void timeSetEvent(X2Cpu *c) {
     static u32 thunk;
     if (!thunk) thunk = x2_thunk_new("winmm.dll!<timer thread>", mm_timer_thread, 1);
+    pthread_mutex_lock(&mm_lock);
     for (u32 i = 0; i < 16; i++) {
         MmTimer *t = &mm_timers[i];
         if (t->used) continue;
-        *t = (MmTimer){ARG(0), ARG(2), ARG(3), (ARG(4) & 1) != 0, true, false, ARG(4) & 0x30}; /* TIME_PERIODIC */
-        x2_thread_create(thunk, i + 1, 0, false);
+        bool started = t->has_thread;
+        *t = (MmTimer){ARG(0), ARG(2), ARG(3), (ARG(4) & 1) != 0 /* TIME_PERIODIC */, true, false, ARG(4) & 0x30,
+                       true, true};
+        pthread_cond_broadcast(&mm_cond);
+        pthread_mutex_unlock(&mm_lock);
+        if (!started) x2_thread_create_internal(thunk, i + 1);
         RET(i + 1);
         return;
     }
+    pthread_mutex_unlock(&mm_lock);
     RET(0);
 }
 static void timeKillEvent(X2Cpu *c) {

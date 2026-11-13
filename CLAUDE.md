@@ -19,8 +19,8 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | The King of Fighters XIII Climax | `kof13cl` | playable |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
-| BlazBlue Calamity Trigger | `bbct` | playable on macOS; 60 fps in RetroArch on Android, longer load pauses than CS (being profiled) |
-| The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable on macOS (fixed-function D3D9, palettized sprites); Android untested |
+| BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); 0.3-0.5 s load pauses at fight start |
+| The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
 
 Planned next: KOF
 Maximum Impact Regulation A (Type X2: needs MSVCR80.dll, Direct3D 8).

@@ -311,23 +311,28 @@ static void *thread_main(void *p) {
     X2_TRACE("thread %u start %08x(%08x)", t->id, t->start, t->param);
     u32 rc = x2_guest_call(&t->cpu, t->start, 1, t->param);
     /* the guest stack is dead now: give it back. Short-lived threads (KOF '98
-     * UM starts a one-shot multimedia timer, i.e. a thread, per sound effect)
+     * UM re-arms a one-shot multimedia timer, i.e. a new thread, every 16 ms)
      * would otherwise use up the address space within minutes. */
     x2_vm_free(t->stack_base - t->stack_size);
+    x2_vm_free(t->teb); /* so is its thread block */
     pthread_mutex_lock(&t->lock);
     t->exit_code = rc;
     t->finished = true;
     pthread_cond_broadcast(&t->cond);
     pthread_mutex_unlock(&t->lock);
     x2_sync_broadcast();
+    /* nobody holds an internal thread's handle: free its slot (a 16 ms one-shot
+     * timer per tick ran KOF '98 UM out of handles in two minutes) */
+    if (t->internal) x2_handle_close(t->handle);
     return NULL;
 }
 
-X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended) {
+static X2Thread *thread_create(u32 start, u32 param, u32 stack_size, bool suspended, bool internal) {
     X2Thread *t = thread_alloc(stack_size ? stack_size : x2_module.stack_reserve);
     t->start = start;
     t->param = param;
     t->suspend = suspended ? 1 : 0;
+    t->internal = internal;
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setstacksize(&a, 64u << 20);  /* guest call depth maps onto the host stack */
@@ -336,6 +341,10 @@ X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended)
     pthread_attr_destroy(&a);
     return t;
 }
+X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended) {
+    return thread_create(start, param, stack_size, suspended, false);
+}
+X2Thread *x2_thread_create_internal(u32 start, u32 param) { return thread_create(start, param, 0, false, true); }
 
 void x2_thread_resume(X2Thread *t) {
     pthread_mutex_lock(&t->lock);

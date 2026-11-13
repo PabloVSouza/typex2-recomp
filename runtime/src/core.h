@@ -88,6 +88,7 @@ typedef struct X2Thread {
     u32 last_error;
     u32 exit_code;
     bool finished;
+    bool internal; /* started by the runtime (timers, feeders): its handle is released when it ends */
     pthread_mutex_t lock;
     pthread_cond_t cond;
     int suspend;
@@ -110,6 +111,8 @@ extern _Thread_local X2Thread *x2_self;
 void x2_trace_dump(X2Thread *t, int n);
 /* name the calling thread; critical = keep on the fastest cores (guest main, renderer) */
 void x2_thread_perf(const char *name, bool critical);
+/* a thread the runtime starts for itself (no guest holds its handle) */
+X2Thread *x2_thread_create_internal(u32 start, u32 param);
 X2Thread *x2_thread_create(u32 start, u32 param, u32 stack_size, bool suspended);
 void x2_thread_resume(X2Thread *t);
 int x2_thread_suspend_self(X2Thread *t);

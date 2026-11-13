@@ -351,7 +351,7 @@ static void renderer_state(X2Cpu *c, Graph *g, int slot) {
     if (slot != BF_Stop && !g->feeding) {
         g->feeding = true;
         sample_graph = g;
-        x2_thread_create(x2_thunk_new("dshow feeder", feeder, 1), 0, 0, false);
+        x2_thread_create_internal(x2_thunk_new("dshow feeder", feeder, 1), 0);
     }
 }
 

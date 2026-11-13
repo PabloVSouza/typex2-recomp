@@ -37,8 +37,6 @@ input test confirms SHOT1-4 = A B C D.
 
 ## Known issues
 
-- On the tablet, character select and fight start pause for 0.3-0.7 s,
+- On the tablet, character select and fight start pause for 0.3-0.5 s,
   against about 0.23 s in Continuum Shift. The sprite decoder isn't the main
   cost; a profile is pending.
-- The fix for the fight-start crash (texture parameters starting NULL) is
-  still waiting for confirmation on the tablet.

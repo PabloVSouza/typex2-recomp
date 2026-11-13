@@ -488,7 +488,8 @@ static void ExitThread(X2Cpu *c) {
     pthread_cond_broadcast(&t->cond);
     pthread_mutex_unlock(&t->lock);
     x2_sync_broadcast();
-    x2_vm_free(t->stack_base - t->stack_size); /* as in thread_main: the stack is dead */
+    x2_vm_free(t->stack_base - t->stack_size); /* as in thread_main: the stack and thread block are dead */
+    x2_vm_free(t->teb);
     pthread_exit(NULL);
 }
 

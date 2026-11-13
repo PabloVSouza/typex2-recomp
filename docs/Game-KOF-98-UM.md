@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X (2008, SNK Playmore): the first Type X game in the project |
 | `games/` id | `kof98um` |
-| Status | **Playable** on macOS: attract mode, coin / start, team select and fights with full stages and sound. Android not tested yet. |
+| Status | **Playable** on macOS and in RetroArch on Android: attract mode, coin / start, team select and fights with full stages and sound; 60 fps on the test tablet (worst pause about 120 ms over a 5-minute run). The Android app is not tested. |
 | Executable | `launcher.exe`. The runtime looks for `game.exe`, then `launcher.exe`. |
 
 ## Controls
@@ -27,9 +27,10 @@ opens with the test button (F2, or hold Select).
 - **Palettized graphics.** Sprites and stage tiles are L8 index textures,
   looked up in a 16×256 A4R4G4B4 palette by the game's pixel shaders.
 - **Short-lived threads.** Every sound timer is a one-shot `timeSetEvent`
-  re-armed each 16 ms, and each one is a thread. Thread stacks are now freed
-  when a thread ends; before, the address space ran out after about 30
-  seconds.
+  re-armed each 16 ms. Each timer slot now keeps one reusable thread; a thread
+  per timer exhausted the handle table on the tablet within minutes. Thread
+  stacks and thread blocks are also freed when a thread ends; before, the
+  address space ran out after about 30 seconds.
 - **PulseEvent.** The sound threads wait for the timer's `PulseEvent`. The
   old set-yield-reset version starved them, so there was no sound. Waiters
   now compare a pulse count.
@@ -40,6 +41,7 @@ opens with the test button (F2, or hold Select).
 
 ## Known issues
 
-- Not yet tested on the Android tablet.
+- The Android app (standalone) is not tested; RetroArch is.
 - The game re-uploads its palette, all nine mip levels, every frame. That's
-  harmless on macOS; its cost on the tablet is still to be measured.
+  harmless so far: the tablet holds 60 fps with about 3 ms of game work per
+  frame.

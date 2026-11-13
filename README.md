@@ -14,9 +14,9 @@ Galaxy Tab A11; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
 Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
-RetroArch on Android (attract, select, fights; 0.3-0.7 s load pauses at fight
+RetroArch on Android (attract, select, fights; 0.3-0.5 s load pauses at fight
 start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
-macOS (attract, team select, fights; not yet tested on Android). Rendering is
+macOS and in RetroArch on Android (60 fps on the test tablet). Rendering is
 D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
 HLSL, compiled D3DX effects and the fixed-function pipeline all translated to
 GLSL).
@@ -262,12 +262,13 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   (packets to address 0, commands 0-8), answered by `jvs.c`. The build has
   MSVC run-time checks (`_RTC_CheckEsp` reads the caller's flags; see
   "flag importers" in `lift.cpp`); a failed check now stops with "the game
-  called DebugBreak". On the tablet: 60 fps, with 0.3-0.7 s load pauses.
+  called DebugBreak". On the tablet: 60 fps, with 0.3-0.5 s load pauses.
 * KOF '98 UM (Type X): KOF's panel and pad layout (its INPUT TEST: A B C D on
   SHOT1, SHOT4, SHOT2, SHOT5). It draws with the fixed-function pipeline
   (generated shaders, `gfx/ffp.c`) and palettized L8 textures; its stages use
   pre-transformed vertices with its own vertex shader bound, which D3D9
-  bypasses. Not yet tested on Android. Fixed-function lighting, fog, vertex
+  bypasses. Its sound runs on one-shot timers re-armed every 16 ms (each timer
+  slot keeps one reusable thread). Fixed-function lighting, fog, vertex
   blending and texture-coordinate generation are not implemented (no game
   needs them yet).
 * Structured exceptions (`RaiseException` / C++ `throw`) are not dispatched.
