@@ -202,7 +202,8 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
   line).
 * The user's stick is 8-button with L1 / L2 leading each row; 6-button games
   (SSF4) use `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456`;
-  BlazBlue `X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234`.
+  BlazBlue `X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234`;
+  KOF (A C over B D) `X2_PAD=l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc`.
 
 ## Style and lint
 
