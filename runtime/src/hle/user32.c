@@ -1,6 +1,7 @@
 /* user32: one top-level window, a message queue, and window-proc calls.
  * The real window belongs to the platform layer; the guest only sees an
  * HWND and the messages we choose to deliver. */
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -23,6 +24,7 @@
 static u32 class_wndproc, wnd_proc;
 static u32 window_long[32];
 static bool window_created;
+static u32 window_w = 640, window_h = 480; /* client size, from CreateWindowExA */
 static u32 window_thread; /* creator of the window: receives its messages */
 
 typedef struct {
@@ -61,6 +63,8 @@ static void CreateWindowExA(X2Cpu *c) {
     x2_log("CreateWindowExA(\"%s\", style %08x, %d,%d %ux%u)", ARG(2) ? GSTR(ARG(2)) : "", ARG(3), (s32)x, (s32)y, w, h);
     wnd_proc = class_wndproc;
     window_created = true;
+    if (w && w < 0x8000) window_w = w;
+    if (h && h < 0x8000) window_h = h;
     window_thread = x2_self->id;
     /* CREATESTRUCTA on the guest stack area of a heap block */
     u32 cs = x2_galloc(48);
@@ -391,6 +395,42 @@ static void DialogBoxParamA(X2Cpu *c) {
     RET(1); /* IDOK */
 }
 static void EndDialog(X2Cpu *c) { RET(1); }
+static void RegisterClassA(X2Cpu *c) { /* WNDCLASSA: style, lpfnWndProc, ... */
+    class_wndproc = RD32(ARG(0) + 4);
+    x2_log("RegisterClassA wndproc %08x", class_wndproc);
+    RET(0xC003);
+}
+static void IsIconic(X2Cpu *c) { RET(0); }
+static void GetMenu(X2Cpu *c) { RET(0); }
+static void GetDesktopWindow(X2Cpu *c) { RET(0x00010010u); }
+static void put_rect(u32 r, u32 w, u32 h) {
+    WR32(r, 0);
+    WR32(r + 4, 0);
+    WR32(r + 8, w);
+    WR32(r + 12, h);
+}
+static void GetClientRect(X2Cpu *c) {
+    put_rect(ARG(1), window_w, window_h);
+    RET(1);
+}
+static void GetWindowRect(X2Cpu *c) { /* a borderless window at the origin */
+    put_rect(ARG(1), window_w, window_h);
+    RET(1);
+}
+static void ClientToScreen(X2Cpu *c) { RET(1); } /* the client area starts at the screen origin */
+static void GetSystemMetrics(X2Cpu *c) {         /* SM_CXSCREEN / SM_CYSCREEN: the game window fills it */
+    RET(ARG(0) == 0 ? window_w : ARG(0) == 1 ? window_h : 0);
+}
+static void FillRect(X2Cpu *c) { RET(1); } /* GDI painting of a window D3D covers */
+static void CharUpperA(X2Cpu *c) {         /* a character in the low word, or a string converted in place */
+    u32 a = ARG(0);
+    if (a < 0x10000) {
+        RET((u32)toupper((int)(a & 0xFF)));
+        return;
+    }
+    for (u32 p = a; RD8(p); p++) WR8(p, (u8)toupper(RD8(p)));
+    RET(a);
+}
 
 const X2Hle x2_hle_user32[] = {
     {"RegisterClassExA", RegisterClassExA, 1},
@@ -451,6 +491,16 @@ const X2Hle x2_hle_user32[] = {
     {"EndPaint", EndPaint, 2},
     {"DialogBoxParamA", DialogBoxParamA, 5},
     {"EndDialog", EndDialog, 2},
+    {"RegisterClassA", RegisterClassA, 1},
+    {"IsIconic", IsIconic, 1},
+    {"GetMenu", GetMenu, 1},
+    {"GetDesktopWindow", GetDesktopWindow, 0},
+    {"GetClientRect", GetClientRect, 2},
+    {"GetWindowRect", GetWindowRect, 2},
+    {"ClientToScreen", ClientToScreen, 2},
+    {"GetSystemMetrics", GetSystemMetrics, 1},
+    {"FillRect", FillRect, 3},
+    {"CharUpperA", CharUpperA, 1},
     {"GetMessageA", GetMessageW, 4},
     {NULL, NULL, 0},
 };

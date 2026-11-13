@@ -480,10 +480,10 @@ static void GetExitCodeThread(X2Cpu *c) {
     WR32(ARG(1), t->finished ? t->exit_code : 0x103 /* STILL_ACTIVE */);
     RET(1);
 }
-static void ExitThread(X2Cpu *c) {
+void x2_exit_thread(u32 code) {
     X2Thread *t = x2_self;
     pthread_mutex_lock(&t->lock);
-    t->exit_code = ARG(0);
+    t->exit_code = code;
     t->finished = true;
     pthread_cond_broadcast(&t->cond);
     pthread_mutex_unlock(&t->lock);
@@ -492,6 +492,7 @@ static void ExitThread(X2Cpu *c) {
     x2_vm_free(t->teb);
     pthread_exit(NULL);
 }
+static void ExitThread(X2Cpu *c) { x2_exit_thread(ARG(0)); }
 
 /* ---- interlocked --------------------------------------------------------- */
 static void InterlockedIncrement(X2Cpu *c) { RET(__atomic_add_fetch((u32 *)X2P(ARG(0)), 1, __ATOMIC_SEQ_CST)); }

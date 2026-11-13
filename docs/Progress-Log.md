@@ -2,6 +2,15 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: KOF Maximum Impact Regulation A started
+
+- **C runtime as a DLL:** `MSVCR80.dll`'s 93 imports implemented
+  (`hle/msvcrt.c`). The loader binds data imports such as `_acmdln`.
+- **Other Windows pieces:** `mmio*` file I/O for its WAVs (`hle/mmio.c`),
+  window / GDI / `lstr*` stubs, `D3DXCreateTextureFromFileA`.
+- **Status:** the game starts its threads, opens JVS and creates its window,
+  then needs Direct3D 8, its renderer. That layer is next.
+
 ## 2026-11-13: KOF '98 Ultimate Match, the first Type X game
 
 - **Running on macOS:** attract mode, team select and fights with full

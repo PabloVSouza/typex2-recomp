@@ -1469,3 +1469,14 @@ const X2Hle x2_hle_d3d9[] = {
     {"Direct3DCreate9", Direct3DCreate9, 1},
     {NULL, NULL, 0},
 };
+
+/* Direct3D 8: KOF MI Regulation A's movie middleware probes for it; the game
+ * itself renders with Direct3D 9. "Not available" sends the probe its way. */
+static void Direct3DCreate8(X2Cpu *c) {
+    x2_log("d3d8: Direct3DCreate8(%u): not available", ARG(0));
+    RET(0);
+}
+const X2Hle x2_hle_d3d8[] = {
+    {"Direct3DCreate8", Direct3DCreate8, 1},
+    {NULL, NULL, 0},
+};

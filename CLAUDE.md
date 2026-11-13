@@ -22,8 +22,9 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); 0.3-0.5 s load pauses at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
 
-Planned next: KOF
-Maximum Impact Regulation A (Type X2: needs MSVCR80.dll, Direct3D 8).
+In progress: KOF
+Maximum Impact Regulation A (`kofmira`, Type X2): its C runtime DLL (`hle/msvcrt.c`)
+and `mmio` are done; it renders with Direct3D 8, which needs a D3D8 layer.
 
 Documentation lives in `docs/` (also published as the GitHub wiki by
 `tools/wiki_sync.sh`): `docs/Game-Status.md` tracks every Type X / X2 game,

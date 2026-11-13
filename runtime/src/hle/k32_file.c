@@ -380,6 +380,13 @@ static void MoveFileA(X2Cpu *c) {
     x2_host_path(GSTR(ARG(1)), b, sizeof b);
     RET(rename(a, b) == 0);
 }
+static void
+MoveFileExA(X2Cpu *c) { /* (from, to, flags): rename replaces an existing file, as MOVEFILE_REPLACE_EXISTING */
+    char a[1024], b[1024];
+    x2_host_path(GSTR(ARG(0)), a, sizeof a);
+    x2_host_path(GSTR(ARG(1)), b, sizeof b);
+    RET(rename(a, b) == 0);
+}
 static void CreateDirectoryA(X2Cpu *c) {
     char hp[1024];
     x2_host_path(GSTR(ARG(0)), hp, sizeof hp);
@@ -638,6 +645,7 @@ const X2Hle x2_hle_k32_file[] = {
     {"DuplicateHandle", DuplicateHandle, 7},
     {"DeleteFileA", DeleteFileA, 1},
     {"MoveFileA", MoveFileA, 2},
+    {"MoveFileExA", MoveFileExA, 3},
     {"CreateDirectoryA", CreateDirectoryA, 2},
     {"GetFileAttributesA", GetFileAttributesA, 1},
     {"GetDriveTypeA", GetDriveTypeA, 1},

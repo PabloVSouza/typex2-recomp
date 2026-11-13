@@ -12,7 +12,7 @@
 - [BlazBlue CS](Game-BlazBlue-CS.md)
 - [BlazBlue CT](Game-BlazBlue-CT.md)
 - [KOF '98 UM](Game-KOF-98-UM.md)
-- [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md) *(planned)*
+- [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md) *(in progress)*
 
 **Guides**
 - [Hardware](Hardware.md)

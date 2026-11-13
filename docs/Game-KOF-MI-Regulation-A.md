@@ -3,31 +3,46 @@
 | | |
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |
-| `games/` id | none yet |
-| Status | **Planned** |
+| `games/` id | `kofmira` |
+| Status | **In progress**: starts up to renderer creation, then needs Direct3D 8 |
 | Executable | `game.exe` (PE32, 28 MB image; data in `diskimg/`) |
 
-## What we know
+## Done
 
-Imports:
+- **Recompiled:** 20,464 functions, 96% of the code.
+- **C runtime as a DLL.** The game links `MSVCR80.dll` instead of carrying
+  its C runtime inside the executable. `hle/msvcrt.c` implements the 93
+  functions it imports:
+  - memory and strings;
+  - maths, including the x87-register `_CI*` helpers;
+  - `stdio` files;
+  - `printf` / `sscanf` over guest arguments;
+  - `qsort` with the guest's comparator;
+  - threads and CRT start-up.
+  `_acmdln` and `_adjust_fdiv` are variables, which the loader now binds as
+  data imports.
+- **Multimedia file I/O:** `mmio*` (`hle/mmio.c`) reads its WAV files the way
+  the DirectX SDK's `CWaveFile` does, including the buffered
+  `mmioGetInfo` / `mmioAdvance` access.
+- **Windows bits:** window and GDI stubs (debug text on the window DC),
+  `lstr*`, `MoveFileExA`, `GetSystemMetrics`, `joyGetNumDevs`,
+  `D3DXCreateTextureFromFileA`.
+- **Start-up:** the game opens its JVS port, starts its threads and creates
+  its window.
 
-| DLL | Status |
-|---|---|
-| `d3d9.dll`, `d3dx9_29.dll` | supported (new D3DX alias) |
-| `d3d8.dll` | new: Direct3D 8 |
-| `DDRAW.dll` | partly there |
-| `DINPUT8.dll` | partly there |
-| `DSOUND.dll`, `WINMM.dll`, `ole32.dll` | supported |
-| `MSVCR80.dll` | new |
+## Next: Direct3D 8
 
-The MSVC 8 C runtime is a DLL here, not linked into the executable as in
-the other games. Two options:
-- implement its exports as HLE functions;
-- recompile the DLL alongside the game.
+The game renders with Direct3D 8 (`Direct3DCreate8(220)`). Its Direct3D 9
+init exists but is never called. The plan is a D3D8 layer over the existing
+D3D9 implementation:
+- the IDirect3D8 / IDirect3DDevice8 vtables;
+- vertex shaders with D3D8 declaration tokens;
+- sampler states that live among the texture stage states;
+- `SetStreamSource` without an offset, and `SetIndices` with a base vertex;
+- `CopyRects`;
+- ps_1_x pixel shaders, which the translator already handles.
 
-The folder also ships `d3dx9_24.dll`, which may be loaded at run time.
+## Not supported in the C runtime
 
-## Plan
-
-Find out what it uses `d3d8.dll` for: possibly just a capability probe.
-After that, the biggest piece of work is the CRT DLL.
+- `longjmp` (it stops with a named error).
+- C++ / SEH exception dispatch.

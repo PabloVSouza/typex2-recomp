@@ -18,6 +18,7 @@ game that belongs here? Please open an issue.
 | **Playable** | Attract mode, coin / start, character select and full matches at 60 fps, with no known blocker. |
 | **Playable, issues** | Plays start to finish, with problems listed on the game's page (slowdown, missing feature). |
 | **Boots** | Reaches attract mode or a menu, but gameplay is incomplete or broken. |
+| **In progress** | Being ported: starts up, but does not reach attract mode yet. |
 | **Planned** | Chosen as a next port; its requirements are researched on its page. |
 | Not started | Not developed yet. |
 
@@ -46,11 +47,11 @@ Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
 for KOF '98 UM).
 
-## Planned
+## In progress
 
 | Game | Board | Year | What it needs | Page |
 |---|---|---|---|---|
-| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | A 3D game. It also imports `MSVCR80.dll` (the C runtime as a DLL: either implement it or recompile the DLL), Direct3D 8, DirectDraw and DirectInput 8. | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
+| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | The C runtime DLL (`MSVCR80.dll`), `mmio` and the Windows calls are done; it starts up and stops at renderer creation. It renders with Direct3D 8, which needs a D3D8 layer over the D3D9 implementation. | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
 
 ## Type X2 library
 
@@ -68,7 +69,7 @@ for KOF '98 UM).
 | Gouketsuji Ichizoku: Senzo Kuyou | 2009 | Not started |
 | Haunted Museum | 2009 | Not started |
 | Haunted Museum II | 2010 | Not started |
-| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Planned** |
+| **The King of Fighters: Maximum Impact Regulation A** | 2007 | **In progress** |
 | **The King of Fighters XII** | 2009 | **Playable** |
 | **The King of Fighters XIII** | 2010 | **Playable** |
 | **The King of Fighters XIII Climax** | 2012 | **Playable** |

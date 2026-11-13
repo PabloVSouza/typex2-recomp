@@ -55,6 +55,8 @@ add_library(x2rt_common OBJECT
   src/hle/user32.c
   src/hle/d3d9.c
   src/hle/dsound.c
+  src/hle/msvcrt.c
+  src/hle/mmio.c
   src/hle/d3dx9.c
   src/hle/d3dx_effect.c
   src/gfx/fx.c
@@ -189,6 +191,8 @@ function(x2_add_game target gen_dir)
     set(label "BlazBlue Calamity Trigger")
   elseif(game STREQUAL "kof98um")
     set(label "The King of Fighters '98 Ultimate Match")
+  elseif(game STREQUAL "kofmira")
+    set(label "The King of Fighters Maximum Impact Regulation A")
   endif()
   set_property(GLOBAL APPEND PROPERTY X2_GAMES_BUILT ${game})
   set_property(GLOBAL PROPERTY X2_GAME_LABEL_${game} "${label}")

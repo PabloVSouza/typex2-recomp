@@ -671,6 +671,17 @@ static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
     RET(create_from_memory(ARG(0), data, got, ARG(2), ARG(3), ARG(4), ARG(5), ARG(6), ARG(7), ARG(10), ARG(11), ARG(13)));
     free(data);
 }
+/* (pDevice, pSrcFile, ppTexture): the Ex form with every default */
+static void D3DXCreateTextureFromFileA(X2Cpu *c) {
+    u32 dev = ARG(0), file = ARG(1), out = ARG(2), save = c->esp;
+    const u32 args[14] = {
+        dev,         file,        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0,  0 /* D3DFMT_UNKNOWN */, 1 /* MANAGED */,
+        0xFFFFFFFFu, 0xFFFFFFFFu, 0,           0,           0,           out};
+    c->esp -= 4 * 16; /* a fresh argument frame wholly below the caller's return address */
+    for (u32 i = 0; i < 14; i++) WR32(c->esp + 4 + 4 * i, args[i]);
+    D3DXCreateTextureFromFileExA(c);
+    c->esp = save;
+}
 
 /* D3DXGetShaderVersion(function): the version token that starts the bytecode */
 static void D3DXGetShaderVersion(X2Cpu *c) { RET(ARG(0) ? RD32(ARG(0)) : 0); }
@@ -768,6 +779,7 @@ const X2Hle x2_hle_d3dx9[] = {
     {"D3DXCreateEffect", D3DXCreateEffect, 9},
     {"D3DXCreateTextureFromFileInMemoryEx", D3DXCreateTextureFromFileInMemoryEx, 15},
     {"D3DXCreateTextureFromFileExA", D3DXCreateTextureFromFileExA, 14},
+    {"D3DXCreateTextureFromFileA", D3DXCreateTextureFromFileA, 3},
     {"D3DXLoadSurfaceFromMemory", D3DXLoadSurfaceFromMemory, 10},
     {"D3DXCompileShader", D3DXCompileShader, 10},
     {"D3DXAssembleShader", D3DXAssembleShader, 7},

@@ -50,6 +50,9 @@ typedef struct {
     X2HostFn fn;
     int nargs;
 } X2Hle;
+/* nargs of a data export (a variable such as msvcr80's _acmdln): the loader calls
+ * fn once, which leaves the guest address of the variable in eax */
+#define X2_HLE_DATA 0x7FFF
 
 #define ARG(i) RD32(c->esp + 4 + 4 * (i))
 #define ARGF(i) RDF32(c->esp + 4 + 4 * (i))
@@ -162,7 +165,9 @@ typedef struct {
 extern const X2Hle x2_hle_kernel32[], x2_hle_k32_sync[], x2_hle_k32_file[], x2_hle_user32[], x2_hle_gdi32[],
     x2_hle_advapi32[], x2_hle_ole32[], x2_hle_winmm[], x2_hle_shlwapi[], x2_hle_d3d9[], x2_hle_d3dx9[],
     x2_hle_shell32[], x2_hle_imm32[], x2_hle_dsound[], x2_hle_oleaut32[], x2_hle_ws2_32[], x2_hle_iphlpapi[],
-    x2_hle_dinput8[], x2_hle_ddraw[];
+    x2_hle_dinput8[], x2_hle_ddraw[], x2_hle_msvcrt[], x2_hle_mmio[], x2_hle_d3d8[];
+/* ExitThread for the calling guest thread (also the CRT's _endthreadex) */
+void x2_exit_thread(u32 code) __attribute__((noreturn));
 const X2Hle *x2_hle_find(const char *dll, const char *name);
 
 /* ---- diagnostics ------------------------------------------------------ */

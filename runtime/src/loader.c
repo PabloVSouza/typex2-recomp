@@ -89,6 +89,13 @@ void x2_resolve_imports(void) {
         const X2Hle *h = x2_hle_find(e->dll, e->name);
         char full[256];
         snprintf(full, sizeof full, "%s!%s", e->dll, e->name);
+        if (h && h->nargs == X2_HLE_DATA) { /* a variable: the slot holds its address */
+            X2Cpu tmp;
+            memset(&tmp, 0, sizeof tmp);
+            h->fn(&tmp);
+            WR32(e->slot, tmp.eax);
+            continue;
+        }
         u32 t = x2_thunk_new(strdup(full), h ? h->fn : NULL, h ? h->nargs : 0);
         WR32(e->slot, t);
         if (!h) {
@@ -108,6 +115,8 @@ static const X2HleModule hle_modules[] = {
     {"d3dx9_31.dll", x2_hle_d3dx9},    {"dsound.dll", x2_hle_dsound},     {"oleaut32.dll", x2_hle_oleaut32},
     {"ws2_32.dll", x2_hle_ws2_32},     {"iphlpapi.dll", x2_hle_iphlpapi}, {"dinput8.dll", x2_hle_dinput8},
     {"ddraw.dll", x2_hle_ddraw},       {"d3dx9_36.dll", x2_hle_d3dx9},    {"d3dx9d_36.dll", x2_hle_d3dx9},
+    {"msvcr80.dll", x2_hle_msvcrt},    {"d3dx9_29.dll", x2_hle_d3dx9},    {"winmm.dll", x2_hle_mmio},
+    {"d3d8.dll", x2_hle_d3d8},
 };
 
 const X2Hle *x2_hle_find(const char *dll, const char *name) {

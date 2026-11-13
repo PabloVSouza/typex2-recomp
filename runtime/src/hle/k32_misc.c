@@ -22,6 +22,7 @@ static const FakeModule fake_modules[] = {
     {"shlwapi.dll", 0x77F60000u},  {"d3d9.dll", 0x4FDD0000u},     {"d3dx9_35.dll", 0x4A000000u},
     {"d3dx9_37.dll", 0x4A100000u}, {"shell32.dll", 0x7C9C0000u},  {"imm32.dll", 0x76390000u},
     {"d3dx9_31.dll", 0x4A200000u}, {"d3dx9_36.dll", 0x4A300000u}, {"d3dx9d_36.dll", 0x4A400000u},
+    {"msvcr80.dll", 0x78130000u},  {"d3dx9_29.dll", 0x4A500000u},
 };
 
 static const char *base_name(const char *p) {
@@ -262,6 +263,31 @@ static void IsBadWritePtr(X2Cpu *c) { RET(ARG(0) < X2_VM_LOW); }
 
 static void HeapCreate(X2Cpu *c) { RET(x2_heap_create()); }
 static void HeapCompact(X2Cpu *c) { RET(1u << 20); } /* largest free block: plenty */
+static void lstrlenA(X2Cpu *c) { RET(ARG(0) ? strlen(GSTR(ARG(0))) : 0); }
+static void lstrcpynA(X2Cpu *c) { /* (dst, src, n): at most n - 1 characters, always terminated */
+    if (!ARG(2)) {
+        RET(ARG(0));
+        return;
+    }
+    u32 i = 0;
+    for (; i + 1 < ARG(2) && RD8(ARG(1) + i); i++) WR8(ARG(0) + i, RD8(ARG(1) + i));
+    WR8(ARG(0) + i, 0);
+    RET(ARG(0));
+}
+static void lstrcatA(X2Cpu *c) {
+    char *d = GSTR(ARG(0));
+    memmove(d + strlen(d), GSTR(ARG(1)), strlen(GSTR(ARG(1))) + 1);
+    RET(ARG(0));
+}
+static void lstrcmpiA(X2Cpu *c) { RET((u32)strcasecmp(GSTR(ARG(0)), GSTR(ARG(1)))); }
+static void GetLogicalDrives(X2Cpu *c) { RET(0xC); } /* C: and D: */
+static void GetProcessAffinityMask(X2Cpu *c) {
+    if (ARG(1)) WR32(ARG(1), 1);
+    if (ARG(2)) WR32(ARG(2), 1);
+    RET(1);
+}
+static void FindResourceA(X2Cpu *c) { RET(0); } /* no resources: callers fall back */
+static void joyGetNumDevs(X2Cpu *c) { RET(0); } /* inputs come from the JVS board */
 static void lstrcpyA(X2Cpu *c) {
     u32 d = ARG(0), s = ARG(1);
     for (u32 i = 0;; i++) {
@@ -797,6 +823,13 @@ const X2Hle x2_hle_kernel32[] = {
     {"HeapCreate", HeapCreate, 3},
     {"HeapCompact", HeapCompact, 2},
     {"lstrcpyA", lstrcpyA, 2},
+    {"lstrlenA", lstrlenA, 1},
+    {"lstrcpynA", lstrcpynA, 3},
+    {"lstrcatA", lstrcatA, 2},
+    {"lstrcmpiA", lstrcmpiA, 2},
+    {"GetLogicalDrives", GetLogicalDrives, 0},
+    {"GetProcessAffinityMask", GetProcessAffinityMask, 3},
+    {"FindResourceA", FindResourceA, 3},
     {"HeapDestroy", HeapDestroy, 1},
     {"GetProcessHeap", GetProcessHeap, 0},
     {"HeapAlloc", HeapAlloc, 3},
@@ -933,13 +966,10 @@ static void timeEndPeriod(X2Cpu *c) { RET(0); }
 static void PlaySoundW(X2Cpu *c) { RET(1); } /* system sounds: silent */
 
 const X2Hle x2_hle_winmm[] = {
-    {"timeGetTime", timeGetTime, 0},
-    {"timeSetEvent", timeSetEvent, 5},
-    {"timeKillEvent", timeKillEvent, 1},
-    {"timeBeginPeriod", timeBeginPeriod, 1},
-    {"timeEndPeriod", timeEndPeriod, 1},
-    {"PlaySoundW", PlaySoundW, 3},
-    {NULL, NULL, 0},
+    {"timeGetTime", timeGetTime, 0},         {"joyGetNumDevs", joyGetNumDevs, 0},
+    {"timeSetEvent", timeSetEvent, 5},       {"timeKillEvent", timeKillEvent, 1},
+    {"timeBeginPeriod", timeBeginPeriod, 1}, {"timeEndPeriod", timeEndPeriod, 1},
+    {"PlaySoundW", PlaySoundW, 3},           {NULL, NULL, 0},
 };
 
 /* ---- shell32 --------------------------------------------------------------------- */

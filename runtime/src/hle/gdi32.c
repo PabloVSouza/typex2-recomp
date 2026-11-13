@@ -270,6 +270,11 @@ static void GetGlyphOutlineW(X2Cpu *c) {
 }
 
 /* the screen is a 1920x1080, 32-bit, 96 dpi, 60 Hz display */
+/* window-DC text (a debug overlay the D3D picture covers): accepted, not drawn */
+static void SetBkColor(X2Cpu *c) { RET(0x00FFFFFFu); }
+static void SetTextColor(X2Cpu *c) { RET(0); }
+static void TextOutA(X2Cpu *c) { RET(1); }
+static void CreateFontA(X2Cpu *c) { RET(0x00040040u); }
 static void GetDeviceCaps(X2Cpu *c) {
     switch (ARG(1)) {
         case 8: RET(1920); break;   /* HORZRES */
@@ -287,6 +292,10 @@ static void GetStockObject(X2Cpu *c) { RET(0x00040000u + ARG(0)); }
 
 const X2Hle x2_hle_gdi32[] = {
     {"GetDeviceCaps", GetDeviceCaps, 2},
+    {"SetBkColor", SetBkColor, 2},
+    {"SetTextColor", SetTextColor, 2},
+    {"TextOutA", TextOutA, 5},
+    {"CreateFontA", CreateFontA, 14},
     {"GetStockObject", GetStockObject, 1},
     {"EnumFontFamiliesExW", EnumFontFamiliesExW, 5},
     {"CreateFontW", CreateFontW, 14},
