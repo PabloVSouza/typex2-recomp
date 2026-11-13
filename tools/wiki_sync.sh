@@ -18,7 +18,7 @@ if ! git clone -q "$wiki" "$tmp/wiki" 2>/dev/null; then
     exit 1
 fi
 find "$tmp/wiki" -maxdepth 1 -name '*.md' -delete
-for f in "$root"/docs/*.md; do
+for f in "$root"/docs/*.md; do  # includes _Sidebar.md (wiki navigation)
     sed -e 's|](\.\./\([^)]*\))|]('"$blob"'/\1)|g' \
         -e 's|](\([A-Za-z0-9-]*\)\.md\(#[^)]*\)\{0,1\})|](\1\2)|g' "$f" > "$tmp/wiki/$(basename "$f")"
 done
