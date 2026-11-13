@@ -21,6 +21,10 @@ bool shadertest_metal_compile(const char *src, bool atest, char *err, size_t err
             snprintf(err, errlen, "%s", e.localizedDescription.UTF8String);
             return false;
         }
+        if (e) { /* warnings: an ignored attribute once hid wrong texture bindings */
+            snprintf(err, errlen, "warning: %s", e.localizedDescription.UTF8String);
+            return false;
+        }
         if (![lib newFunctionWithName:@"x2_main"]) {
             snprintf(err, errlen, "no x2_main");
             return false;

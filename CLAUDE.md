@@ -58,7 +58,8 @@ gets an entry per milestone. Update them with the README.
   in `games/<id>/gen/` (+ `report.txt` with unsupported instructions).
 * `runtime/src/`: `loader.c` (PE + import binding; `hle_modules[]` maps DLL
   names to HLE tables), `thread.c`, `hle/*.c` (one file per DLL family),
-  `gfx/` (`gfx_gl*.c` renderer, `sm3_glsl.c` bytecode → GLSL, `hlsl_glsl.c`
+  `gfx/` (`gfx_record.c` recording shared by the backends, `gfx_gl*.c` GL and
+  `gfx_metal.m` Metal backends, `sm3_glsl.c` bytecode → GLSL / MSL, `hlsl_glsl.c`
   HLSL → GLSL, `d3dasm.c` shader assembly, `ffp.c` fixed-function pipeline as
   generated shaders), `jvs.c` + `padmap.c` (inputs),
   `platform_sdl.c` / `platform_libretro.c` (front ends), `prof.c` (profiler).
@@ -137,6 +138,12 @@ gets an entry per milestone. Update them with the README.
   attract-mode frames with movies or timed fades are not deterministic.
 * Never pipe `x2recomp` into `head`: SIGPIPE kills it halfway and leaves a
   `gen/` whose `funcs.h` and `table.c` disagree (undeclared `f_xxxxxxxx`).
+* A renderer backend against GL: the same regression frames with both
+  (`X2_RENDERER=metal`), compared pixel by pixel. When one pass goes wrong,
+  `X2_DUMPTEX=<id>@<frame>` its inputs and output on both, then reproduce the
+  shader in a small offline harness. Metal compiler warnings are errors in
+  `shadertest`: a macro once rewrote `[[texture(n)]]` attributes into ignored
+  ones, which silently renumbered texture slots.
 * Shader translator changes: dump every shader of every game once
   (`X2_SHADER_DUMP=<dir>` while running them), then `build/tools/shadertest`
   translates the whole set offline: GLSL output must stay byte-identical

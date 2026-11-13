@@ -2,6 +2,21 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: Metal backend
+
+- **Shaders in Metal Shading Language:** both D3D shader translators also
+  write MSL. All 705 shaders the eight games create in the regression runs
+  compile with the Metal compiler, warnings included; the GLSL output is
+  byte-identical to before.
+- **Renderer split:** recording (`gfx_record.c`) is separate from the GL
+  replay, so other backends replay the same frames.
+- **`gfx_metal.m`** (`X2_RENDERER=metal`, macOS standalone): every
+  deterministic regression frame of the eight games is pixel-identical to GL.
+  The frames that differ are movies and animations caught at different
+  moments.
+- **Next:** Metal by default on macOS after more play-testing, then the
+  Vulkan backend for Android, Windows and Linux.
+
 ## 2026-11-13: The launcher
 
 - **Desktop app** (`launcher/`, Tauri):

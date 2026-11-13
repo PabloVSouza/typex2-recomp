@@ -290,8 +290,8 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
         Param *q = &prm[i];
         if (!pixel && !q->out) {
             if (msl) {
-                sf(&ins, "  float4 vs_v%d [[attribute(%d)]];\n", loc, loc);
-                sf(&defs, "#define vs_v%d in_.vs_v%d\n", loc, loc);
+                sf(&ins, "  X2_VT%d vs_v%d [[attribute(%d)]];\n", loc, loc, loc);
+                sf(&defs, "#define vs_v%d float4(in_.vs_v%d)\n", loc, loc);
             } else
                 sf(&hdr, "layout(location=%d) in vec4 vs_v%d;\n", loc, loc);
             info->vs_in_mask |= 1u << loc;
@@ -318,16 +318,16 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
            "};\n%s#define oC0 out_.oC0\n",
            ins.s, defs.s);
         sf(&body,
-           "fragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) {\n"
-           "  X2PsOut out_ = {};\n",
+           "#undef texture\nfragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) "
+           "{\n" SH_MSL_TEXTURE_DEF "  X2PsOut out_ = {};\n",
            params.s);
     } else if (msl) {
         if (!loc) sf(&ins, "  float4 x2_unused [[attribute(15)]];\n");
         sf(&hdr, "struct X2VsIn {\n%s};\nstruct X2VsOut {\n  float4 x2_pos [[position]];\n%s};\n%s", ins.s, outs.s,
            defs.s);
         sf(&body,
-           "vertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) {\n"
-           "  X2VsOut out_ = {};\n",
+           "#undef texture\nvertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) "
+           "{\n" SH_MSL_TEXTURE_DEF "  X2VsOut out_ = {};\n",
            params.s);
     } else {
         if (pixel)

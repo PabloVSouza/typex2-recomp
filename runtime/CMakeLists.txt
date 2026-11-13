@@ -131,6 +131,13 @@ if(X2_STANDALONE)
   add_library(x2rt STATIC src/platform_sdl.c)
   target_compile_options(x2rt PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(x2rt PUBLIC x2rt_common SDL3::SDL3)
+  if(APPLE)
+    # the Metal backend (X2_RENDERER=metal)
+    enable_language(OBJC)
+    target_sources(x2rt PRIVATE src/gfx/gfx_metal.m)
+    target_compile_definitions(x2rt PRIVATE X2_METAL)
+    target_link_libraries(x2rt PUBLIC "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+  endif()
   if(NOT ANDROID)
     # x2-player: the launcher's host. Games are compiled on the player's machine
     # into a library (launcher/src-tauri/src/recomp.rs) that it loads at start;

@@ -567,10 +567,26 @@ const char *const sh_msl_prelude =
     "#define inversesqrt rsqrt\n"
     "#define dFdx dfdx\n"
     "#define dFdy dfdy\n"
-    "#define discard discard_fragment()\n"
-    "#define texture(s, ...) x2_tex(s##_t, s##_s, __VA_ARGS__)\n"
+    "#define discard discard_fragment()\n" SH_MSL_TEXTURE_DEF
     "#define textureLod(s, ...) x2_texl(s##_t, s##_s, __VA_ARGS__)\n"
     "#define textureGrad(s, ...) x2_texg(s##_t, s##_s, __VA_ARGS__)\n"
+    /* vertex input types: float4 unless the backend's vertex layout needs an integer type */
+    "#ifndef X2_VT0\n#define X2_VT0 float4\n#endif\n"
+    "#ifndef X2_VT1\n#define X2_VT1 float4\n#endif\n"
+    "#ifndef X2_VT2\n#define X2_VT2 float4\n#endif\n"
+    "#ifndef X2_VT3\n#define X2_VT3 float4\n#endif\n"
+    "#ifndef X2_VT4\n#define X2_VT4 float4\n#endif\n"
+    "#ifndef X2_VT5\n#define X2_VT5 float4\n#endif\n"
+    "#ifndef X2_VT6\n#define X2_VT6 float4\n#endif\n"
+    "#ifndef X2_VT7\n#define X2_VT7 float4\n#endif\n"
+    "#ifndef X2_VT8\n#define X2_VT8 float4\n#endif\n"
+    "#ifndef X2_VT9\n#define X2_VT9 float4\n#endif\n"
+    "#ifndef X2_VT10\n#define X2_VT10 float4\n#endif\n"
+    "#ifndef X2_VT11\n#define X2_VT11 float4\n#endif\n"
+    "#ifndef X2_VT12\n#define X2_VT12 float4\n#endif\n"
+    "#ifndef X2_VT13\n#define X2_VT13 float4\n#endif\n"
+    "#ifndef X2_VT14\n#define X2_VT14 float4\n#endif\n"
+    "#ifndef X2_VT15\n#define X2_VT15 float4\n#endif\n"
     "#define X2_HP\n";
 
 static const char *msl_tex_type(int samp_type) {
@@ -626,7 +642,10 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
         for (int i = 0; i < 4; i++)
             if (c->color_out_used[i] || i == 0) sf(s, "#define oC%d out_.oC%d\n", i, i);
         sf(s, "#define gl_FragCoord in_.x2_pos\n#define gl_FrontFacing in_.x2_ff\n");
-        sf(s, "fragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) {\n", params);
+        sf(s,
+           "#undef texture\nfragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) "
+           "{\n" SH_MSL_TEXTURE_DEF,
+           params);
         sf(s, "  X2PsOut out_ = {};\n");
     } else {
         sf(s, "struct X2VsU { float4 c[256]; int4 i[16]; int b[16]; float4 vp_fix; int bgra_mask; };\n"
@@ -636,7 +655,7 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
         bool any_in = false;
         for (int i = 0; i < 16; i++) {
             if (!c->input_used[i] && c->in_usage[i] < 0) continue;
-            sf(s, "  float4 vs_v%d [[attribute(%d)]];\n", i, i);
+            sf(s, "  X2_VT%d vs_v%d [[attribute(%d)]];\n", i, i, i);
             info->vs_in_usage[i] = c->in_usage[i] < 0 ? 0 : c->in_usage[i];
             info->vs_in_index[i] = c->in_index[i] < 0 ? 0 : c->in_index[i];
             info->vs_in_mask |= 1u << i;
@@ -677,7 +696,10 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
             for (int i = 0; i < 8; i++) sf(s, "#define x_5_%d out_.x_5_%d\n", i, i);
             for (int i = 0; i < 2; i++) sf(s, "#define x_10_%d out_.x_10_%d\n", i, i);
         }
-        sf(s, "vertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) {\n", params);
+        sf(s,
+           "#undef texture\nvertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) "
+           "{\n" SH_MSL_TEXTURE_DEF,
+           params);
         sf(s, "  X2VsOut out_ = {};\n");
     }
     for (int i = 0; i < 32; i++)
@@ -688,7 +710,9 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
     if (!c->pixel) {
         for (int i = 0; i < 16; i++)
             if (info->vs_in_mask & (1u << i))
-                sf(s, "  vec4 vs_v%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? in_.vs_v%d.zyxw : in_.vs_v%d;\n", i, i, i, i);
+                sf(s,
+                   "  vec4 vs_v%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? float4(in_.vs_v%d).zyxw : float4(in_.vs_v%d);\n",
+                   i, i, i, i);
         for (int i = 0; i < 16; i++)
             if (info->vs_in_mask & (1u << i)) sf(s, "  #define vs_v%d vs_v%d_\n", i, i);
         sf(s, "  vec4 o_pos = vec4(0.0,0.0,0.0,1.0); vec4 o_fog = vec4(0.0); vec4 o_pts = vec4(1.0);\n");

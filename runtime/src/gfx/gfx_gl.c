@@ -40,7 +40,6 @@ typedef struct {
 static Tex *texs[MAX_IDS];
 static Buf *bufs[MAX_IDS];
 static GLuint backbuffer_fbo, backbuffer_tex;
-static GfxId backbuffer_id;
 
 static void gl_format(u32 f, GLint *ifmt, GLenum *fmt, GLenum *type, bool *swizzle_bgra) {
     *swizzle_bgra = false;
@@ -430,8 +429,8 @@ u32 gfx_gl_target_scale(const GfxState *st) {
 /* StretchRect between render targets / the backbuffer (rects in the game's pixels) */
 static void do_blit(const Blit *k) {
     Tex *s = k->src < MAX_IDS ? texs[k->src] : NULL, *d = k->dst < MAX_IDS ? texs[k->dst] : NULL;
-    GLuint sf = s && s->fbo ? s->fbo : (k->src == backbuffer_id ? backbuffer_fbo : 0);
-    GLuint df = d && d->fbo ? d->fbo : (k->dst == backbuffer_id ? backbuffer_fbo : 0);
+    GLuint sf = s && s->fbo ? s->fbo : (k->src == gfx_backbuffer ? backbuffer_fbo : 0);
+    GLuint df = d && d->fbo ? d->fbo : (k->dst == gfx_backbuffer ? backbuffer_fbo : 0);
     if (!sf || !df) {
         static int warned;
         if (!warned++) x2_log("gfx: StretchRect from/to a texture that is not a render target: not supported");
@@ -548,9 +547,7 @@ const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size) {
     *size = b->size;
     return b->shadow;
 }
-bool gfx_gl_is_backbuffer(GfxId id) { return id == backbuffer_id || !texs[id] || !texs[id]->fbo; }
-
-void gfx_gl_set_backbuffer(GfxId id) { backbuffer_id = id; }
+bool gfx_gl_is_backbuffer(GfxId id) { return id == gfx_backbuffer || !texs[id] || !texs[id]->fbo; }
 
 static GfxId last_rt0;
 static u32 st_draws, st_clears, st_frames, st_uploads;
@@ -908,7 +905,7 @@ bool gfx_gl_run_frames(u32 timeout_ms, GLuint *out_tex, u32 *out_w, u32 *out_h) 
         dump_id = 0;
     }
     /* the game renders into its backbuffer surface (a texture with an FBO) */
-    Tex *bb = backbuffer_id < MAX_IDS ? texs[backbuffer_id] : NULL;
+    Tex *bb = gfx_backbuffer < MAX_IDS ? texs[gfx_backbuffer] : NULL;
     if (bb) {
         *out_tex = bb->tex;
         *out_w = bb->w;

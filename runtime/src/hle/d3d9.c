@@ -1314,7 +1314,7 @@ static void A_CreateDevice(X2Cpu *c) {
     next_surface_scale = scale;
     d->backbuffer = make_surface(d, D3DFMT_A8R8G8B8, bw, bh, 1, 0, 0, 0, 0);
     d->rt_obj[0] = d->backbuffer;
-    gfx_gl_set_backbuffer(surface_tex(d->backbuffer));
+    gfx_set_backbuffer(surface_tex(d->backbuffer));
     d->st.rt[0] = surface_tex(d->backbuffer);
     if (RD32(pp + 36)) {
         d->auto_ds = make_surface(d, RD32(pp + 40), bw, bh, 2, 0, 0, 0, 0);

@@ -27,4 +27,4 @@ void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *
                  uint32_t stride, const void *idx, uint32_t ibytes, uint32_t index_size) {}
 void gfx_present(void) { frames++; }
 uint64_t gfx_frame_count(void) { return frames; }
-void gfx_gl_set_backbuffer(GfxId id) { (void)id; }
+void gfx_set_backbuffer(GfxId id) { (void)id; }

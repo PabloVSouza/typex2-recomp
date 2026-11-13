@@ -87,7 +87,8 @@ void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *
 /* copy a rect (x0, y0, x1, y1 in the game's pixels) between render targets / the backbuffer */
 void gfx_blit(GfxId src, const uint32_t srect[4], GfxId dst, const uint32_t drect[4], bool linear);
 void gfx_present(void);
-void gfx_gl_set_backbuffer(GfxId id); /* texture that Present() shows */
+void gfx_set_backbuffer(GfxId id); /* texture that Present() shows */
+extern GfxId gfx_backbuffer;       /* read by the backends */
 uint64_t gfx_frame_count(void);
 void gfx_request_capture(void); /* log every draw of the next replayed frame */
 double gfx_guest_work_ms(void); /* mean guest ms per frame since the last call */

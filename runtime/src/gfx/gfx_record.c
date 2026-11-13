@@ -327,3 +327,6 @@ void gfx_frame_replayed(void) { __atomic_fetch_add(&frames_replayed, 1, __ATOMIC
 void gfx_replay_time(u64 ns) {
     if (ns > replay_max_ns) replay_max_ns = ns;
 }
+
+GfxId gfx_backbuffer;
+void gfx_set_backbuffer(GfxId id) { gfx_backbuffer = id; }

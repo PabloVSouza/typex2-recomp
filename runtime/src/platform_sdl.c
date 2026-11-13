@@ -23,6 +23,15 @@
 
 static SDL_Window *win;
 static SDL_GLContext glc;
+/* X2_RENDERER=metal (Apple): the Metal backend (gfx/gfx_metal.m) instead of GL */
+static bool use_metal;
+#ifdef X2_METAL
+#include <SDL3/SDL_metal.h>
+void gfx_mtl_init(void *metal_layer, u32 w, u32 h);
+bool gfx_mtl_run_frames(u32 timeout_ms);
+void gfx_mtl_present(u32 ww, u32 wh);
+void gfx_mtl_screenshot(const char *path);
+#endif
 static GLuint blit_prog, blit_vao;
 static SDL_AudioStream *audio;
 static bool fullscreen;
@@ -588,20 +597,32 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #endif
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     fullscreen = start_fullscreen;
+#ifdef X2_METAL
+    use_metal = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "metal");
+#endif
     win = SDL_CreateWindow("Type X2 recomp", 1280, 720,
-                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                               (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                           (use_metal ? SDL_WINDOW_METAL : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE |
+                               SDL_WINDOW_HIGH_PIXEL_DENSITY | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
                                (getenv("X2_NOPRESENT") ? SDL_WINDOW_HIDDEN : 0));
     if (!win) x2_fatal("SDL_CreateWindow: %s", SDL_GetError());
-    glc = SDL_GL_CreateContext(win);
-    if (!glc) x2_fatal("SDL_GL_CreateContext: %s", SDL_GetError());
-    SDL_GL_MakeCurrent(win, glc);
-    /* The guest paces itself to 60 Hz; a vsynced swap can block forever when the
-     * screen is locked or the display sleeps, so vsync is opt-in (X2_VSYNC=1). */
-    SDL_GL_SetSwapInterval(getenv("X2_VSYNC") ? 1 : 0);
-    x2_log("GL %s / %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
-    gfx_gl_init(1280, 720);
-    blit_init();
+#ifdef X2_METAL
+    if (use_metal) {
+        SDL_MetalView view = SDL_Metal_CreateView(win);
+        if (!view) x2_fatal("SDL_Metal_CreateView: %s", SDL_GetError());
+        gfx_mtl_init(SDL_Metal_GetLayer(view), 1280, 720);
+    }
+#endif
+    if (!use_metal) {
+        glc = SDL_GL_CreateContext(win);
+        if (!glc) x2_fatal("SDL_GL_CreateContext: %s", SDL_GetError());
+        SDL_GL_MakeCurrent(win, glc);
+        /* The guest paces itself to 60 Hz; a vsynced swap can block forever when the
+         * screen is locked or the display sleeps, so vsync is opt-in (X2_VSYNC=1). */
+        SDL_GL_SetSwapInterval(getenv("X2_VSYNC") ? 1 : 0);
+        x2_log("GL %s / %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+        gfx_gl_init(1280, 720);
+        blit_init();
+    }
     SDL_HideCursor();
 
     /* audio is opened (and retried) off the main loop: CoreAudio calls can
@@ -659,8 +680,19 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
         GLuint t;
         u32 w, h;
         if (loops < 4 && getenv("X2_HEARTBEAT")) x2_log("platform: run_frames");
-        if (gfx_gl_run_frames(20, &t, &w, &h)) {
-            tex = t; tw = w; th = h;
+        bool fresh;
+#ifdef X2_METAL
+        if (use_metal)
+            fresh = gfx_mtl_run_frames(20);
+        else
+#endif
+            fresh = gfx_gl_run_frames(20, &t, &w, &h);
+        if (fresh) {
+            if (!use_metal) {
+                tex = t;
+                tw = w;
+                th = h;
+            }
             /* X2_SHOT=f1,f2,...: save each listed frame (path gets -<frame> before .png) */
             if (shot_frame && gfx_frame_count() >= shot_frame) {
                 char path[1024];
@@ -670,7 +702,13 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
                              (unsigned long long)shot_frame, dot);
                 else
                     snprintf(path, sizeof path, "%s", shot_path);
-                if (getenv("X2_SHOT_WINDOW")) snprintf(win_shot, sizeof win_shot, "%s", path);
+#ifdef X2_METAL
+                if (use_metal)
+                    gfx_mtl_screenshot(path);
+                else
+#endif
+                    if (getenv("X2_SHOT_WINDOW"))
+                    snprintf(win_shot, sizeof win_shot, "%s", path);
                 else screenshot(tex, tw, th, path);
                 const char *next = strchr(shot_env, ',');
                 shot_frame = 0;
@@ -682,7 +720,12 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
             }
         }
         if (want_shot) {
-            screenshot(tex, tw, th, shot_path);
+#ifdef X2_METAL
+            if (use_metal)
+                gfx_mtl_screenshot(shot_path);
+            else
+#endif
+                screenshot(tex, tw, th, shot_path);
             want_shot = false;
         }
         /* Never let presentation stall the game: skip it while the window is
@@ -691,6 +734,12 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
         SDL_WindowFlags wf = SDL_GetWindowFlags(win);
         if ((wf & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) || x2_screen_locked()) {
             SDL_Delay(2);
+        } else if (use_metal) {
+#ifdef X2_METAL
+            int ww, wh;
+            SDL_GetWindowSizeInPixels(win, &ww, &wh);
+            gfx_mtl_present((u32)ww, (u32)wh); /* overlays (FPS, touch) are GL-only so far */
+#endif
         } else {
             present_image(tex, tw, th);
             fps_draw(true);
