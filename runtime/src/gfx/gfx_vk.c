@@ -15,8 +15,10 @@
  * - Shaders: sm3_translate / hlsl_translate with SH_VKGLSL, compiled to SPIR-V
  *   by glslang on first use. Clip space is flipped to Vulkan's y-down in the
  *   shader, so render targets keep row 0 at the top as in D3D. */
+#ifdef X2_VK_SDL /* the standalone app's window; the libretro core uses RetroArch's context */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#endif
 #include <glslang/Include/glslang_c_interface.h>
 #include <glslang/Public/resource_limits_c.h>
 #include <stdlib.h>
@@ -38,9 +40,10 @@
 /* Vulkan 1.3 / extension entry points, loaded at init */
 #define VK_FUNCS(X)                                                                                                    \
     X(vkCmdBeginRendering)                                                                                             \
-    X(vkCmdEndRendering) X(vkCmdPipelineBarrier2) X(vkCmdSetCullMode) X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable)  \
-        X(vkCmdSetDepthWriteEnable) X(vkCmdSetDepthCompareOp) X(vkCmdSetStencilTestEnable) X(vkCmdSetStencilOp)        \
-            X(vkCmdPushDescriptorSetKHR)
+    X(vkCmdEndRendering)                                                                                               \
+    X(vkCmdPipelineBarrier2)                                                                                           \
+    X(vkCmdSetCullMode) X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable)                    \
+        X(vkCmdSetDepthCompareOp) X(vkCmdSetStencilTestEnable) X(vkCmdSetStencilOp) X(vkCmdPushDescriptorSetKHR)
 #define X(f) static PFN_##f p##f;
 VK_FUNCS(X)
 #undef X
@@ -56,6 +59,15 @@ static VkCommandPool cpool;
 static VkPipelineLayout playout;
 static VkDescriptorSetLayout dslayout;
 static VkFormat depth24; /* D24S8: D24_UNORM_S8_UINT or D32_SFLOAT_S8_UINT */
+/* a frontend that shares its queue (RetroArch) locks it around submissions */
+static void (*qlock)(void *), (*qunlock)(void *);
+static void *qlock_handle;
+static VkResult qsubmit(const VkSubmitInfo *si, VkFence f) {
+    if (qlock) qlock(qlock_handle);
+    VkResult r = vkQueueSubmit(queue, 1, si, f);
+    if (qunlock) qunlock(qlock_handle);
+    return r;
+}
 
 /* ---- memory: 64 MB blocks, first-fit free lists --------------------------------- */
 typedef struct {
@@ -253,7 +265,7 @@ static void submit(void) {
     VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers = &cmd;
-    VK_CHECK(vkQueueSubmit(queue, 1, &si, fs->fence));
+    VK_CHECK(qsubmit(&si, fs->fence));
     fs->serial = cur_serial;
     cmd = VK_NULL_HANDLE;
 }
@@ -432,6 +444,8 @@ static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 
     t->expand16 = is16(fmt);
     t->rgb565 = rgb565;
     t->vf = rgb565 ? VK_FORMAT_R5G6B5_UNORM_PACK16 : vk_format(fmt);
+    /* render targets as RGBA8, as GL stores them: BGRA attachments cost tile GPUs (Mali) */
+    if (rt && t->vf == VK_FORMAT_B8G8R8A8_UNORM && !getenv("X2_VK_BGRA_RT")) t->vf = VK_FORMAT_R8G8B8A8_UNORM;
     VkImageCreateInfo ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.flags = cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
     ci.imageType = vol ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
@@ -1616,7 +1630,6 @@ static void run_frame(Frame *f) {
 }
 
 /* ---- presentation ---------------------------------------------------------------- */
-static SDL_Window *window;
 static VkSurfaceKHR surface;
 static VkSwapchainKHR swapchain;
 static VkFormat sc_format;
@@ -1774,7 +1787,7 @@ void gfx_vk_present(u32 ww, u32 wh) {
     si.pCommandBuffers = &c;
     si.signalSemaphoreCount = 1;
     si.pSignalSemaphores = &sc_release[idx];
-    VK_CHECK(vkQueueSubmit(queue, 1, &si, pr_fence[i]));
+    VK_CHECK(qsubmit(&si, pr_fence[i]));
     VkPresentInfoKHR pi = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     pi.waitSemaphoreCount = 1;
     pi.pWaitSemaphores = &sc_release[idx];
@@ -1819,14 +1832,19 @@ void gfx_vk_screenshot(const char *path) {
     VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.commandBufferCount = 1;
     si.pCommandBuffers = &c;
-    VK_CHECK(vkQueueSubmit(queue, 1, &si, VK_NULL_HANDLE));
+    VK_CHECK(qsubmit(&si, VK_NULL_HANDLE));
+    if (qlock) qlock(qlock_handle);
     VK_CHECK(vkQueueWaitIdle(queue));
+    if (qunlock) qunlock(qlock_handle);
     u8 *px = blocks[a.block].map + a.off;
     size_t np = (size_t)t->w * t->h;
-    for (size_t i = 0; i < np; i++) { /* BGRA -> RGBA, opaque */
-        u8 tb = px[i * 4];
-        px[i * 4] = px[i * 4 + 2];
-        px[i * 4 + 2] = tb;
+    bool bgra = t->vf == VK_FORMAT_B8G8R8A8_UNORM;
+    for (size_t i = 0; i < np; i++) { /* to RGBA, opaque */
+        if (bgra) {
+            u8 tb = px[i * 4];
+            px[i * 4] = px[i * 4 + 2];
+            px[i * 4 + 2] = tb;
+        }
         px[i * 4 + 3] = 255;
     }
     if (x2_write_png(path, px, t->w, t->h)) x2_log("screenshot saved to %s", path);
@@ -1857,51 +1875,55 @@ static VTex *black_tex(bool cube, bool vol) {
     return t;
 }
 
-void gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
-    window = win;
-    if (!glslang_initialize_process()) x2_fatal("vulkan: glslang");
-    Uint32 next = 0;
-    const char *const *ext = SDL_Vulkan_GetInstanceExtensions(&next);
-    VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "typex2-recomp", 1, "x2", 1, VK_API_VERSION_1_3};
-    VkInstanceCreateInfo ii = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-    ii.pApplicationInfo = &app;
-    ii.enabledExtensionCount = next;
-    ii.ppEnabledExtensionNames = ext;
-    VK_CHECK(vkCreateInstance(&ii, NULL, &inst));
-    if (win && !SDL_Vulkan_CreateSurface(win, inst, NULL, &surface)) x2_fatal("vulkan: surface: %s", SDL_GetError());
-    u32 np = 1;
-    VkResult er = vkEnumeratePhysicalDevices(inst, &np, &phys);
-    if ((er != VK_SUCCESS && er != VK_INCOMPLETE) || !np) x2_fatal("vulkan: no device");
-    VkPhysicalDeviceProperties pp;
-    vkGetPhysicalDeviceProperties(phys, &pp);
-    limits = pp.limits;
-    vkGetPhysicalDeviceMemoryProperties(phys, &memprops);
+/* the device with what this backend needs (Vulkan 1.3 dynamic rendering and
+ * synchronization2, push descriptors), on a graphics queue family that presents to
+ * `surf` if given. `wrap`: a frontend's device creation (RetroArch adds the extensions
+ * it needs itself); NULL creates it here, with the swapchain extension for `surf`. */
+typedef VkDevice (*VkDeviceWrap)(VkPhysicalDevice gpu, void *opaque, const VkDeviceCreateInfo *ci);
+VkDevice gfx_vk_make_device(VkPhysicalDevice gpu, VkSurfaceKHR surf, VkDeviceWrap wrap, void *opaque, u32 *out_qfam) {
     u32 nq = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(phys, &nq, NULL);
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &nq, NULL);
     VkQueueFamilyProperties qp[16];
     if (nq > 16) nq = 16;
-    vkGetPhysicalDeviceQueueFamilyProperties(phys, &nq, qp);
-    qfam = ~0u;
-    for (u32 i = 0; i < nq && qfam == ~0u; i++) {
+    vkGetPhysicalDeviceQueueFamilyProperties(gpu, &nq, qp);
+    u32 fam = ~0u;
+    for (u32 i = 0; i < nq && fam == ~0u; i++) {
         VkBool32 present = VK_TRUE;
-        if (surface) vkGetPhysicalDeviceSurfaceSupportKHR(phys, i, surface, &present);
-        if (qp[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && present) qfam = i;
+        if (surf) vkGetPhysicalDeviceSurfaceSupportKHR(gpu, i, surf, &present);
+        if (qp[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && present) fam = i;
     }
-    if (qfam == ~0u) x2_fatal("vulkan: no graphics queue");
+    if (fam == ~0u) {
+        x2_log("vulkan: no graphics queue");
+        return VK_NULL_HANDLE;
+    }
     float prio = 1.0f;
-    VkDeviceQueueCreateInfo qi = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, qfam, 1, &prio};
+    VkDeviceQueueCreateInfo qi = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, NULL, 0, fam, 1, &prio};
     VkPhysicalDeviceVulkan13Features f13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     f13.dynamicRendering = VK_TRUE;
     f13.synchronization2 = VK_TRUE;
-    const char *dext[] = {"VK_KHR_swapchain", "VK_KHR_push_descriptor"};
+    const char *dext[] = {"VK_KHR_push_descriptor", "VK_KHR_swapchain"};
     VkDeviceCreateInfo di = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     di.pNext = &f13;
     di.queueCreateInfoCount = 1;
     di.pQueueCreateInfos = &qi;
-    di.enabledExtensionCount = surface ? 2 : 1;
-    di.ppEnabledExtensionNames = surface ? dext : dext + 1;
-    VK_CHECK(vkCreateDevice(phys, &di, NULL, &dev));
-    vkGetDeviceQueue(dev, qfam, 0, &queue);
+    di.enabledExtensionCount = surf && !wrap ? 2 : 1;
+    di.ppEnabledExtensionNames = dext;
+    VkDevice d = VK_NULL_HANDLE;
+    if (wrap)
+        d = wrap(gpu, opaque, &di);
+    else if (vkCreateDevice(gpu, &di, NULL, &d) != VK_SUCCESS)
+        d = VK_NULL_HANDLE;
+    *out_qfam = fam;
+    return d;
+}
+
+/* everything after the device: entry points, layouts, pools, frames, built-in textures */
+static void setup(u32 w, u32 h) {
+    if (!glslang_initialize_process()) x2_fatal("vulkan: glslang");
+    VkPhysicalDeviceProperties pp;
+    vkGetPhysicalDeviceProperties(phys, &pp);
+    limits = pp.limits;
+    vkGetPhysicalDeviceMemoryProperties(phys, &memprops);
 #define X(f)                                                                                                           \
     p##f = (PFN_##f)vkGetDeviceProcAddr(dev, #f);                                                                      \
     if (!p##f) x2_fatal("vulkan: no %s", #f);
@@ -1967,4 +1989,110 @@ void gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
     frame_end();
     x2_log("vulkan: %s, API %u.%u, D24S8 as %s", pp.deviceName, VK_API_VERSION_MAJOR(pp.apiVersion),
            VK_API_VERSION_MINOR(pp.apiVersion), depth24 == VK_FORMAT_D24_UNORM_S8_UINT ? "D24S8" : "D32S8");
+}
+
+#ifdef X2_VK_SDL
+void gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
+    Uint32 next = 0;
+    const char *const *ext = SDL_Vulkan_GetInstanceExtensions(&next);
+    VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "typex2-recomp", 1, "x2", 1, VK_API_VERSION_1_3};
+    VkInstanceCreateInfo ii = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    ii.pApplicationInfo = &app;
+    ii.enabledExtensionCount = next;
+    ii.ppEnabledExtensionNames = ext;
+    VK_CHECK(vkCreateInstance(&ii, NULL, &inst));
+    if (win && !SDL_Vulkan_CreateSurface(win, inst, NULL, &surface)) x2_fatal("vulkan: surface: %s", SDL_GetError());
+    u32 np = 1;
+    VkResult er = vkEnumeratePhysicalDevices(inst, &np, &phys);
+    if ((er != VK_SUCCESS && er != VK_INCOMPLETE) || !np) x2_fatal("vulkan: no device");
+    dev = gfx_vk_make_device(phys, surface, NULL, NULL, &qfam);
+    if (!dev) x2_fatal("vulkan: cannot create the device");
+    vkGetDeviceQueue(dev, qfam, 0, &queue);
+    setup(w, h);
+}
+#endif
+
+/* size of the image Present shows */
+void gfx_vk_shown_size(u32 *w, u32 *h) {
+    VTex *t = shown();
+    *w = t->w;
+    *h = t->h;
+}
+
+/* RetroArch's context (made with gfx_vk_make_device through its wrapper) */
+void gfx_vk_init_external(VkInstance i, VkPhysicalDevice g, VkDevice d, VkQueue q, u32 fam, void (*lock)(void *),
+                          void (*unlock)(void *), void *handle, u32 w, u32 h) {
+    inst = i;
+    phys = g;
+    dev = d;
+    queue = q;
+    qfam = fam;
+    qlock = lock;
+    qunlock = unlock;
+    qlock_handle = handle;
+    setup(w, h);
+}
+
+/* libretro: rows [v0, v1) of the shown image copied into an output image (three in
+ * turn, so the frontend never samples one being written) and left readable by
+ * shaders. Its handles are what the frontend's set_image takes. */
+typedef struct {
+    VTex *t;
+    VkCommandBuffer cb;
+    VkFence fence;
+} OutSlot;
+static OutSlot outs[INFLIGHT];
+static u32 out_i;
+bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageViewCreateInfo *ci, u32 *ow, u32 *oh) {
+    VTex *src = shown();
+    u32 w = src->w, y0 = (u32)(v0 * src->h), y1 = (u32)(v1 * src->h), h = y1 - y0;
+    if (!w || !h) return false;
+    OutSlot *o = &outs[out_i++ % INFLIGHT];
+    if (!o->cb) {
+        VkCommandBufferAllocateInfo ai = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, cpool,
+                                          VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1};
+        VK_CHECK(vkAllocateCommandBuffers(dev, &ai, &o->cb));
+        VkFenceCreateInfo fi = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, NULL, VK_FENCE_CREATE_SIGNALED_BIT};
+        VK_CHECK(vkCreateFence(dev, &fi, NULL, &o->fence));
+    }
+    VK_CHECK(vkWaitForFences(dev, 1, &o->fence, VK_TRUE, UINT64_MAX));
+    VK_CHECK(vkResetFences(dev, 1, &o->fence));
+    if (!o->t || o->t->w != w || o->t->h != h) {
+        if (o->t) tex_free(o->t); /* destroyed once its last use is done */
+        o->t = tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, 1, false, false);
+    }
+    VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
+                                   VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL};
+    VK_CHECK(vkResetCommandBuffer(o->cb, 0));
+    VK_CHECK(vkBeginCommandBuffer(o->cb, &bi));
+    VkCommandBuffer saved = cmd;
+    cmd = o->cb; /* transition() records into cmd */
+    transition(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transition(o->t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    VkImageCopy c = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                     {0, (s32)y0, 0},
+                     {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                     {0, 0, 0},
+                     {w, h, 1}};
+    vkCmdCopyImage(o->cb, src->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, o->t->img,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+    transition(o->t, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    cmd = saved;
+    VK_CHECK(vkEndCommandBuffer(o->cb));
+    VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1;
+    si.pCommandBuffers = &o->cb;
+    VK_CHECK(qsubmit(&si, o->fence));
+    o->t->used = cur_serial;
+    *img = o->t->img;
+    *view = o->t->view;
+    memset(ci, 0, sizeof *ci);
+    ci->sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    ci->image = o->t->img;
+    ci->viewType = VK_IMAGE_VIEW_TYPE_2D;
+    ci->format = o->t->vf;
+    ci->subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    *ow = w;
+    *oh = h;
+    return true;
 }

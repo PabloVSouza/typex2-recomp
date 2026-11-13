@@ -103,6 +103,25 @@ else()
   target_link_libraries(x2rt_common PUBLIC OpenGL::GL)
 endif()
 
+# ---- Vulkan (Android): shaders compiled to SPIR-V by glslang ----------------------
+# its library only: no SPIRV-Tools, no standalone tools (those need Python)
+if(ANDROID)
+  include(FetchContent)
+  set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
+  set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+  set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
+  set(ENABLE_SPVREMAPPER OFF CACHE BOOL "" FORCE)
+  set(GLSLANG_TESTS OFF CACHE BOOL "" FORCE)
+  set(GLSLANG_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(glslang
+    GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+    GIT_TAG 16.6.0
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(glslang)
+  set(X2_VK_LIBS glslang glslang-default-resource-limits vulkan)
+endif()
+
 # ---- standalone runtime (SDL3) ------------------------------------------------
 option(X2_STANDALONE "Build the standalone executables / Android app (needs SDL3)" ON)
 if(X2_STANDALONE)
@@ -132,25 +151,10 @@ if(X2_STANDALONE)
   add_library(x2rt STATIC src/platform_sdl.c)
   target_compile_options(x2rt PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(x2rt PUBLIC x2rt_common SDL3::SDL3)
-  if(ANDROID)
-    # the Vulkan backend (X2_RENDERER=vulkan): shaders compiled to SPIR-V by glslang
-    # (its library only: no SPIRV-Tools, no standalone tools)
-    include(FetchContent)
-    set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
-    set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
-    set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
-    set(ENABLE_SPVREMAPPER OFF CACHE BOOL "" FORCE)
-    set(GLSLANG_TESTS OFF CACHE BOOL "" FORCE)
-    set(GLSLANG_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-    set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(glslang
-      GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
-      GIT_TAG 16.6.0
-      GIT_SHALLOW TRUE)
-    FetchContent_MakeAvailable(glslang)
+  if(ANDROID) # the Vulkan backend (X2_RENDERER=vulkan) with its SDL window
     target_sources(x2rt PRIVATE src/gfx/gfx_vk.c)
-    target_compile_definitions(x2rt PRIVATE X2_VULKAN)
-    target_link_libraries(x2rt PUBLIC glslang glslang-default-resource-limits vulkan)
+    target_compile_definitions(x2rt PRIVATE X2_VULKAN X2_VK_SDL)
+    target_link_libraries(x2rt PUBLIC ${X2_VK_LIBS})
   endif()
   if(APPLE)
     # the Metal backend (X2_RENDERER=metal)
@@ -183,6 +187,12 @@ if(X2_LIBRETRO)
   target_include_directories(x2rt_retro PRIVATE src ${CMAKE_BINARY_DIR}/libretro)
   target_compile_definitions(x2rt_retro PRIVATE "X2_VERSION=\"${PROJECT_VERSION}\"")
   target_link_libraries(x2rt_retro PUBLIC x2rt_common ${CMAKE_DL_LIBS})
+  if(ANDROID) # the Vulkan backend in RetroArch's context (X2_RENDERER=vulkan)
+    target_sources(x2rt_retro PRIVATE src/gfx/gfx_vk.c)
+    target_compile_definitions(x2rt_retro PRIVATE X2_VULKAN)
+    target_include_directories(x2rt_retro PRIVATE src/libretro) # libretro_vulkan.h includes <libretro.h>
+    target_link_libraries(x2rt_retro PUBLIC ${X2_VK_LIBS})
+  endif()
 endif()
 
 # x2_add_game(<target> <generated dir>): builds a game from x2recomp output.
@@ -308,6 +318,9 @@ function(x2_add_libretro_core)
 
   add_library(typex2_libretro SHARED ${objs})
   set_target_properties(typex2_libretro PROPERTIES PREFIX "" LINKER_LANGUAGE C)
+  if(ANDROID) # glslang (Vulkan) is C++
+    set_target_properties(typex2_libretro PROPERTIES LINKER_LANGUAGE CXX)
+  endif()
   if(ANDROID)
     set_target_properties(typex2_libretro PROPERTIES OUTPUT_NAME typex2_libretro_android)
   endif()

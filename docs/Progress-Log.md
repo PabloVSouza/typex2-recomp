@@ -14,9 +14,12 @@ Milestones, newest first. `git log` has the details.
 - **Correctness:** KOF '98 UM's frames are pixel-identical to GL on the Mac;
   KOF XIII's to GL on the tablet. SSF4, KOF XII and BlazBlue CT match GL apart
   from timing (fades, animation).
-- **Speed (SSF4 fights on the tablet):** 16-18 ms of GPU time per frame,
-  55-60 fps; GL measures about 13 ms. Next: RetroArch's Vulkan context for the
-  core, pre-rotated presentation, then more GPU work on the tablet.
+- **In RetroArch:** the core negotiates its Vulkan device with RetroArch (the
+  features the backend needs) and hands each frame over with `set_image`;
+  `X2_RENDERER=vulkan` in the game's `x2.env` selects it. SSF4 runs 59-60 fps
+  except a few fight scenes (GPU 16.6 ms against GL's 13 ms); KOF '98 UM 60 fps.
+- **Speed (SSF4 fights on the tablet):** render targets as RGBA8 like GL's.
+  Vulkan still spends about 25% more GPU time than GL there.
 
 ## 2026-11-13: Metal backend
 

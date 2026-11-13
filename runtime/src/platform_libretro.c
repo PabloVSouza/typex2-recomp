@@ -33,6 +33,11 @@
 #include "hle/dsound.h"
 #include "jvs.h"
 #include "libretro/libretro.h"
+#ifdef X2_VULKAN
+#include <vulkan/vulkan.h>
+
+#include "libretro/libretro_vulkan.h"
+#endif
 #include "padmap.h"
 #include "x2_core_games.h" /* generated: x2_core_games[] = {name, tables} */
 
@@ -44,6 +49,100 @@ static retro_audio_sample_batch_t audio_batch_cb;
 static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
 static struct retro_hw_render_callback hw_render;
+
+/* X2_RENDERER=vulkan (x2.env): the Vulkan backend in RetroArch's context (gfx/gfx_vk.c).
+ * RetroArch creates the device through our negotiation interface, so it has what the
+ * backend needs (Vulkan 1.3 dynamic rendering, push descriptors). */
+static bool use_vk, vk_ready;
+static void msg(const char *text, unsigned frames);
+#ifdef X2_VULKAN
+static const struct retro_hw_render_interface_vulkan *vki;
+typedef VkDevice (*VkDeviceWrap)(VkPhysicalDevice gpu, void *opaque, const VkDeviceCreateInfo *ci);
+VkDevice gfx_vk_make_device(VkPhysicalDevice gpu, VkSurfaceKHR surf, VkDeviceWrap wrap, void *opaque, u32 *out_qfam);
+void gfx_vk_init_external(VkInstance i, VkPhysicalDevice g, VkDevice d, VkQueue q, u32 fam, void (*lock)(void *),
+                          void (*unlock)(void *), void *handle, u32 w, u32 h);
+bool gfx_vk_run_frames(u32 timeout_ms);
+void gfx_vk_shown_size(u32 *w, u32 *h);
+bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageViewCreateInfo *ci, u32 *ow, u32 *oh);
+
+static const VkApplicationInfo *vk_app_info(void) {
+    static const VkApplicationInfo app = {
+        VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "typex2-recomp", 1, "x2", 1, VK_API_VERSION_1_3};
+    return &app;
+}
+static bool vk_create_device2(struct retro_vulkan_context *ctx, VkInstance inst, VkPhysicalDevice gpu,
+                              VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr gipa,
+                              retro_vulkan_create_device_wrapper_t wrap, void *opaque) {
+    x2_log("libretro: creating the Vulkan device (negotiation v2)");
+    (void)gipa;
+    if (!gpu) {
+        u32 n = 1;
+        VkResult r = vkEnumeratePhysicalDevices(inst, &n, &gpu);
+        if ((r != VK_SUCCESS && r != VK_INCOMPLETE) || !n) return false;
+    }
+    u32 fam;
+    VkDevice d = gfx_vk_make_device(gpu, surface, (VkDeviceWrap)wrap, opaque, &fam);
+    if (!d) return false;
+    ctx->gpu = gpu;
+    ctx->device = d;
+    vkGetDeviceQueue(d, fam, 0, &ctx->queue);
+    ctx->queue_family_index = fam;
+    ctx->presentation_queue = ctx->queue;
+    ctx->presentation_queue_family_index = fam;
+    return true;
+}
+/* v1: the device is created here, with the extensions RetroArch requires added */
+static const char **vk_required;
+static unsigned vk_nrequired;
+static VkDevice vk_wrap_v1(VkPhysicalDevice gpu, void *opaque, const VkDeviceCreateInfo *ci) {
+    (void)opaque;
+    const char *ext[32];
+    u32 n = 0;
+    for (u32 i = 0; i < ci->enabledExtensionCount && n < 32; i++) ext[n++] = ci->ppEnabledExtensionNames[i];
+    for (unsigned i = 0; i < vk_nrequired && n < 32; i++) ext[n++] = vk_required[i];
+    VkDeviceCreateInfo c = *ci;
+    c.enabledExtensionCount = n;
+    c.ppEnabledExtensionNames = ext;
+    VkDevice d;
+    return vkCreateDevice(gpu, &c, NULL, &d) == VK_SUCCESS ? d : VK_NULL_HANDLE;
+}
+static bool vk_create_device(struct retro_vulkan_context *ctx, VkInstance inst, VkPhysicalDevice gpu,
+                             VkSurfaceKHR surface, PFN_vkGetInstanceProcAddr gipa, const char **req_ext,
+                             unsigned nreq_ext, const char **req_layers, unsigned nreq_layers,
+                             const VkPhysicalDeviceFeatures *req_features) {
+    (void)req_layers;
+    (void)nreq_layers;
+    (void)req_features;
+    x2_log("libretro: creating the Vulkan device (negotiation v1)");
+    vk_required = req_ext;
+    vk_nrequired = nreq_ext;
+    return vk_create_device2(ctx, inst, gpu, surface, gipa, vk_wrap_v1, NULL);
+}
+static const struct retro_hw_render_context_negotiation_interface_vulkan vk_negotiation = {
+    RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
+    2,
+    vk_app_info,
+    vk_create_device,
+    NULL,
+    NULL,
+    vk_create_device2};
+
+static void vk_context_reset(void) {
+    if (vk_ready) {
+        msg("Type X2: the video context was recreated; restart the game", 600);
+        x2_log("libretro: context_reset on a live session (resources lost)");
+    }
+    if (!environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE, (void *)&vki) || !vki ||
+        vki->interface_type != RETRO_HW_RENDER_INTERFACE_VULKAN) {
+        x2_log("libretro: no Vulkan render interface");
+        return;
+    }
+    gfx_vk_init_external(vki->instance, vki->gpu, vki->device, vki->queue, vki->queue_index, vki->lock_queue,
+                         vki->unlock_queue, vki->handle, 1280, 720);
+    vk_ready = true;
+    x2_thread_perf("x2-render", true);
+}
+#endif
 
 static const struct X2CoreGame *game;
 static bool loaded_once, running, gl_ready, shutdown_requested;
@@ -360,6 +459,24 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
 
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
+    x2_load_env_file(dir); /* X2_RENDERER is needed before the context (x2_boot loads it again) */
+#ifdef X2_VULKAN
+    use_vk = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "vulkan");
+    if (use_vk) {
+        memset(&hw_render, 0, sizeof hw_render);
+        hw_render.context_type = RETRO_HW_CONTEXT_VULKAN;
+        hw_render.version_major = VK_API_VERSION_1_3;
+        hw_render.context_reset = vk_context_reset;
+        hw_render.context_destroy = context_destroy;
+        if (!environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render) ||
+            !environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, (void *)&vk_negotiation)) {
+            x2_log("libretro: the frontend refused a Vulkan context (video driver: vulkan); using OpenGL");
+            use_vk = false;
+        } else {
+            x2_log("libretro: Vulkan");
+        }
+    }
+#endif
     /* GL context: the renderer needs OpenGL 3.3 core or GLES 3.2. Some frontends
      * only take the generic GLES3 type; Android EGL then still creates the
      * highest version the driver has (3.2 on current GPUs). */
@@ -371,7 +488,7 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         {RETRO_HW_CONTEXT_OPENGL_CORE, 3, 3},
 #endif
     };
-    bool have_gl = false;
+    bool have_gl = use_vk; /* Vulkan: no GL context */
     for (size_t i = 0; i < sizeof want / sizeof want[0] && !have_gl; i++) {
         memset(&hw_render, 0, sizeof hw_render);
         hw_render.context_type = want[i].type;
@@ -395,7 +512,7 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
     }
     /* our own context: the replay keeps GL state across frames */
     bool shared = true;
-    environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, &shared);
+    if (!use_vk) environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, &shared);
 
     loaded_once = true;
     running = true;
@@ -465,6 +582,39 @@ EXPORT void retro_run(void) {
         gfx_clock_release(pipeline && !(ab_pipe && gfx_gl_ab) ? 1 : 0); /* release the guest for its next frame */
     }
 
+#ifdef X2_VULKAN
+    if (use_vk) { /* Vulkan: the frame into an output image the frontend shows */
+        u32 vw = 1280, vh = 720;
+        if (vk_ready) {
+            if (!gfx_vk_run_frames(50)) repeats++;
+            gfx_vk_shown_size(&vw, &vh);
+        }
+        u32 voh = vh;
+        float a0 = 0, a1 = 1;
+        if (vw * 3 == vh * 4 && x2_game_letterboxed()) { /* as below: the 16:9 band of a 4:3 frame */
+            voh = vw * 9 / 16;
+            a0 = (float)((vh - voh) / 2) / (float)vh;
+            a1 = a0 + (float)voh / (float)vh;
+        }
+        if (vw != out_w || voh != out_h) {
+            out_w = vw;
+            out_h = voh;
+            struct retro_game_geometry g = {vw, voh, 1920, 1080, (float)vw / (float)voh};
+            environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
+        }
+        VkImage img;
+        struct retro_vulkan_image ri;
+        u32 ow, oh2;
+        if (vk_ready && gfx_vk_output(a0, a1, &img, &ri.image_view, &ri.create_info, &ow, &oh2)) {
+            ri.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            vki->set_image(vki->handle, &ri, 0, NULL, VK_QUEUE_FAMILY_IGNORED);
+            video_cb(RETRO_HW_FRAME_BUFFER_VALID, ow, oh2, 0);
+        } else {
+            video_cb(NULL, vw, voh, 0);
+        }
+        goto audio;
+    }
+#endif
     GLuint tex = last_tex;
     u32 w = last_w, h = last_h;
     if (gl_ready) {
@@ -502,6 +652,9 @@ EXPORT void retro_run(void) {
         video_cb(NULL, w, oh, 0);
     }
 
+#ifdef X2_VULKAN
+audio:
+#endif
     /* audio: exactly one frame's worth at 48 kHz / 60 Hz */
     enum { FRAMES = 800 };
     static float f[FRAMES * 2];
