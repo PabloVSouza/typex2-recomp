@@ -32,8 +32,9 @@ Maximum Impact Regulation A (the last two are likely Type X+, not X2).
 * **Nothing copyrighted in git.** Game executables, assets, dumps, generated
   code (`games/*/gen/`, gitignored) and screenshots of games never get
   committed. Only our own source and docs.
-* **Commit or push only when the user asks.** End commit messages with the
-  co-author line the session gives you.
+* **Commit after each verified milestone and push right after** (origin on
+  GitHub; the maintainer wants the remote current). End commit messages with
+  the co-author line the session gives you.
 * **Never write into the user's game folders** (debug dumps, logs, test
   files). Use `$TMPDIR` / `/tmp` or the session scratchpad. The games' own
   saves (`sv/`, `Ranking/`, ...) are the exception: the game writes them.
