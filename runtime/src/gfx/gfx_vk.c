@@ -42,8 +42,9 @@
     X(vkCmdBeginRendering)                                                                                             \
     X(vkCmdEndRendering)                                                                                               \
     X(vkCmdPipelineBarrier2)                                                                                           \
-    X(vkCmdSetCullMode) X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable)                    \
-        X(vkCmdSetDepthCompareOp) X(vkCmdSetStencilTestEnable) X(vkCmdSetStencilOp) X(vkCmdPushDescriptorSetKHR)
+    X(vkCmdSetCullMode)                                                                                                \
+    X(vkCmdSetFrontFace) X(vkCmdSetDepthTestEnable) X(vkCmdSetDepthWriteEnable) X(vkCmdSetDepthCompareOp)              \
+        X(vkCmdSetStencilTestEnable) X(vkCmdSetStencilOp) X(vkCmdPushDescriptorSetKHR)
 #define X(f) static PFN_##f p##f;
 VK_FUNCS(X)
 #undef X
@@ -191,6 +192,55 @@ static u64 cur_serial, completed_serial;
 /* X2_GPUTIME=1: GPU time per frame from timestamps at the start and end of each command buffer */
 static VkQueryPool tsq;
 static bool gputime;
+/* X2_GPUTIME=2: GPU time of each rendering pass too, summed by render target (as gfx_gl.c) */
+#define PASSQ 64
+static VkQueryPool passq;
+static GfxId pass_rt[INFLIGHT][PASSQ];
+static u32 pass_n[INFLIGHT];
+static bool pass_valid[INFLIGHT];
+static bool gputime2;
+static struct {
+    GfxId rt;
+    u32 w, h;
+    double ms;
+    u32 passes;
+} pass_sum[64];
+static u32 pass_frames;
+static u32 pass_w[INFLIGHT][PASSQ], pass_h[INFLIGHT][PASSQ];
+static bool pass_open;
+static void pass_harvest(u32 slot) {
+    if (!pass_valid[slot] || !pass_n[slot]) return;
+    u64 ts[2 * PASSQ];
+    if (vkGetQueryPoolResults(dev, passq, slot * 2 * PASSQ, 2 * pass_n[slot], sizeof ts, ts, 8,
+                              VK_QUERY_RESULT_64_BIT) != VK_SUCCESS)
+        return;
+    for (u32 p = 0; p < pass_n[slot]; p++) {
+        GfxId rt = pass_rt[slot][p];
+        int i = 0;
+        while (i < 64 && pass_sum[i].passes && pass_sum[i].rt != rt) i++;
+        if (i == 64) continue;
+        pass_sum[i].rt = rt;
+        pass_sum[i].w = pass_w[slot][p];
+        pass_sum[i].h = pass_h[slot][p];
+        pass_sum[i].ms += (double)(ts[2 * p + 1] - ts[2 * p]) * limits.timestampPeriod / 1e6;
+        pass_sum[i].passes++;
+    }
+    if (++pass_frames < 120) return;
+    char line[1024];
+    int len = snprintf(line, sizeof line, "gpu passes (ms/frame):");
+    for (int k = 0; k < 10; k++) { /* biggest first */
+        int best = -1;
+        for (int i = 0; i < 64; i++)
+            if (pass_sum[i].passes && (best < 0 || pass_sum[i].ms > pass_sum[best].ms)) best = i;
+        if (best < 0) break;
+        len += snprintf(line + len, sizeof line - (size_t)len, " rt%u %ux%u %.2f (%u);", pass_sum[best].rt,
+                        pass_sum[best].w, pass_sum[best].h, pass_sum[best].ms / 120, pass_sum[best].passes / 120);
+        pass_sum[best].passes = 0;
+    }
+    x2_log("%s", line);
+    memset(pass_sum, 0, sizeof pass_sum);
+    pass_frames = 0;
+}
 static double gpu_ms_sum, gpu_ms_max;
 static u32 gpu_n;
 
@@ -248,6 +298,7 @@ static void frame_begin(void) {
             gpu_n++;
         }
     }
+    if (gputime2) pass_harvest((u32)(fs - slots));
     VK_CHECK(vkResetFences(dev, 1, &fs->fence));
     cur_serial++;
     ring_start();
@@ -257,6 +308,12 @@ static void frame_begin(void) {
         u32 q = (u32)(fs - slots) * 2;
         vkCmdResetQueryPool(cmd, tsq, q, 2);
         vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, tsq, q);
+    }
+    if (gputime2) {
+        u32 sl = (u32)(fs - slots);
+        vkCmdResetQueryPool(cmd, passq, sl * 2 * PASSQ, 2 * PASSQ);
+        pass_n[sl] = 0;
+        pass_valid[sl] = true;
     }
 }
 static void submit(void) {
@@ -280,6 +337,7 @@ static void frame_end(void) {
 /* a ring that is full: submit, wait, and continue the frame in an empty ring */
 static void ring_flush(void) {
     submit();
+    pass_valid[fs - slots] = false; /* its queries cannot be written again without a reset */
     VK_CHECK(vkWaitForFences(dev, 1, &fs->fence, VK_TRUE, UINT64_MAX));
     completed_serial = cur_serial;
     VK_CHECK(vkResetFences(dev, 1, &fs->fence));
@@ -322,8 +380,10 @@ typedef struct {
     VkImageLayout layout;
     u32 fmt, w, h, levels, scale;
     bool rt, depth, cube, vol, dxt, expand16;
-    bool rgb565;   /* opaque DXT1, stored as RGB565: half the size and bandwidth (as gfx_gl.c) */
-    bool uploaded; /* any upload yet: a DXT1 texture picks its storage at the first */
+    bool rgb565;     /* opaque DXT1, stored as RGB565: half the size and bandwidth (as gfx_gl.c) */
+    bool uploaded;   /* any upload yet: a DXT1 texture picks its storage at the first */
+    GfxId id;        /* the game's id (X2_GPUTIME=2 names passes by target) */
+    bool vs_sampled; /* read by a vertex shader once: its barriers include the vertex stage */
     u64 used;
 } VTex;
 static VTex *texs[MAX_IDS];
@@ -397,6 +457,13 @@ static VkImageMemoryBarrier2 layout_barrier(VTex *t, VkImageLayout to) {
     layout_use(to, &b.dstStageMask, &b.dstAccessMask);
     if (t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL || t->layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
         b.srcAccessMask = VK_ACCESS_2_NONE; /* reads: an execution dependency is enough */
+    /* textures are read by pixel shaders: a pass sampling one need not hold back its vertex
+     * work (a tile GPU overlaps it with the previous pass's pixels) */
+    if (!t->vs_sampled) {
+        if (t->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            b.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        if (to == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    }
     b.oldLayout = t->layout;
     b.newLayout = to;
     b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -498,6 +565,7 @@ static void do_tex_create(const TexCreate *k) {
     if (!k->id || k->id >= MAX_IDS) return;
     if (texs[k->id]) tex_free(texs[k->id]);
     texs[k->id] = tex_new(k->fmt, k->w, k->h, k->levels, k->rt != 0, k->cube != 0, k->scale, false, false);
+    texs[k->id]->id = k->id;
     static int ul = -1;
     if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
     if (ul)
@@ -1047,6 +1115,14 @@ static void ensure_rendering(void) {
                !cur_depth                                      ? "none"
                : pend_da.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR ? "clear"
                                                                : "load");
+    if (gputime2 && pass_valid[fs - slots] && pass_n[fs - slots] < PASSQ) {
+        u32 sl = (u32)(fs - slots), p = pass_n[sl];
+        vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, passq, sl * 2 * PASSQ + 2 * p);
+        pass_rt[sl][p] = cur_color[0] ? cur_color[0]->id : 0;
+        pass_w[sl][p] = cur_w;
+        pass_h[sl][p] = cur_h;
+        pass_open = true;
+    }
     pvkCmdBeginRendering(cmd, &ri);
     pending = false;
     rendering = true;
@@ -1062,6 +1138,12 @@ static void end_rendering(void) {
     if (rendering) {
         pvkCmdEndRendering(cmd);
         rendering = false;
+        if (pass_open) {
+            u32 sl = (u32)(fs - slots);
+            vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, passq, sl * 2 * PASSQ + 2 * pass_n[sl] + 1);
+            pass_n[sl]++;
+            pass_open = false;
+        }
     }
 }
 static void end_if_bound(VTex *t) {
@@ -1347,6 +1429,23 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             if (drawlog)
                 x2_log("  %s s%d: tex %u (%ux%u fmt %u)%s", pass_i ? "ps" : "vs", i, st->tex[i], tx ? tx->w : 0,
                        tx ? tx->h : 0, tx ? tx->fmt : 0, use == tx ? "" : " black");
+            if (!pass_i && !use->vs_sampled) {
+                /* a vertex shader reads it: from now on its barriers include the vertex stage, and
+                 * one now covers the readable layout it may already be in (made for pixel shaders) */
+                use->vs_sampled = true;
+                if (use->layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                    end_rendering();
+                    VkMemoryBarrier2 mb = {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+                    mb.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                    mb.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+                    mb.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+                    mb.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+                    VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                    di.memoryBarrierCount = 1;
+                    di.pMemoryBarriers = &mb;
+                    pvkCmdPipelineBarrier2(cmd, &di);
+                }
+            }
             use->used = cur_serial;
             samp_tex[nsamp] = use;
             img[nsamp] =
@@ -1974,6 +2073,13 @@ static void setup(u32 w, u32 h) {
     }
     drawlog_at = getenv("X2_DRAWLOG") ? (u32)atoi(getenv("X2_DRAWLOG")) : 0;
     gputime = getenv("X2_GPUTIME") != NULL;
+    gputime2 = getenv("X2_GPUTIME") && atoi(getenv("X2_GPUTIME")) == 2;
+    if (gputime2) {
+        VkQueryPoolCreateInfo pq = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+        pq.queryType = VK_QUERY_TYPE_TIMESTAMP;
+        pq.queryCount = INFLIGHT * 2 * PASSQ;
+        VK_CHECK(vkCreateQueryPool(dev, &pq, NULL, &passq));
+    }
     if (gputime) {
         VkQueryPoolCreateInfo qi2 = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
         qi2.queryType = VK_QUERY_TYPE_TIMESTAMP;

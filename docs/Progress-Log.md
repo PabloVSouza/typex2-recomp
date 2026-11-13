@@ -18,8 +18,11 @@ Milestones, newest first. `git log` has the details.
   features the backend needs) and hands each frame over with `set_image`;
   `X2_RENDERER=vulkan` in the game's `x2.env` selects it. SSF4 runs 59-60 fps
   except a few fight scenes (GPU 16.6 ms against GL's 13 ms); KOF '98 UM 60 fps.
-- **Speed (SSF4 fights on the tablet):** render targets as RGBA8 like GL's.
-  Vulkan still spends about 25% more GPU time than GL there.
+- **Speed (SSF4 on the tablet, RetroArch):** passes overlap now (a sampled texture
+  only holds back pixel shaders), render targets are RGBA8 like GL's. Fights:
+  10.5 ms of GPU time per frame against GL's 13 ms (the intro 10 against 11.6),
+  60 fps throughout. `X2_GPUTIME=2` gives GPU time per render target on Vulkan
+  too.
 
 ## 2026-11-13: Metal backend
 
