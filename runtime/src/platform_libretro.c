@@ -53,7 +53,10 @@ static struct retro_hw_render_callback hw_render;
 /* X2_RENDERER=vulkan (x2.env): the Vulkan backend in RetroArch's context (gfx/gfx_vk.c).
  * RetroArch creates the device through our negotiation interface, so it has what the
  * backend needs (Vulkan 1.3 dynamic rendering, push descriptors). */
-static bool use_vk, vk_ready;
+static bool use_vk;
+#ifdef X2_VULKAN
+static bool vk_ready;
+#endif
 static void msg(const char *text, unsigned frames);
 #ifdef X2_VULKAN
 static const struct retro_hw_render_interface_vulkan *vki;
