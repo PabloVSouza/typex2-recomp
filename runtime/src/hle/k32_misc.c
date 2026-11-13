@@ -905,8 +905,14 @@ static void timeSetEvent(X2Cpu *c) {
         MmTimer *t = &mm_timers[i];
         if (t->used) continue;
         bool started = t->has_thread;
-        *t = (MmTimer){ARG(0), ARG(2), ARG(3), (ARG(4) & 1) != 0 /* TIME_PERIODIC */, true, false, ARG(4) & 0x30,
-                       true, true};
+        *t = (MmTimer){.delay = ARG(0),
+                       .cb = ARG(2),
+                       .user = ARG(3),
+                       .periodic = (ARG(4) & 1) != 0, /* TIME_PERIODIC */
+                       .used = true,
+                       .event_mode = ARG(4) & 0x30,
+                       .armed = true,
+                       .has_thread = true};
         pthread_cond_broadcast(&mm_cond);
         pthread_mutex_unlock(&mm_lock);
         if (!started) x2_thread_create_internal(thunk, i + 1);
