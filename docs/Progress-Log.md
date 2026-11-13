@@ -2,6 +2,22 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: Vulkan backend on Android
+
+- **`gfx_vk.c`** (`X2_RENDERER=vulkan`, Android standalone app), developed on the
+  Galaxy Tab A11 (Mali-G57, Vulkan 1.4 driver):
+  - dynamic rendering, push descriptors, dynamic depth / stencil / cull state;
+  - shaders: a Vulkan GLSL output of both translators, compiled to SPIR-V on
+    the device by glslang;
+  - clears of a whole target become load ops; passes without depth tests
+    leave the depth buffer alone; barriers name the exact stages.
+- **Correctness:** KOF '98 UM's frames are pixel-identical to GL on the Mac;
+  KOF XIII's to GL on the tablet. SSF4, KOF XII and BlazBlue CT match GL apart
+  from timing (fades, animation).
+- **Speed (SSF4 fights on the tablet):** 16-18 ms of GPU time per frame,
+  55-60 fps; GL measures about 13 ms. Next: RetroArch's Vulkan context for the
+  core, pre-rotated presentation, then more GPU work on the tablet.
+
 ## 2026-11-13: Metal backend
 
 - **Shaders in Metal Shading Language:** both D3D shader translators also

@@ -6,6 +6,7 @@
  * X2_GAME_TABLES names this build's game descriptor (x2g_<game>, generated).
  * X2_PLAYER: x2-player, the launcher's host. It has no game built in and loads
  * one compiled as a library (`--game-lib <file>`, exporting x2_game_tables). */
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
         const char *h = getenv("XDG_CACHE_HOME");
         if (h && *h) snprintf(base, sizeof base, "%s", h);
         else if ((h = getenv("HOME")) && *h) snprintf(base, sizeof base, "%s/.cache", h);
-        char full[1024];
+        char full[PATH_MAX];
         const char *d = realpath(dir, full) ? full : dir; /* "." -> the folder's name */
         const char *game = strrchr(d, '/');
         gfx_gl_set_cache_dir(base, game && game[1] ? game + 1 : d);

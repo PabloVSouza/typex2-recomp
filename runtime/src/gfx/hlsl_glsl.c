@@ -237,7 +237,7 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
                     sf(&params, ", texture2d<float> s%d_t [[texture(%d)]], sampler s%d_s [[sampler(%d)]]", reg, reg,
                        reg, reg);
                 else if (vk)
-                    sf(&hdr, "layout(set=1, binding=%d) uniform sampler2D s%d;\n", pixel ? reg : 16 + reg, reg);
+                    sf(&hdr, "layout(set=0, binding=%d) uniform sampler2D s%d;\n", pixel ? 2 + reg : 18 + reg, reg);
                 else
                     sf(&hdr, "uniform sampler2D s%d;\n", reg);
                 info->samplers_used |= 1u << reg;

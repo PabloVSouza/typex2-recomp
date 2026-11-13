@@ -34,8 +34,8 @@ typedef struct {
 /* SH_VKGLSL: GLSL 450 for Vulkan (compiled to SPIR-V by the backend). Uniforms:
  * set 0 binding 0 X2VsU { vec4 vs_c[256]; ivec4 vs_i[16]; ivec4 vs_b[16] (bool in .x, all
  * four set); vec4 u_vp_fix; int u_bgra_mask; }, binding 1 X2PsU { vec4 ps_c[224]; ivec4
- * ps_i[16]; ivec4 ps_b[16]; int u_alpha_func; float u_alpha_ref; } (std140); samplers
- * set 1 binding s# (pixel) / 16 + s# (vertex); varyings at sh_vk_location(); vertex
+ * ps_i[16]; ivec4 ps_b[16]; int u_alpha_func; float u_alpha_ref; } (std140); samplers in
+ * set 0 too (one push-descriptor set): binding 2 + s# (pixel), 18 + s# (vertex); varyings at sh_vk_location(); vertex
  * input types X2_VT# as in MSL; clip space flipped to Vulkan's y-down. */
 typedef enum { SH_GLSL, SH_ESSL, SH_MSL, SH_VKGLSL } ShTarget;
 int sh_vk_location(int usage, int index);

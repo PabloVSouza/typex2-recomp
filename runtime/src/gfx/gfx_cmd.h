@@ -59,3 +59,11 @@ void gfx_frame_free(Frame *f);
 void gfx_frame_replayed(void);
 /* how long replaying the frames of one gfx_take_frames took (X2_PACELOG) */
 void gfx_replay_time(u64 ns);
+
+/* gfx_texconv.c: DXT1/3/5 block rows -> w x h RGBA8 (malloc'd); 16-bit colour rows -> BGRA8 */
+u8 *gfx_dxt_decode(u32 fmt, const u8 *src, u32 w, u32 h);
+void gfx_expand16(u32 fmt, const u8 *src, u32 pitch, u32 w, u32 h, u8 *dst);
+/* a DXT1 texture without transparent texels (stored as RGB565 on GPUs without S3TC);
+ * RGBA8 -> RGB565 in place (R in the high bits) */
+bool gfx_dxt1_has_alpha(const u8 *blocks, u32 bytes);
+u8 *gfx_rgba_to_565(u8 *rgba, u32 n);

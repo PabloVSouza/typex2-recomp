@@ -59,7 +59,8 @@ gets an entry per milestone. Update them with the README.
 * `runtime/src/`: `loader.c` (PE + import binding; `hle_modules[]` maps DLL
   names to HLE tables), `thread.c`, `hle/*.c` (one file per DLL family),
   `gfx/` (`gfx_record.c` recording shared by the backends, `gfx_gl*.c` GL and
-  `gfx_metal.m` Metal backends, `sm3_glsl.c` bytecode → GLSL / MSL, `hlsl_glsl.c`
+  `gfx_metal.m` Metal and `gfx_vk.c` Vulkan backends, `gfx_texconv.c` DXT / 16-bit
+  conversions, `sm3_glsl.c` bytecode → GLSL / MSL / Vulkan GLSL, `hlsl_glsl.c`
   HLSL → GLSL, `d3dasm.c` shader assembly, `ffp.c` fixed-function pipeline as
   generated shaders), `jvs.c` + `padmap.c` (inputs),
   `platform_sdl.c` / `platform_libretro.c` (front ends), `prof.c` (profiler).

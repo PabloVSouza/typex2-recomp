@@ -69,6 +69,7 @@ add_library(x2rt_common OBJECT
   src/hle/net.c
   src/hle/pending.c
   src/gfx/gfx_record.c
+  src/gfx/gfx_texconv.c
   src/gfx/gfx_gl.c
   src/gfx/gfx_gl_draw.c
   src/gfx/sm3_glsl.c
@@ -131,6 +132,26 @@ if(X2_STANDALONE)
   add_library(x2rt STATIC src/platform_sdl.c)
   target_compile_options(x2rt PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(x2rt PUBLIC x2rt_common SDL3::SDL3)
+  if(ANDROID)
+    # the Vulkan backend (X2_RENDERER=vulkan): shaders compiled to SPIR-V by glslang
+    # (its library only: no SPIRV-Tools, no standalone tools)
+    include(FetchContent)
+    set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
+    set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+    set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
+    set(ENABLE_SPVREMAPPER OFF CACHE BOOL "" FORCE)
+    set(GLSLANG_TESTS OFF CACHE BOOL "" FORCE)
+    set(GLSLANG_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(glslang
+      GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
+      GIT_TAG 16.6.0
+      GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(glslang)
+    target_sources(x2rt PRIVATE src/gfx/gfx_vk.c)
+    target_compile_definitions(x2rt PRIVATE X2_VULKAN)
+    target_link_libraries(x2rt PUBLIC glslang glslang-default-resource-limits vulkan)
+  endif()
   if(APPLE)
     # the Metal backend (X2_RENDERER=metal)
     enable_language(OBJC)

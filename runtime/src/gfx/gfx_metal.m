@@ -153,36 +153,6 @@ static MTLPixelFormat mtl_format(u32 f) {
     }
 }
 
-static void expand16(u32 f, const u8 *src, u32 pitch, u32 w, u32 h, u8 *dst) {
-    for (u32 y = 0; y < h; y++) {
-        const u16 *s = (const u16 *)(src + (size_t)y * pitch);
-        u8 *d = dst + (size_t)y * w * 4;
-        for (u32 x = 0; x < w; x++, d += 4) {
-            u16 c = s[x];
-            u32 r, g, b, a;
-            if (f == GFX_FMT_B5G6R5) {
-                r = (c >> 11 & 31) * 255 / 31;
-                g = (c >> 5 & 63) * 255 / 63;
-                b = (c & 31) * 255 / 31;
-                a = 255;
-            } else if (f == GFX_FMT_BGR5A1) {
-                r = (c >> 10 & 31) * 255 / 31;
-                g = (c >> 5 & 31) * 255 / 31;
-                b = (c & 31) * 255 / 31;
-                a = c >> 15 ? 255 : 0;
-            } else {
-                r = (c >> 8 & 15) * 17;
-                g = (c >> 4 & 15) * 17;
-                b = (c & 15) * 17;
-                a = (c >> 12 & 15) * 17;
-            }
-            d[0] = (u8)b;
-            d[1] = (u8)g;
-            d[2] = (u8)r;
-            d[3] = (u8)a;
-        }
-    }
-}
 
 /* ---- command buffer and passes ------------------------------------------------- */
 static id<MTLCommandBuffer> cb;
@@ -365,7 +335,7 @@ static void do_tex_upload(const TexUpload *k) {
     u8 *tmp = NULL;
     if (t->expand16) {
         tmp = malloc((size_t)k->w * k->h * 4);
-        expand16(t->fmt, data, k->pitch, k->w, k->h, tmp);
+        gfx_expand16(t->fmt, data, k->pitch, k->w, k->h, tmp);
         data = tmp;
         pitch = k->w * 4;
         bytes = pitch * k->h;

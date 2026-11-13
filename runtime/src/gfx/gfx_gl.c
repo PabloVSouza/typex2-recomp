@@ -84,61 +84,6 @@ static void apply_swizzle(GLenum target, u32 f, bool bgra) {
  * textures are stored as RGBA8 and every upload is decoded on the CPU. */
 static bool have_s3tc = true;
 
-static void rgb565(u16 c, u8 *o) {
-    o[0] = (u8)((c >> 11 & 31) * 255 / 31);
-    o[1] = (u8)((c >> 5 & 63) * 255 / 63);
-    o[2] = (u8)((c & 31) * 255 / 31);
-}
-
-/* one 4x4 colour block (DXT1 layout); dxt1 enables the 3-colour + transparent mode */
-static void dxt_color_block(const u8 *b, bool dxt1, u8 out[16][4]) {
-    u16 c0 = (u16)(b[0] | b[1] << 8), c1 = (u16)(b[2] | b[3] << 8);
-    u8 pal[4][4];
-    rgb565(c0, pal[0]);
-    rgb565(c1, pal[1]);
-    pal[0][3] = pal[1][3] = pal[2][3] = pal[3][3] = 255;
-    for (int k = 0; k < 3; k++) {
-        if (c0 > c1 || !dxt1) {
-            pal[2][k] = (u8)((2 * pal[0][k] + pal[1][k]) / 3);
-            pal[3][k] = (u8)((pal[0][k] + 2 * pal[1][k]) / 3);
-        } else {
-            pal[2][k] = (u8)((pal[0][k] + pal[1][k]) / 2);
-            pal[3][k] = 0;
-        }
-    }
-    if (dxt1 && c0 <= c1) pal[3][3] = 0;
-    u32 bits = (u32)b[4] | (u32)b[5] << 8 | (u32)b[6] << 16 | (u32)b[7] << 24;
-    for (int i = 0; i < 16; i++) memcpy(out[i], pal[bits >> (2 * i) & 3], 4);
-}
-
-/* decode w x h texels of packed block rows into RGBA8 */
-static u8 *dxt_decode(u32 fmt, const u8 *src, u32 w, u32 h) {
-    u32 bw = (w + 3) / 4, bh = (h + 3) / 4, bb = fmt == GFX_FMT_DXT1 ? 8 : 16;
-    u8 *out = malloc((size_t)w * h * 4);
-    for (u32 by = 0; by < bh; by++)
-        for (u32 bx = 0; bx < bw; bx++) {
-            const u8 *b = src + ((size_t)by * bw + bx) * bb;
-            u8 px[16][4];
-            dxt_color_block(fmt == GFX_FMT_DXT1 ? b : b + 8, fmt == GFX_FMT_DXT1, px);
-            if (fmt == GFX_FMT_DXT3) {
-                for (int i = 0; i < 16; i++) px[i][3] = (u8)((b[i / 2] >> (4 * (i & 1)) & 15) * 17);
-            } else if (fmt == GFX_FMT_DXT5) {
-                u8 a[8] = {b[0], b[1]};
-                for (int k = 2; k < 8; k++)
-                    a[k] = a[0] > a[1] ? (u8)(((8 - k) * a[0] + (k - 1) * a[1]) / 7)
-                         : k < 6 ? (u8)(((6 - k) * a[0] + (k - 1) * a[1]) / 5) : (k == 6 ? 0 : 255);
-                u64 ab = 0;
-                for (int k = 0; k < 6; k++) ab |= (u64)b[2 + k] << (8 * k);
-                for (int i = 0; i < 16; i++) px[i][3] = a[ab >> (3 * i) & 7];
-            }
-            for (int i = 0; i < 16; i++) {
-                u32 x = bx * 4 + (u32)(i & 3), y = by * 4 + (u32)(i >> 2);
-                if (x < w && y < h) memcpy(out + ((size_t)y * w + x) * 4, px[i], 4);
-            }
-        }
-    return out;
-}
-
 static bool is_dxt(u32 fmt) { return fmt == GFX_FMT_DXT1 || fmt == GFX_FMT_DXT3 || fmt == GFX_FMT_DXT5; }
 static GLenum dxt_gl(u32 fmt) {
     return fmt == GFX_FMT_DXT1 ? GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
@@ -156,24 +101,6 @@ static void tex_gl_format(const Tex *t, GLint *ifmt, GLenum *fmt, GLenum *type, 
  * are stored as RGB565 instead of RGBA8: their colors are 5:6:5 to begin with,
  * and half the size halves upload time and sampling bandwidth (Mali-G57).
  * X2_DXT565=0 keeps RGBA8. */
-static bool dxt1_has_alpha(const u8 *b, u32 bytes) {
-    for (u32 o = 0; o + 8 <= bytes; o += 8) {
-        u32 c0 = b[o] | b[o + 1] << 8, c1 = b[o + 2] | b[o + 3] << 8;
-        if (c0 > c1) continue;
-        u32 idx = b[o + 4] | b[o + 5] << 8 | b[o + 6] << 16 | (u32)b[o + 7] << 24;
-        for (int i = 0; i < 16; i++)
-            if ((idx >> (2 * i) & 3) == 3) return true;
-    }
-    return false;
-}
-static u8 *rgba_to_565(u8 *rgba, u32 n) { /* in place: the result fits the first half */
-    u16 *o = (u16 *)rgba;
-    for (u32 i = 0; i < n; i++) {
-        const u8 *p = rgba + i * 4;
-        o[i] = (u16)((p[0] * 31 + 127) / 255 << 11 | (p[1] * 63 + 127) / 255 << 5 | (p[2] * 31 + 127) / 255);
-    }
-    return rgba;
-}
 static u32 level_dim(u32 v, u32 l) { return v >> l ? v >> l : 1; }
 
 static GLenum tex_target(const Tex *t) { return t->cube ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D; }
@@ -258,7 +185,7 @@ static void do_tex_upload(const TexUpload *k) {
         static int on = -1;
         if (on < 0) on = !getenv("X2_DXT565") || atoi(getenv("X2_DXT565")) != 0;
         t->dxt_seen = true;
-        if (on && !t->alloc && !t->cube && !dxt1_has_alpha((const u8 *)(k + 1), k->bytes)) {
+        if (on && !t->alloc && !t->cube && !gfx_dxt1_has_alpha((const u8 *)(k + 1), k->bytes)) {
             t->rgb565 = true;
             tex_gl_format(t, &ifmt, &fmt, &type, &bgra, &native);
         }
@@ -275,8 +202,8 @@ static void do_tex_upload(const TexUpload *k) {
     }
     u8 *tmp = NULL;
     if (is_dxt(t->fmt)) {
-        data = tmp = dxt_decode(t->fmt, data, k->w, k->h);
-        if (t->rgb565) rgba_to_565(tmp, k->w * k->h);
+        data = tmp = gfx_dxt_decode(t->fmt, data, k->w, k->h);
+        if (t->rgb565) gfx_rgba_to_565(tmp, k->w * k->h);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     } else {
         u32 bw, bpp = gfx_fmt_block_bytes(t->fmt, &bw);
@@ -847,7 +774,7 @@ void gfx_gl_dump_texture(GfxId id) {
         u8 *blocks = malloc(n);
         glGetCompressedTexImage(GL_TEXTURE_2D, 0, blocks);
         free(px);
-        px = dxt_decode(t->fmt, blocks, t->w, t->h);
+        px = gfx_dxt_decode(t->fmt, blocks, t->w, t->h);
         free(blocks);
     } else {
         glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);

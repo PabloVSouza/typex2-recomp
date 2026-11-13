@@ -25,6 +25,14 @@ static SDL_Window *win;
 static SDL_GLContext glc;
 /* X2_RENDERER=metal (Apple): the Metal backend (gfx/gfx_metal.m) instead of GL */
 static bool use_metal;
+/* X2_RENDERER=vulkan (Android): the Vulkan backend (gfx/gfx_vk.c) */
+static bool use_vk;
+#ifdef X2_VULKAN
+void gfx_vk_init(SDL_Window *win, u32 w, u32 h);
+bool gfx_vk_run_frames(u32 timeout_ms);
+void gfx_vk_present(u32 ww, u32 wh);
+void gfx_vk_screenshot(const char *path);
+#endif
 #ifdef X2_METAL
 #include <SDL3/SDL_metal.h>
 void gfx_mtl_init(void *metal_layer, u32 w, u32 h);
@@ -600,9 +608,15 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #ifdef X2_METAL
     use_metal = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "metal");
 #endif
+#ifdef X2_VULKAN
+    use_vk = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "vulkan");
+#endif
     win = SDL_CreateWindow("Type X2 recomp", 1280, 720,
-                           (use_metal ? SDL_WINDOW_METAL : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE |
-                               SDL_WINDOW_HIGH_PIXEL_DENSITY | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
+                           (use_metal ? SDL_WINDOW_METAL
+                            : use_vk  ? SDL_WINDOW_VULKAN
+                                      : SDL_WINDOW_OPENGL) |
+                               SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+                               (fullscreen ? SDL_WINDOW_FULLSCREEN : 0) |
                                (getenv("X2_NOPRESENT") ? SDL_WINDOW_HIDDEN : 0));
     if (!win) x2_fatal("SDL_CreateWindow: %s", SDL_GetError());
 #ifdef X2_METAL
@@ -612,7 +626,10 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
         gfx_mtl_init(SDL_Metal_GetLayer(view), 1280, 720);
     }
 #endif
-    if (!use_metal) {
+#ifdef X2_VULKAN
+    if (use_vk) gfx_vk_init(win, 1280, 720);
+#endif
+    if (!use_metal && !use_vk) {
         glc = SDL_GL_CreateContext(win);
         if (!glc) x2_fatal("SDL_GL_CreateContext: %s", SDL_GetError());
         SDL_GL_MakeCurrent(win, glc);
@@ -686,9 +703,14 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
             fresh = gfx_mtl_run_frames(20);
         else
 #endif
+#ifdef X2_VULKAN
+            if (use_vk)
+            fresh = gfx_vk_run_frames(20);
+        else
+#endif
             fresh = gfx_gl_run_frames(20, &t, &w, &h);
         if (fresh) {
-            if (!use_metal) {
+            if (!use_metal && !use_vk) {
                 tex = t;
                 tw = w;
                 th = h;
@@ -705,6 +727,11 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #ifdef X2_METAL
                 if (use_metal)
                     gfx_mtl_screenshot(path);
+                else
+#endif
+#ifdef X2_VULKAN
+                    if (use_vk)
+                    gfx_vk_screenshot(path);
                 else
 #endif
                     if (getenv("X2_SHOT_WINDOW"))
@@ -725,6 +752,11 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
                 gfx_mtl_screenshot(shot_path);
             else
 #endif
+#ifdef X2_VULKAN
+                if (use_vk)
+                gfx_vk_screenshot(shot_path);
+            else
+#endif
                 screenshot(tex, tw, th, shot_path);
             want_shot = false;
         }
@@ -739,6 +771,12 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
             int ww, wh;
             SDL_GetWindowSizeInPixels(win, &ww, &wh);
             gfx_mtl_present((u32)ww, (u32)wh); /* overlays (FPS, touch) are GL-only so far */
+#endif
+        } else if (use_vk) {
+#ifdef X2_VULKAN
+            int ww, wh;
+            SDL_GetWindowSizeInPixels(win, &ww, &wh);
+            gfx_vk_present((u32)ww, (u32)wh); /* overlays (FPS, touch) are GL-only so far */
 #endif
         } else {
             present_image(tex, tw, th);

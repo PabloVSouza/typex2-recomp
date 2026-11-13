@@ -602,7 +602,15 @@ int sh_vk_location(int usage, int index) {
 /* The Vulkan GLSL wrapper around the shared body (interface: sm3_glsl.h). As the
  * GLSL declarations, with descriptor bindings, locations and Vulkan's clip space. */
 static void vk_wrap(Ctx *c, Sm3Info *info, Str *s) {
-    sf(s, "#version 450\n#define X2_HP\n%s", prelude_common);
+    /* pixel shaders: fp16 maths with X2_MEDIUMP (RelaxedPrecision in SPIR-V), texture
+     * coordinates and other inputs kept highp, as the ESSL output does */
+    if (c->pixel)
+        sf(s,
+           "#version 450\n#ifdef X2_MEDIUMP\nprecision mediump float;\n#define X2_HP highp\n#else\n#define "
+           "X2_HP\n#endif\n%s",
+           prelude_common);
+    else
+        sf(s, "#version 450\n#define X2_HP\n%s", prelude_common);
     if (c->pixel)
         sf(s, "layout(std140, set=0, binding=1) uniform X2PsU { vec4 ps_c[224]; ivec4 ps_i[16]; ivec4 ps_b[16]; "
               "int u_alpha_func; float u_alpha_ref; };\n");
@@ -612,7 +620,8 @@ static void vk_wrap(Ctx *c, Sm3Info *info, Str *s) {
     for (int i = 0; i < 16; i++) {
         if (!(info->samplers_used & (1u << i))) continue;
         const char *ty = c->samp_type[i] == 3 ? "samplerCube" : c->samp_type[i] == 4 ? "sampler3D" : "sampler2D";
-        sf(s, "layout(set=1, binding=%d) uniform %s %s%d;\n", c->pixel ? i : 16 + i, ty, c->pixel ? "s" : "vs_s", i);
+        sf(s, "layout(set=0, binding=%d) uniform %s %s%d;\n", c->pixel ? 2 + i : 18 + i, ty, c->pixel ? "s" : "vs_s",
+           i);
     }
     if (c->pixel) {
         if (c->major >= 3) {
@@ -620,15 +629,15 @@ static void vk_wrap(Ctx *c, Sm3Info *info, Str *s) {
                 if (c->in_usage[i] < 0) continue;
                 info->ps_in_usage[i] = c->in_usage[i];
                 info->ps_in_index[i] = c->in_index[i];
-                sf(s, "layout(location=%d) in vec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n",
-                   sh_vk_location(c->in_usage[i], c->in_index[i]), c->in_usage[i], c->in_index[i], i, c->in_usage[i],
-                   c->in_index[i]);
+                sf(s, "layout(location=%d) in %svec4 x_%d_%d;\n#define ps_v%d x_%d_%d\n",
+                   sh_vk_location(c->in_usage[i], c->in_index[i]), c->in_usage[i] == 10 ? "" : "X2_HP ", c->in_usage[i],
+                   c->in_index[i], i, c->in_usage[i], c->in_index[i]);
                 info->ps_in_mask |= 1u << i;
             }
         } else {
             for (int i = 0; i < 8; i++)
                 if (c->tex_used[i] || info->ps_in_mask & (1u << i))
-                    sf(s, "layout(location=%d) in vec4 x_5_%d;\n", sh_vk_location(5, i), i);
+                    sf(s, "layout(location=%d) in X2_HP vec4 x_5_%d;\n", sh_vk_location(5, i), i);
             for (int i = 0; i < 2; i++)
                 if (info->ps_in_mask & (1u << (16 + i)))
                     sf(s, "layout(location=%d) in vec4 x_10_%d;\n", sh_vk_location(10, i), i);
