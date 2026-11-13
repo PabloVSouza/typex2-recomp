@@ -19,6 +19,15 @@ endif()
 add_executable(kofarc kofarc.cpp ${CMAKE_SOURCE_DIR}/runtime/src/txac.c)
 # fxdump: list compiled D3DX effects (fx_2_0), e.g. the ones embedded in a game.exe
 add_executable(fxdump fxdump.c ${CMAKE_SOURCE_DIR}/runtime/src/gfx/fx.c)
+# offline shader translation over shaders saved with X2_SHADER_DUMP
+add_executable(shadertest shadertest.c ${CMAKE_SOURCE_DIR}/runtime/src/gfx/sm3_glsl.c ${CMAKE_SOURCE_DIR}/runtime/src/gfx/hlsl_glsl.c
+  ${CMAKE_SOURCE_DIR}/runtime/src/gfx/d3dasm.c)
+target_link_libraries(shadertest PRIVATE m)
+if(APPLE) # msl: compiled by the Metal compiler
+  enable_language(OBJC)
+  target_sources(shadertest PRIVATE shadertest_metal.m)
+  target_link_libraries(shadertest PRIVATE "-framework Metal" "-framework Foundation")
+endif()
 target_link_libraries(fxdump PRIVATE m)
 
 # retro_host: minimal libretro frontend for testing the core (desktop, needs SDL3)

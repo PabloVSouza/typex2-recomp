@@ -250,6 +250,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture; upper case C S U D L R A B X Y = player 2) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
+| `X2_SHADER_DUMP=<dir>` | save every shader the game creates (`<hash>.vs.tok` / `.ps.tok`) for `build/tools/shadertest <glsl\|essl\|msl> <dir> <out>`, which translates them all offline (msl: each checked by the Metal compiler). Game data: never commit them |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
 | `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames |
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries) |

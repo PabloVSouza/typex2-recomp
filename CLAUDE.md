@@ -137,6 +137,11 @@ gets an entry per milestone. Update them with the README.
   attract-mode frames with movies or timed fades are not deterministic.
 * Never pipe `x2recomp` into `head`: SIGPIPE kills it halfway and leaves a
   `gen/` whose `funcs.h` and `table.c` disagree (undeclared `f_xxxxxxxx`).
+* Shader translator changes: dump every shader of every game once
+  (`X2_SHADER_DUMP=<dir>` while running them), then `build/tools/shadertest`
+  translates the whole set offline: GLSL output must stay byte-identical
+  (`diff -r` against a run of the old translator), MSL must pass the Metal
+  compiler. Faster and stricter than screenshots.
 * Compiled D3DX effects: `build/tools/fxdump [-v] game.exe` lists every
   embedded effect (parameters, passes, states, shader constant tables,
   preshaders). Shader bytecode may contain comments with their own END token

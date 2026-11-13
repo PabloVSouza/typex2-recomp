@@ -539,12 +539,210 @@ static void translate_ins(Ctx *c) {
 static const char *prelude_common =
     "#define saturate(x) clamp(x,0.0,1.0)\n";
 
-bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info *info, char *err, size_t errlen) {
+/* MSL: the GLSL names the body uses, as types, helpers and macros (MSL is C++14) */
+static const char *prelude_msl =
+    "#include <metal_stdlib>\nusing namespace metal;\n"
+    "typedef float4 vec4; typedef float3 vec3; typedef float2 vec2;\n"
+    "typedef int4 ivec4; typedef int3 ivec3; typedef int2 ivec2;\n"
+    "template<typename T, typename U> inline T x2_clamp(T x, U a, U b) { return metal::clamp(x, T(a), T(b)); }\n"
+    "template<typename T> inline auto lessThan(T a, T b) { return a < b; }\n"
+    "template<typename T> inline auto greaterThan(T a, T b) { return a > b; }\n"
+    "template<typename T> inline auto greaterThanEqual(T a, T b) { return a >= b; }\n"
+    "inline float4 x2_tex(texture2d<float> t, sampler s, float2 uv) { return t.sample(s, uv); }\n"
+    "inline float4 x2_tex(texturecube<float> t, sampler s, float3 uv) { return t.sample(s, uv); }\n"
+    "inline float4 x2_tex(texture3d<float> t, sampler s, float3 uv) { return t.sample(s, uv); }\n"
+    "inline float4 x2_tex(texture2d<float> t, sampler s, float2 uv, float b) { return t.sample(s, uv, bias(b)); }\n"
+    "inline float4 x2_tex(texturecube<float> t, sampler s, float3 uv, float b) { return t.sample(s, uv, bias(b)); }\n"
+    "inline float4 x2_tex(texture3d<float> t, sampler s, float3 uv, float b) { return t.sample(s, uv, bias(b)); }\n"
+    "inline float4 x2_texl(texture2d<float> t, sampler s, float2 uv, float l) { return t.sample(s, uv, level(l)); }\n"
+    "inline float4 x2_texl(texturecube<float> t, sampler s, float3 uv, float l) { return t.sample(s, uv, level(l)); }\n"
+    "inline float4 x2_texl(texture3d<float> t, sampler s, float3 uv, float l) { return t.sample(s, uv, level(l)); }\n"
+    "inline float4 x2_texg(texture2d<float> t, sampler s, float2 uv, float2 x, float2 y) { return t.sample(s, uv, "
+    "gradient2d(x, y)); }\n"
+    "inline float4 x2_texg(texturecube<float> t, sampler s, float3 uv, float3 x, float3 y) { return t.sample(s, uv, "
+    "gradientcube(x, y)); }\n"
+    "inline float4 x2_texg(texture3d<float> t, sampler s, float3 uv, float3 x, float3 y) { return t.sample(s, uv, "
+    "gradient3d(x, y)); }\n"
+    "#define clamp x2_clamp\n"
+    "#define inversesqrt rsqrt\n"
+    "#define dFdx dfdx\n"
+    "#define dFdy dfdy\n"
+    "#define discard discard_fragment()\n"
+    "#define texture(s, ...) x2_tex(s##_t, s##_s, __VA_ARGS__)\n"
+    "#define textureLod(s, ...) x2_texl(s##_t, s##_s, __VA_ARGS__)\n"
+    "#define textureGrad(s, ...) x2_texg(s##_t, s##_s, __VA_ARGS__)\n"
+    "#define X2_HP\n";
+
+static const char *msl_tex_type(int samp_type) {
+    return samp_type == 3 ? "texturecube<float>" : samp_type == 4 ? "texture3d<float>" : "texture2d<float>";
+}
+
+/* The MSL wrapper around the shared body (interface: sm3_glsl.h). Fills `info`
+ * as the GLSL declarations do. */
+static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
+    sf(s, "%s%s", prelude_msl, prelude_common);
+    char params[2048] = "";
+    size_t pl = 0;
+    for (int i = 0; i < 16; i++) {
+        if (!(info->samplers_used & (1u << i))) continue;
+        pl += (size_t)snprintf(
+            params + pl, sizeof params - pl, ", %s %s%d_t [[texture(%d)]], sampler %s%d_s [[sampler(%d)]]",
+            msl_tex_type(c->samp_type[i]), c->pixel ? "s" : "vs_s", i, i, c->pixel ? "s" : "vs_s", i, i);
+    }
+    if (c->pixel) {
+        sf(s, "struct X2PsU { float4 c[224]; int4 i[16]; int b[16]; int alpha_func; float alpha_ref; };\n"
+              "#define ps_c u_.c\n#define ps_i u_.i\n#define ps_b u_.b\n"
+              "#define u_alpha_func u_.alpha_func\n#define u_alpha_ref u_.alpha_ref\n");
+        sf(s, "struct X2PsIn {\n  float4 x2_pos [[position]];\n  bool x2_ff [[front_facing]];\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (c->in_usage[i] < 0) continue;
+                info->ps_in_usage[i] = c->in_usage[i];
+                info->ps_in_index[i] = c->in_index[i];
+                sf(s, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", c->in_usage[i], c->in_index[i], c->in_usage[i],
+                   c->in_index[i]);
+                info->ps_in_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++)
+                if (c->tex_used[i] || info->ps_in_mask & (1u << i)) sf(s, "  float4 x_5_%d [[user(x_5_%d)]];\n", i, i);
+            for (int i = 0; i < 2; i++)
+                if (info->ps_in_mask & (1u << (16 + i))) sf(s, "  float4 x_10_%d [[user(x_10_%d)]];\n", i, i);
+        }
+        sf(s, "};\nstruct X2PsOut {\n");
+        for (int i = 0; i < 4; i++)
+            if (c->color_out_used[i] || i == 0) sf(s, "  float4 oC%d [[color(%d)]];\n", i, i);
+        if (c->depth_out) sf(s, "  float x2_depth [[depth(any)]];\n");
+        sf(s, "};\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++)
+                if (c->in_usage[i] >= 0) sf(s, "#define ps_v%d in_.x_%d_%d\n", i, c->in_usage[i], c->in_index[i]);
+        } else {
+            for (int i = 0; i < 8; i++)
+                if (c->tex_used[i] || info->ps_in_mask & (1u << i)) sf(s, "#define x_5_%d in_.x_5_%d\n", i, i);
+            for (int i = 0; i < 2; i++)
+                if (info->ps_in_mask & (1u << (16 + i))) sf(s, "#define x_10_%d in_.x_10_%d\n", i, i);
+        }
+        for (int i = 0; i < 4; i++)
+            if (c->color_out_used[i] || i == 0) sf(s, "#define oC%d out_.oC%d\n", i, i);
+        sf(s, "#define gl_FragCoord in_.x2_pos\n#define gl_FrontFacing in_.x2_ff\n");
+        sf(s, "fragment X2PsOut x2_main(X2PsIn in_ [[stage_in]], constant X2PsU &u_ [[buffer(0)]]%s) {\n", params);
+        sf(s, "  X2PsOut out_ = {};\n");
+    } else {
+        sf(s, "struct X2VsU { float4 c[256]; int4 i[16]; int b[16]; float4 vp_fix; int bgra_mask; };\n"
+              "#define vs_c u_.c\n#define vs_i u_.i\n#define vs_b u_.b\n"
+              "#define u_vp_fix u_.vp_fix\n#define u_bgra_mask u_.bgra_mask\n");
+        sf(s, "struct X2VsIn {\n");
+        bool any_in = false;
+        for (int i = 0; i < 16; i++) {
+            if (!c->input_used[i] && c->in_usage[i] < 0) continue;
+            sf(s, "  float4 vs_v%d [[attribute(%d)]];\n", i, i);
+            info->vs_in_usage[i] = c->in_usage[i] < 0 ? 0 : c->in_usage[i];
+            info->vs_in_index[i] = c->in_index[i] < 0 ? 0 : c->in_index[i];
+            info->vs_in_mask |= 1u << i;
+            any_in = true;
+        }
+        if (!any_in) sf(s, "  float4 x2_unused [[attribute(15)]];\n"); /* MSL rejects an empty stage_in */
+        sf(s, "};\nstruct X2VsOut {\n  float4 x2_pos [[position]];\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0) continue;
+                if (u < 0) {
+                    u = 5;
+                    x = i;
+                }
+                if (u == 4) continue;
+                sf(s, "  float4 x_%d_%d [[user(x_%d_%d)]];\n", u, x, u, x);
+                info->vs_out_mask |= 1u << i;
+            }
+        } else {
+            for (int i = 0; i < 8; i++) sf(s, "  float4 x_5_%d [[user(x_5_%d)]];\n", i, i);
+            for (int i = 0; i < 2; i++) sf(s, "  float4 x_10_%d [[user(x_10_%d)]];\n", i, i);
+        }
+        sf(s, "};\n");
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0 || u == 4) continue;
+                if (u < 0) {
+                    u = 5;
+                    x = i;
+                }
+                sf(s, "#define x_%d_%d out_.x_%d_%d\n", u, x, u, x);
+            }
+        } else {
+            for (int i = 0; i < 8; i++) sf(s, "#define x_5_%d out_.x_5_%d\n", i, i);
+            for (int i = 0; i < 2; i++) sf(s, "#define x_10_%d out_.x_10_%d\n", i, i);
+        }
+        sf(s, "vertex X2VsOut x2_main(X2VsIn in_ [[stage_in]], constant X2VsU &u_ [[buffer(0)]]%s) {\n", params);
+        sf(s, "  X2VsOut out_ = {};\n");
+    }
+    for (int i = 0; i < 32; i++)
+        if (c->temp_used[i]) sf(s, "  vec4 r%d = vec4(0.0);\n", i);
+    if (c->addr_used) sf(s, "  ivec4 a0 = ivec4(0);\n");
+    if (c->loop_used) sf(s, "  int aL = 0;\n");
+    if (c->vpos) sf(s, "  vec4 vPos = vec4(gl_FragCoord.xy - 0.5, 0.0, 0.0);\n");
+    if (!c->pixel) {
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i))
+                sf(s, "  vec4 vs_v%d_ = ((u_bgra_mask >> %d) & 1) != 0 ? in_.vs_v%d.zyxw : in_.vs_v%d;\n", i, i, i, i);
+        for (int i = 0; i < 16; i++)
+            if (info->vs_in_mask & (1u << i)) sf(s, "  #define vs_v%d vs_v%d_\n", i, i);
+        sf(s, "  vec4 o_pos = vec4(0.0,0.0,0.0,1.0); vec4 o_fog = vec4(0.0); vec4 o_pts = vec4(1.0);\n");
+        if (c->major >= 3)
+            for (int i = 0; i < 16; i++)
+                if (c->output_used[i]) sf(s, "  vec4 o%d = vec4(0.0);\n", i);
+    } else {
+        sf(s, "  float o_depth = gl_FragCoord.z;\n");
+    }
+    sf(s, "%s", c->body.s ? c->body.s : "");
+    if (!c->pixel) {
+        if (c->major >= 3) {
+            for (int i = 0; i < 16; i++) {
+                if (!c->output_used[i]) continue;
+                int u = c->out_usage[i], x = c->out_index[i];
+                if (u == 0)
+                    sf(s, "  o_pos = o%d;\n", i);
+                else if (u == 4)
+                    sf(s, "  o_pts = o%d;\n", i);
+                else {
+                    if (u < 0) {
+                        u = 5;
+                        x = i;
+                    }
+                    sf(s, "  x_%d_%d = o%d;\n", u, x, i);
+                }
+            }
+        }
+        /* D3D's clip space is Metal's: only the half-pixel offset */
+        sf(s, "  out_.x2_pos = o_pos;\n"
+              "  out_.x2_pos.xy += u_vp_fix.xy * out_.x2_pos.w;\n");
+    } else {
+        sf(s,
+           "#ifdef X2_ATEST\n  if (u_alpha_func != 0) {\n"
+           "    float a_ = floor(oC0.a * 255.0 + 0.5), r_ = u_alpha_ref;\n"
+           "    bool pass_ = u_alpha_func == 1 ? false : u_alpha_func == 2 ? a_ < r_ : u_alpha_func == 3 ? a_ == r_ :\n"
+           "                 u_alpha_func == 4 ? a_ <= r_ : u_alpha_func == 5 ? a_ > r_ : u_alpha_func == 6 ? a_ != r_ "
+           ":\n"
+           "                 u_alpha_func == 7 ? a_ >= r_ : true;\n"
+           "    if (!pass_) discard;\n"
+           "  }\n#endif\n");
+        if (c->depth_out) sf(s, "  out_.x2_depth = o_depth;\n");
+    }
+    sf(s, "  return out_;\n}\n");
+}
+
+bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out, Sm3Info *info, char *err,
+                   size_t errlen) {
+    bool gles = target == SH_ESSL;
     if (n >= 1 && (tok[0] & 0xFFFFFF00u) == 0xFFFF0100u) { /* ps_1_x: rewritten to ps_2_0 first (d3dasm.c) */
         int cap = (int)n * 2 + 64;
         uint32_t *t2 = malloc(sizeof *t2 * (size_t)cap);
         int m = x2_ps1_to_ps2(tok, n, t2, cap, err, errlen);
-        bool ok = m > 0 && m <= cap && sm3_to_glsl(t2, (uint32_t)m, gles, out, info, err, errlen);
+        bool ok = m > 0 && m <= cap && sm3_translate(t2, (uint32_t)m, target, out, info, err, errlen);
         free(t2);
         return ok;
     }
@@ -563,6 +761,10 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
     while (c->pos < n && tok[c->pos] != 0x0000FFFFu && !c->failed) translate_ins(c);
 
     Str s = {0};
+    if (target == SH_MSL) {
+        msl_wrap(c, info, &s);
+        goto done;
+    }
     /* pixel shaders compile with or without X2_MEDIUMP (gfx_gl_draw.c): fp16
      * maths, twice the ALU rate on Mali; inputs other than colours stay highp */
     const char *hp = c->pixel ? "X2_HP " : "";
@@ -686,6 +888,7 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
         if (c->depth_out) sf(&s, "  gl_FragDepth = o_depth;\n");
     }
     sf(&s, "}\n");
+done:
     free(c->body.s);
     bool ok = !c->failed;
     if (!ok && err) snprintf(err, errlen, "%s", c->err);
@@ -694,4 +897,8 @@ bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info
     free(c);
     *out = s.s;
     return ok;
+}
+
+bool sm3_to_glsl(const uint32_t *tok, uint32_t n, bool gles, char **out, Sm3Info *info, char *err, size_t errlen) {
+    return sm3_translate(tok, n, gles ? SH_ESSL : SH_GLSL, out, info, err, errlen);
 }
