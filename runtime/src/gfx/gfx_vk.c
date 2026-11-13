@@ -2190,9 +2190,13 @@ void gfx_vk_present(u32 ww, u32 wh) {
     VkResult r = vkAcquireNextImageKHR(dev, swapchain, 100000000ull, acq_sem[i], VK_NULL_HANDLE, &idx);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
         swapchain_create(ww, wh);
+        ovq_n = 0;
         return;
     }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) return;
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {
+        ovq_n = 0;
+        return;
+    }
     VK_CHECK(vkResetFences(dev, 1, &pr_fence[i]));
     VkCommandBuffer c = pr_cb[i];
     VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,

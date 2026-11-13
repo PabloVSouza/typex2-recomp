@@ -5,6 +5,7 @@
  * front end's clock). The backend's render thread takes queued frames with
  * gfx_take_frames() and replays them (gfx_gl.c). */
 #include <sched.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -126,7 +127,28 @@ void gfx_buffer_destroy(GfxId id) {
     *(GfxId *)emit(C_BUF_DESTROY, 4) = id;
     pthread_mutex_unlock(&rec_lock);
 }
+/* X2_SHADER_DUMP=<dir>: every shader's tokens, for tools/shadertest (never commit them: game data) */
+static void shader_dump(bool pixel, const uint32_t *tok, uint32_t n) {
+    static const char *dir;
+    static bool checked;
+    if (!checked) {
+        checked = true;
+        dir = getenv("X2_SHADER_DUMP");
+    }
+    if (!dir || !*dir) return;
+    uint64_t h = 0xcbf29ce484222325ull;
+    for (uint32_t i = 0; i < n * 4; i++) h = (h ^ ((const uint8_t *)tok)[i]) * 0x100000001b3ull;
+    char path[640];
+    snprintf(path, sizeof path, "%s/%016llx.%s.tok", dir, (unsigned long long)h, pixel ? "ps" : "vs");
+    FILE *f = fopen(path, "wb");
+    if (f) {
+        fwrite(tok, 4, n, f);
+        fclose(f);
+    }
+}
+
 void gfx_shader_create(GfxId id, bool pixel, const uint32_t *tokens, uint32_t n) {
+    shader_dump(pixel, tokens, n);
     pthread_mutex_lock(&rec_lock);
     ShaderCreate *s = emit(C_SHADER_CREATE, sizeof(ShaderCreate) + n * 4);
     *s = (ShaderCreate){id, pixel, n};

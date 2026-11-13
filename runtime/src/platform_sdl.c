@@ -23,7 +23,7 @@
 
 static SDL_Window *win;
 static SDL_GLContext glc;
-/* X2_RENDERER=metal (Apple): the Metal backend (gfx/gfx_metal.m) instead of GL */
+/* Metal (gfx/gfx_metal.m): the default on Apple; X2_RENDERER=gl selects GL */
 static bool use_metal;
 /* Vulkan (gfx/gfx_vk.c): the default on Android; X2_RENDERER=gl selects GL */
 static bool use_vk;
@@ -37,10 +37,12 @@ void gfx_vk_screenshot(const char *path);
 #endif
 #ifdef X2_METAL
 #include <SDL3/SDL_metal.h>
-void gfx_mtl_init(void *metal_layer, u32 w, u32 h);
+bool gfx_mtl_init(void *metal_layer, u32 w, u32 h);
 bool gfx_mtl_run_frames(u32 timeout_ms);
 void gfx_mtl_present(u32 ww, u32 wh);
 void gfx_mtl_screenshot(const char *path);
+u32 gfx_mtl_overlay_tex(u32 id, const u8 *rgba, u32 w, u32 h);
+void gfx_mtl_overlay_quad(float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a);
 #endif
 static GLuint blit_prog, blit_vao;
 static GLuint ov_prog;
@@ -53,6 +55,9 @@ static void overlay_init(void);
 static u32 ov_tex(u32 old, const u8 *px, u32 w, u32 h) {
 #ifdef X2_VULKAN
     if (use_vk) return gfx_vk_overlay_tex(old, px, w, h);
+#endif
+#ifdef X2_METAL
+    if (use_metal) return gfx_mtl_overlay_tex(old, px, w, h);
 #endif
     GLuint t = old;
     if (!t) {
@@ -73,6 +78,12 @@ static void ov_quad(int wh, float x, float y, float w, float h, u32 tex, int mod
 #ifdef X2_VULKAN
     if (use_vk) {
         gfx_vk_overlay_quad(x, y, w, h, tex, mode, r, g, b, a);
+        return;
+    }
+#endif
+#ifdef X2_METAL
+    if (use_metal) {
+        gfx_mtl_overlay_quad(x, y, w, h, tex, mode, r, g, b, a);
         return;
     }
 #endif
@@ -616,7 +627,7 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     fullscreen = start_fullscreen;
 #ifdef X2_METAL
-    use_metal = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "metal");
+    use_metal = !(getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "gl"));
 #endif
 #ifdef X2_VULKAN
     use_vk = !(getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "gl"));
@@ -632,8 +643,15 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #ifdef X2_METAL
     if (use_metal) {
         SDL_MetalView view = SDL_Metal_CreateView(win);
-        if (!view) x2_fatal("SDL_Metal_CreateView: %s", SDL_GetError());
-        gfx_mtl_init(SDL_Metal_GetLayer(view), 1280, 720);
+        if (!view || !gfx_mtl_init(SDL_Metal_GetLayer(view), 1280, 720)) { /* no Metal: GL in a new window */
+            x2_log("metal unavailable; using OpenGL");
+            use_metal = false;
+            if (view) SDL_Metal_DestroyView(view);
+            SDL_WindowFlags fl = SDL_GetWindowFlags(win);
+            SDL_DestroyWindow(win);
+            win = SDL_CreateWindow("Type X2 recomp", 1280, 720, (fl & ~SDL_WINDOW_METAL) | SDL_WINDOW_OPENGL);
+            if (!win) x2_fatal("SDL_CreateWindow: %s", SDL_GetError());
+        }
     }
 #endif
 #ifdef X2_VULKAN
@@ -787,7 +805,9 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #ifdef X2_METAL
             int ww, wh;
             SDL_GetWindowSizeInPixels(win, &ww, &wh);
-            gfx_mtl_present((u32)ww, (u32)wh); /* no overlays (FPS, touch) on Metal yet */
+            fps_draw(true); /* overlays: queued, drawn by the present */
+            touch_draw(ww, wh);
+            gfx_mtl_present((u32)ww, (u32)wh);
 #endif
         } else if (use_vk) {
 #ifdef X2_VULKAN

@@ -18,7 +18,7 @@ RetroArch on Android (attract, select, fights; 0.3-0.5 s load pauses at fight
 start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
 macOS and in RetroArch on Android (60 fps on the test tablet); KOF Maximum
 Impact Regulation A (`games/kofmira`, Direct3D 8) is playable on macOS and runs its attract mode at 60 fps on Android. Rendering is
-D3D9 → Vulkan (Android), Metal (macOS, opt-in) or OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
+D3D9 → Vulkan (Android), Metal (macOS) or OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
 HLSL, compiled D3DX effects and the fixed-function pipeline all translated to
 GLSL, Vulkan GLSL or Metal Shading Language).
 
@@ -247,17 +247,18 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 |---|---|
 | `X2_LOG=0..3` | log level (same as -v/-vv/-vvv) |
 | `X2_SHOT=f1,f2,...` `X2_SHOT_PATH=x.png` `X2_SHOT_EXIT=1` | save frames as PNG |
-| `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays) |
+| `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays; GL only) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
 | `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
+| `X2_PADLOG=1` | RetroArch core: log each change of the RetroPad buttons the frontend reports and the cabinet buttons they press (finds remaps that move buttons) |
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture; upper case C S U D L R A B X Y = player 2) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames (GL: also `X2_DRAWLOG_VERTS=<n>`, the first n vertices of each draw as floats and hex) |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_SHADER_DUMP=<dir>` | save every shader the game creates (`<hash>.vs.tok` / `.ps.tok`) for `build/tools/shadertest <glsl\|essl\|msl> <dir> <out>`, which translates them all offline (msl: each checked by the Metal compiler). Game data: never commit them |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
 | `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames |
-| `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries) |
+| `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries; Metal: `=1` only, from command buffer times) |
 | `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |
 | `X2_PROF=<secs>` `X2_PROF_OUT=file` | sampling profiler of the runtime's threads (1 ms); offsets resolve against the unstripped `typex2_libretro_android.so.sym` |
 | `X2_CSPROF=1` | critical sections threads wait on longest, with what the owner was doing |
@@ -271,7 +272,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_TRACE_READS=1` | log file reads (pipe offsets into `arc locate`) |
 | `X2_CALL="addr:args"` (+ `X2_POKE`, `X2_CALL_DELAY`) | call a guest function |
 | `X2_GIL=1` | serialize guest threads |
-| `X2_RENDERER=gl` / `metal` / `vulkan` | the renderer. Android: Vulkan by default (`gfx/gfx_vk.c`, Vulkan 1.3, shaders compiled by glslang; the app, and the RetroArch core through RetroArch's Vulkan driver, which it switches to by itself when driver switching is on); `gl` selects OpenGL ES (the app also falls back to it without Vulkan 1.3). macOS: OpenGL by default, `metal` for the Metal backend (`gfx/gfx_metal.m`, standalone). Vulkan: `X2_GPUTIME=1` (GPU ms per frame), `X2_PS_MEDIUMP=0`, `X2_DXT565=0` as on GL. Vulkan draws the FPS and touch overlays too. Metal: every deterministic regression frame is pixel-identical to GL; the FPS and touch overlays are not drawn yet. `X2_DRAWLOG`, `X2_DUMPTEX` (BGRA8 / R8), `X2_SHADERLOG` (prints MSL) and `X2_UPLOADLOG` work with it |
+| `X2_RENDERER=gl` / `metal` / `vulkan` | the renderer. Android: Vulkan by default (`gfx/gfx_vk.c`, Vulkan 1.3, shaders compiled by glslang; the app, and the RetroArch core through RetroArch's Vulkan driver, which it switches to by itself when driver switching is on); `gl` selects OpenGL ES (the app also falls back to it without Vulkan 1.3). macOS: Metal by default (`gfx/gfx_metal.m`, standalone app; GL if there is no Metal device), `gl` for OpenGL 3.3. Vulkan: `X2_GPUTIME=1` (GPU ms per frame), `X2_PS_MEDIUMP=0`, `X2_DXT565=0` as on GL. Vulkan and Metal draw the FPS and touch overlays too. Metal: the deterministic regression frames match GL pixel for pixel. `X2_DRAWLOG`, `X2_DUMPTEX` (BGRA8 / R8), `X2_SHADERLOG` (prints MSL) and `X2_UPLOADLOG` work with it |
 | `X2_VSYNC=1` / `X2_NOPRESENT=1` | vsynced presentation / never present (headless runs, hidden window; add `SDL_AUDIO_DRIVER=dummy` for silence) |
 | `X2_BB_SCALE=n` | render the backbuffer at n× (default: the largest multiple fitting 1280×1024, so 640×480 games get 2×) |
 | `X2_NO_S3TC=1` | decode DXT textures on the CPU (default on GPUs without S3TC) |

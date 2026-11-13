@@ -180,11 +180,22 @@ static void frame_begin(void) {
     ring_pos = 0;
     cb = [queue commandBuffer];
 }
+/* X2_GPUTIME=1: GPU time per frame (command buffer start to end), summed by the completion handlers */
+static int gputime = -1;
+static u64 gpu_us_sum, gpu_us_max, gpu_n;
 static void frame_end(void) {
     end_pass();
     u64 serial = cur_serial;
+    if (gputime < 0) gputime = getenv("X2_GPUTIME") != NULL;
     [cb addCompletedHandler:^(id<MTLCommandBuffer> b) {
-      (void)b;
+      if (gputime && b.GPUEndTime > b.GPUStartTime) {
+          u64 us = (u64)((b.GPUEndTime - b.GPUStartTime) * 1e6);
+          __atomic_fetch_add(&gpu_us_sum, us, __ATOMIC_RELAXED);
+          __atomic_fetch_add(&gpu_n, 1, __ATOMIC_RELAXED);
+          u64 m = __atomic_load_n(&gpu_us_max, __ATOMIC_RELAXED);
+          while (us > m && !__atomic_compare_exchange_n(&gpu_us_max, &m, us, false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+          }
+      }
       __atomic_store_n(&completed_serial, serial, __ATOMIC_RELEASE);
       dispatch_semaphore_signal(inflight);
     }];
@@ -725,7 +736,17 @@ static const char *builtin_src =
     "fragment C1 clear1_fs(constant float4 &c [[buffer(0)]]) { return {c}; }\n"
     "fragment C2 clear2_fs(constant float4 &c [[buffer(0)]]) { return {c, c}; }\n"
     "fragment C3 clear3_fs(constant float4 &c [[buffer(0)]]) { return {c, c, c}; }\n"
-    "fragment C4 clear4_fs(constant float4 &c [[buffer(0)]]) { return {c, c, c, c}; }\n";
+    "fragment C4 clear4_fs(constant float4 &c [[buffer(0)]]) { return {c, c, c, c}; }\n"
+    /* window overlays: 0 ring, 1 label (texture alpha x colour), 2 opaque texture */
+    "struct OvP { float4 col; int mode; };\n"
+    "fragment float4 overlay_fs(P i [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]],\n"
+    "                           constant OvP &pc [[buffer(0)]]) {\n"
+    "  float4 c = t.sample(s, i.t);\n"
+    "  if (pc.mode == 2) return float4(c.rgb, 1.0);\n"
+    "  if (pc.mode == 1) return float4(pc.col.rgb, c.a * pc.col.a);\n"
+    "  float d = length(i.t * 2.0 - 1.0);\n"
+    "  float a = (1.0 - smoothstep(0.92, 1.0, d)) * (d > 0.86 ? 1.0 : 0.35);\n"
+    "  return float4(pc.col.rgb, a * pc.col.a); }\n";
 static id<MTLLibrary> builtin;
 static id<MTLSamplerState> samp_linear, samp_nearest;
 static id<MTLTexture> black[3]; /* 2D, cube, 3D: for samplers without a texture */
@@ -1195,6 +1216,10 @@ static void run_frame(Frame *f) {
                 x2_log("gfx: frame %u: %u draws, %u clears in the last 120 frames (metal)", st_frames, st_draws,
                        st_clears);
                 st_draws = st_clears = 0;
+                u64 n = __atomic_exchange_n(&gpu_n, 0, __ATOMIC_RELAXED);
+                u64 sum = __atomic_exchange_n(&gpu_us_sum, 0, __ATOMIC_RELAXED);
+                u64 mx = __atomic_exchange_n(&gpu_us_max, 0, __ATOMIC_RELAXED);
+                if (n) x2_log("gputime: %.2f ms avg, %.2f max", (double)sum / (double)n / 1000.0, (double)mx / 1000.0);
             }
             break;
         }
@@ -1204,9 +1229,13 @@ static void run_frame(Frame *f) {
 }
 
 /* ---- render-thread entry points (platform_sdl.c) ------------------------------- */
-void gfx_mtl_init(void *metal_layer, u32 w, u32 h) {
+/* false without a Metal device (the caller falls back to GL) */
+bool gfx_mtl_init(void *metal_layer, u32 w, u32 h) {
     dev = MTLCreateSystemDefaultDevice();
-    if (!dev) x2_fatal("metal: no device");
+    if (!dev) {
+        x2_log("metal: no device");
+        return false;
+    }
     queue = [dev newCommandQueue];
     drawlog_at = getenv("X2_DRAWLOG") ? (u32)atoi(getenv("X2_DRAWLOG")) : 0;
     inflight = dispatch_semaphore_create(INFLIGHT);
@@ -1264,6 +1293,7 @@ void gfx_mtl_init(void *metal_layer, u32 w, u32 h) {
     free(texs[0]);
     texs[0] = saved;
     x2_log("metal: %s", dev.name.UTF8String);
+    return true;
 }
 
 extern bool x2_write_png(const char *path, const u8 *rgba, u32 w, u32 h); /* png.c */
@@ -1348,12 +1378,98 @@ static MTex *shown(void) {
 }
 
 /* draws the game's image into the window, letterboxed */
+/* ---- window overlays (FPS counter, touch controls), as gfx_vk.c's -------------------
+ * The front end queues quads in window pixels (top-left origin) before each present. */
+typedef struct {
+    float x, y, w, h, col[4];
+    u32 tex;
+    int mode;
+} OvQuad;
+static id<MTLTexture> ovt[64];
+static u32 ovt_n = 1; /* 0 = none */
+static OvQuad ovq[64];
+static u32 ovq_n;
+static id<MTLRenderPipelineState> ov_pipe;
+
+/* a new overlay texture (id 0) or new pixels for one; returns its id */
+u32 gfx_mtl_overlay_tex(u32 id, const u8 *rgba, u32 w, u32 h) {
+    if (id >= ovt_n) id = 0;
+    if (id && (ovt[id].width != w || ovt[id].height != h)) { /* command buffers keep the old one alive */
+        [ovt[id] release];
+        ovt[id] = nil;
+    }
+    if (!id) {
+        if (ovt_n >= 64) return 0;
+        id = ovt_n++;
+    }
+    if (!ovt[id]) {
+        MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+                                                                                      width:w
+                                                                                     height:h
+                                                                                  mipmapped:NO];
+        ovt[id] = [dev newTextureWithDescriptor:td];
+    }
+    [ovt[id] replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0 withBytes:rgba bytesPerRow:w * 4];
+    return id;
+}
+
+void gfx_mtl_overlay_quad(float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a) {
+    if (ovq_n < 64) ovq[ovq_n++] = (OvQuad){x, y, w, h, {r, g, b, a}, tex, mode};
+}
+
+static void ov_draw(id<MTLRenderCommandEncoder> e, u32 ww, u32 wh) {
+    if (!ov_pipe) {
+        MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor alloc] init];
+        id<MTLFunction> v = [builtin newFunctionWithName:@"quad_vs"], f = [builtin newFunctionWithName:@"overlay_fs"];
+        d.vertexFunction = v;
+        d.fragmentFunction = f;
+        d.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
+        d.colorAttachments[0].blendingEnabled = YES;
+        d.colorAttachments[0].sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
+        d.colorAttachments[0].destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
+        d.colorAttachments[0].sourceAlphaBlendFactor = MTLBlendFactorZero;
+        d.colorAttachments[0].destinationAlphaBlendFactor = MTLBlendFactorOne;
+        NSError *err = nil;
+        ov_pipe = [dev newRenderPipelineStateWithDescriptor:d error:&err];
+        if (!ov_pipe) x2_fatal("metal: overlay pipeline: %s", err.localizedDescription.UTF8String);
+        [v release];
+        [f release];
+        [d release];
+    }
+    [e setRenderPipelineState:ov_pipe];
+    float z = 0;
+    [e setVertexBytes:&z length:4 atIndex:1];
+    [e setFragmentSamplerState:samp_nearest atIndex:0];
+    for (u32 i = 0; i < ovq_n; i++) {
+        const OvQuad *q = &ovq[i];
+        /* Metal wants viewports inside the target */
+        float x0 = q->x > 0 ? q->x : 0, y0 = q->y > 0 ? q->y : 0;
+        float x1 = q->x + q->w < (float)ww ? q->x + q->w : (float)ww, y1 = q->y + q->h < (float)wh ? q->y + q->h : (float)wh;
+        if (x1 <= x0 || y1 <= y0) continue;
+        /* the part of the quad inside the window keeps its uv range */
+        float u[4] = {(x0 - q->x) / q->w, (y0 - q->y) / q->h, (x1 - q->x) / q->w, (y1 - q->y) / q->h};
+        [e setVertexBytes:u length:16 atIndex:0];
+        struct {
+            float col[4];
+            s32 mode, pad[3];
+        } pc = {{q->col[0], q->col[1], q->col[2], q->col[3]}, q->mode, {0}};
+        [e setFragmentBytes:&pc length:sizeof pc atIndex:0];
+        [e setFragmentTexture:q->tex && q->tex < ovt_n && ovt[q->tex] ? ovt[q->tex] : black[0] atIndex:0];
+        [e setViewport:(MTLViewport){x0, y0, x1 - x0, y1 - y0, 0, 1}];
+        [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    }
+    ovq_n = 0;
+}
+
 void gfx_mtl_present(u32 ww, u32 wh) {
     if (!layer || !ww || !wh) return;
     @autoreleasepool {
         layer.drawableSize = CGSizeMake(ww, wh);
         id<CAMetalDrawable> d = [layer nextDrawable];
-        if (!d) return;
+        if (!d) {
+            ovq_n = 0;
+            return;
+        }
         MTex *t = shown();
         id<MTLCommandBuffer> c = [queue commandBuffer];
         MTLRenderPassDescriptor *rp = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1384,6 +1500,7 @@ void gfx_mtl_present(u32 ww, u32 wh) {
         [e setFragmentTexture:t->tex atIndex:0];
         [e setFragmentSamplerState:samp_linear atIndex:0];
         [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+        if (ovq_n) ov_draw(e, ww, wh);
         [e endEncoding];
         [c presentDrawable:d];
         [c commit];

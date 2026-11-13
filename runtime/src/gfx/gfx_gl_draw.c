@@ -57,24 +57,6 @@ void gfx_gl_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
     if (id >= MAX_IDS) return;
     Shader *s = calloc(1, sizeof *s);
     s->serial = ++shader_serial;
-    static const char *dump_dir;
-    static bool dump_checked;
-    if (!dump_checked) {
-        dump_checked = true;
-        dump_dir = getenv("X2_SHADER_DUMP");
-    }
-    if (dump_dir && *dump_dir) {
-        /* X2_SHADER_DUMP=<dir>: every shader's tokens, for tools/shadertest (never commit them: game data) */
-        u64 h = 0xcbf29ce484222325ull;
-        for (u32 i = 0; i < n * 4; i++) h = (h ^ ((const u8 *)tok)[i]) * 0x100000001b3ull;
-        char path[640];
-        snprintf(path, sizeof path, "%s/%016llx.%s.tok", dump_dir, (unsigned long long)h, pixel ? "ps" : "vs");
-        FILE *f = fopen(path, "wb");
-        if (f) {
-            fwrite(tok, 4, n, f);
-            fclose(f);
-        }
-    }
     char *glsl = NULL, err[256] = "";
     bool ok;
     if (n > 3 && (tok[1] & 0xFFFF) == 0xFFFE && tok[2] == 0x4C484258u) { /* x2 HLSL blob */

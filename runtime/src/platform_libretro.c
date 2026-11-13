@@ -305,9 +305,30 @@ static u16 player_bits(unsigned port) {
     if (btn(port, RETRO_DEVICE_ID_JOYPAD_LEFT) || lx < -dead) v |= JVS_LEFT;
     if (btn(port, RETRO_DEVICE_ID_JOYPAD_RIGHT) || lx > dead) v |= JVS_RIGHT;
     const u16 *map = x2_padmap();
+    u32 pressed = 0;
     for (int i = 0; i < X2P_COUNT; i++)
-        if (btn(port, pad_ids[i])) v |= map[i];
+        if (btn(port, pad_ids[i])) {
+            v |= map[i];
+            pressed |= 1u << i;
+        }
     if (btn(port, RETRO_DEVICE_ID_JOYPAD_START)) v |= JVS_START;
+    /* X2_PADLOG=1: each change of the RetroPad buttons the frontend reports, and what they press */
+    static int padlog = -1;
+    static u32 last[2];
+    if (padlog < 0) padlog = getenv("X2_PADLOG") != NULL;
+    if (padlog && port < 2 && pressed != last[port]) {
+        static const char *const nm[X2P_COUNT] = {"south(B)", "east(A)", "west(Y)", "north(X)", "L1",
+                                                  "R1",       "L2",      "R2",      "L3",       "R3"};
+        char s[160] = "", lab[16];
+        for (int i = 0; i < X2P_COUNT; i++)
+            if (pressed & 1u << i) {
+                x2_padmap_label(map[i], lab);
+                size_t l = strlen(s);
+                snprintf(s + l, sizeof s - l, " %s=%s", nm[i], lab);
+            }
+        x2_log("pad %u:%s", port + 1, s[0] ? s : " (released)");
+        last[port] = pressed;
+    }
     return v;
 }
 

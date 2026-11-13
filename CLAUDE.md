@@ -9,7 +9,8 @@ architecture, build steps and the full list of `X2_*` switches.
 Static recompilation of Taito Type X and Type X2 arcade games (x86 Windows XP PCs) to
 native code for macOS and Android: `x2recomp` lifts `game.exe` (or `launcher.exe`) to C, the C
 runtime provides memory, threads, Win32 / D3D9 / D3DX / DirectSound /
-DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
+DirectShow, a JVS I/O board and renderers (Metal by default on macOS, Vulkan on
+Android, GL as the reference and fallback). Front ends: a standalone app
 (SDL3, launched by ES-DE) and a libretro core holding every game.
 
 | Game | `games/<id>` | State |
@@ -140,7 +141,8 @@ gets an entry per milestone. Update them with the README.
 * Never pipe `x2recomp` into `head`: SIGPIPE kills it halfway and leaves a
   `gen/` whose `funcs.h` and `table.c` disagree (undeclared `f_xxxxxxxx`).
 * A renderer backend against GL: the same regression frames with both
-  (`X2_RENDERER=metal`), compared pixel by pixel. When one pass goes wrong,
+  (`X2_RENDERER=gl` against the default: Metal on macOS, Vulkan on Android),
+  compared pixel by pixel; movie and fade frames vary between runs. When one pass goes wrong,
   `X2_DUMPTEX=<id>@<frame>` its inputs and output on both, then reproduce the
   shader in a small offline harness. Metal compiler warnings are errors in
   `shadertest`: a macro once rewrote `[[texture(n)]]` attributes into ignored

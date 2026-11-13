@@ -2,6 +2,16 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: Metal is the default on macOS
+
+- **Default renderer:** the standalone app renders with Metal on macOS;
+  `X2_RENDERER=gl` selects OpenGL, which is also the fallback without a Metal
+  device. All eight games' regression frames match GL (movie and fade frames
+  vary from run to run on either renderer).
+- **Overlays:** Metal draws the FPS counter and touch controls too.
+- **Tools on every backend:** `X2_SHADER_DUMP` moved into the shared recorder;
+  `X2_GPUTIME=1` reports Metal's GPU time per frame.
+
 ## 2026-11-13: Vulkan is the default on Android; KOF MI on the tablet
 
 - **Default renderer:** the RetroArch core and the standalone app render with
