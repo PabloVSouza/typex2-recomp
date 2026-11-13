@@ -1,8 +1,7 @@
 # Game status
 
-Progress for every known game on the Taito Type X family of boards. Every
-game has a status: playable, planned, or not started yet. Type X / X+ and
-Type X2 are the project's target; the later Taito PC boards follow at the end.
+Progress for every known game on the Taito Type X, Type X+ and Type X2 boards.
+Every game has a status: playable, planned, or not started yet.
 
 No single source lists every game. These lists merge the following
 (read November 2026):
@@ -244,76 +243,3 @@ the board's I/O setup. Type X+ is Type X with a stronger graphics card.
 Many of these, such as card dispensers, network titles and medal games,
 depend on peripherals beyond a joystick panel. Those are out of scope unless
 someone brings the hardware protocol.
-
-## Later Taito PC boards
-
-Every game below is **Not started**. These boards move to Windows 7 / 8
-Embedded and, from Type X3 on, often to 64-bit executables. That needs a
-different runtime: the current recompiler only handles 32-bit x86 code for
-XP-era DirectX 9, so these come after the Type X / X2 library. English
-Wikipedia lists no games for Type X7.
-
-### Type X Zero (2011–)
-
-| Game | Year | Status |
-|---|---|---|
-| Card de Renketsu! Densha de Go! | 2012 | Not started |
-| Groove Coaster | 2013 | Not started |
-| Groove Coaster EX | 2014 | Not started |
-| Groove Coaster 2 Heavenly Festival | 2015 | Not started |
-| Groove Coaster 3 Link Fever | 2016 | Not started |
-| Groove Coaster 3 EX Dream Party | 2017 | Not started |
-| Groove Coaster 4 Starlight Road | 2018 | Not started |
-| Groove Coaster 4 EX Infinity Highway | 2019 | Not started |
-| Groove Coaster 4 MAX Diamond Galaxy | 2020 | Not started |
-| Kickthrough Racers | 2011 | Not started |
-| Mogutte Horehore | 2011 | Not started |
-
-### Type X3 (2012–)
-
-| Game | Year | Status |
-|---|---|---|
-| BlazBlue: Central Fiction (NESiCAxLive2) | 2017 | Not started |
-| BlazBlue: Cross Tag Battle | 2019 | Not started |
-| Chousoku Henkei Gyrozetter | 2012 | Not started |
-| Dragon Quest Monster Battle Scanner | 2016 | Not started |
-| EN-Eins Perfektewelt Anastasis | 2023 | Not started |
-| Fight! Dragon Quest Scan Butlers | 2017 | Not started |
-| Fighting EX Layer | 2018 | Not started |
-| Figure Heads Aces | 2017 | Not started |
-| Gunslinger Stratos | 2012 | Not started |
-| Gunslinger Stratos 2 | 2014 | Not started |
-| Gunslinger Stratos 3 | 2016 | Not started |
-| Gunslinger Stratos Σ | 2017 | Not started |
-| Left 4 Dead -Survivors- | 2014 | Not started |
-| Lord of Vermilion III | 2013 | Not started |
-| Lord of Vermilion III ArK-cell | 2014 | Not started |
-| Lord of Vermilion III Twin Lance | 2014 | Not started |
-| Lord of Vermilion III Chain-Gene | 2015 | Not started |
-| Lord of Vermilion IV | 2017 | Not started |
-| Lord of Vermilion Re:3 | 2015 | Not started |
-| Lord of Vermilion Re:3 Dear Servant | 2016 | Not started |
-| Lord of Vermilion Re:3 Dear Servant -Saviour of the 13 Swords- | 2016 | Not started |
-| Ma Dolomiti Dragon Solazur Kingdom -Puzzle & Dragons Battle Tournament- | 2014 | Not started |
-| Million Arthur: Arcana Blood | 2017 | Not started |
-| Samurai Spirits | 2019 | Not started |
-| School of Ragnarok | 2015 | Not started |
-| School of Ragnarok Re:Boot | 2015 | Not started |
-| SNK Heroines AC: Tag Team Frenzy | 2018 | Not started |
-| Theatrhythm Final Fantasy – All-Star Carnival | 2016 | Not started |
-| The King of Fighters XIV Arcade Ver. | 2017 | Not started |
-| Ultra Street Fighter IV (also listed under Type X2) | 2014 | Not started |
-
-### Type X4 (2016–)
-
-| Game | Year | Status |
-|---|---|---|
-| Densha de Go!! | 2017 | Not started |
-| Love Live! School Idol Festival: After School Activity | 2016 | Not started |
-| Love Live! School Idol Festival: After School Activity Next Stage | 2018 | Not started |
-| Magicians Dead | 2016 | Not started |
-| Magicians Dead Next Blazing | 2017 | Not started |
-| Metal Slug 8 3D (year unconfirmed) | — | Not started |
-| Starwing Paradox | 2018 | Not started |
-| Street Fighter V: Type Arcade | 2019 | Not started |
-| Street Fighter 6: Type Arcade | 2023 | Not started |
