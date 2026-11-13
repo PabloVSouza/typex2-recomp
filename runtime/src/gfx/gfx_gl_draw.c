@@ -866,6 +866,22 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
                 const float *f = (const float *)sh;
                 x2_log("  vb0: %g %g %g %g | %g %g %g %g | %g %g %g %g | %g %g %g %g", f[0], f[1], f[2], f[3], f[4], f[5],
                        f[6], f[7], f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15]);
+                /* X2_DRAWLOG_VERTS=<n>: the first n vertices, each 32-bit word as float and hex */
+                static int nv = -1;
+                if (nv < 0) nv = getenv("X2_DRAWLOG_VERTS") ? atoi(getenv("X2_DRAWLOG_VERTS")) : 0;
+                u32 stride = st->vb_stride[0], words = stride / 4 < 8 ? stride / 4 : 8;
+                for (u32 v = 0; stride && v < (u32)nv && (size_t)(start + v + 1) * stride <= sz; v++) {
+                    char line[400];
+                    int o = snprintf(line, sizeof line, "  v%u:", v);
+                    for (u32 w = 0; w < words && o < (int)sizeof line - 40; w++) {
+                        u32 bits;
+                        memcpy(&bits, sh + (size_t)(start + v) * stride + w * 4, 4);
+                        float fv;
+                        memcpy(&fv, &bits, 4);
+                        o += snprintf(line + o, sizeof line - (size_t)o, " %g(%08x)", fv, bits);
+                    }
+                    x2_log("%s", line);
+                }
             }
         }
         if (dc) for (u32 k = 0; k < dc->n; k++)

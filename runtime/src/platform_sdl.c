@@ -29,6 +29,8 @@ static bool use_metal;
 static bool use_vk;
 #ifdef X2_VULKAN
 bool gfx_vk_init(SDL_Window *win, u32 w, u32 h);
+u32 gfx_vk_overlay_tex(u32 id, const u8 *rgba, u32 w, u32 h);
+void gfx_vk_overlay_quad(float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a);
 bool gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_present(u32 ww, u32 wh);
 void gfx_vk_screenshot(const char *path);
@@ -41,6 +43,58 @@ void gfx_mtl_present(u32 ww, u32 wh);
 void gfx_mtl_screenshot(const char *path);
 #endif
 static GLuint blit_prog, blit_vao;
+static GLuint ov_prog;
+static GLint ov_col, ov_mode;
+static void overlay_init(void);
+
+/* ---- overlay drawing (FPS counter, touch controls), with GL or Vulkan ------------
+ * Textures are RGBA8 rows, top row first; quads are in window pixels, top-left origin.
+ * Modes: 0 ring, 1 label (texture alpha x colour), 2 opaque texture. */
+static u32 ov_tex(u32 old, const u8 *px, u32 w, u32 h) {
+#ifdef X2_VULKAN
+    if (use_vk) return gfx_vk_overlay_tex(old, px, w, h);
+#endif
+    GLuint t = old;
+    if (!t) {
+        glGenTextures(1, &t);
+        glBindTexture(GL_TEXTURE_2D, t);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+    glBindTexture(GL_TEXTURE_2D, t);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    return t;
+}
+
+static void ov_quad(int wh, float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a) {
+#ifdef X2_VULKAN
+    if (use_vk) {
+        gfx_vk_overlay_quad(x, y, w, h, tex, mode, r, g, b, a);
+        return;
+    }
+#endif
+    glViewport((GLint)x, (GLint)((float)wh - y - h), (GLsizei)w, (GLsizei)h); /* GL: y bottom-up */
+    glBindVertexArray(blit_vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindSampler(0, 0);
+    if (tex) glBindTexture(GL_TEXTURE_2D, tex);
+    if (mode == 2) { /* the blit program, opaque */
+        glUseProgram(blit_prog);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        return;
+    }
+    if (!ov_prog) overlay_init();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glUseProgram(ov_prog);
+    glUniform1i(ov_mode, mode);
+    glUniform4f(ov_col, r, g, b, a);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDisable(GL_BLEND);
+}
 static SDL_AudioStream *audio;
 static bool fullscreen;
 
@@ -171,7 +225,7 @@ static void present_image(GLuint tex, u32 tw, u32 th) {
  * guest's mean busy time per frame (16.7 ms is the budget at 60 Hz). Text is
  * rasterised from a built-in 5x7 font into a small texture twice a second. */
 static bool fps_overlay;
-static GLuint fps_tex;
+static u32 fps_tex;
 static u32 fps_tw, fps_th;
 
 static const u8 *glyph5x7(char ch) {
@@ -210,17 +264,7 @@ static void fps_render_text(const char *s) {
                     p[0] = 255; p[1] = 235; p[2] = 80;
                 }
     }
-    if (!fps_tex) {
-        glGenTextures(1, &fps_tex);
-        glBindTexture(GL_TEXTURE_2D, fps_tex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    }
-    glBindTexture(GL_TEXTURE_2D, fps_tex);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    fps_tex = ov_tex(fps_tex, px, w, h);
     free(px);
     fps_tw = w;
     fps_th = h;
@@ -248,13 +292,7 @@ static void fps_draw(bool swapped) {
     SDL_GetWindowSizeInPixels(win, &ww, &wh);
     int scale = wh >= 360 ? wh / 360 : 1;
     int w = (int)fps_tw * scale, h = (int)fps_th * scale, m = 4 * scale;
-    glViewport(m, wh - m - h, w, h);
-    glUseProgram(blit_prog);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, fps_tex);
-    glBindSampler(0, 0);
-    glBindVertexArray(blit_vao);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    ov_quad(wh, (float)m, (float)m, (float)w, (float)h, fps_tex, 2, 1, 1, 1, 1);
 }
 
 /* X2_SHOT_WINDOW=1: screenshots read the window (with overlays) instead of the game image */
@@ -321,15 +359,13 @@ enum { TC_STICK, TC_A, TC_B, TC_C, TC_D, TC_COIN, TC_START, TC_TEST, TC_COUNT };
 typedef struct {
     float x, y, r; /* centre and radius, window pixels */
     const char *label;
-    GLuint tex;    /* label texture */
+    u32 tex; /* label texture (ov_tex) */
     u32 tw, th;
 } TouchCtl;
 static TouchCtl tctl[TC_COUNT];
 static struct { SDL_FingerID id; int ctl; float x, y; bool on; } fingers[10];
 static u16 touch_bits;
 static bool touch_coin, touch_test, touch_seen;
-static GLuint ov_prog;
-static GLint ov_col, ov_mode;
 
 static bool touch_visible(void) {
     static int force = -2;
@@ -447,7 +483,7 @@ static void overlay_init(void) {
 }
 
 /* white label text, alpha = glyph coverage */
-static GLuint label_texture(const char *s, u32 *tw, u32 *th) {
+static u32 label_texture(const char *s, u32 *tw, u32 *th) {
     u32 n = (u32)strlen(s), w = n * 6 - 1, h = 7;
     u8 *px = calloc((size_t)w * h * 4, 1);
     for (u32 k = 0; k < n; k++) {
@@ -457,15 +493,7 @@ static GLuint label_texture(const char *s, u32 *tw, u32 *th) {
             for (u32 x = 0; x < 5; x++)
                 if (g[y] & (0x10 >> x)) memset(px + ((size_t)y * w + k * 6 + x) * 4, 255, 4);
     }
-    GLuint t;
-    glGenTextures(1, &t);
-    glBindTexture(GL_TEXTURE_2D, t);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)w, (GLsizei)h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    u32 t = ov_tex(0, px, w, h);
     free(px);
     *tw = w;
     *th = h;
@@ -475,22 +503,11 @@ static GLuint label_texture(const char *s, u32 *tw, u32 *th) {
 static void touch_draw(int ww, int wh) {
     if (!touch_visible()) return;
     touch_layout(ww, wh);
-    if (!ov_prog) overlay_init();
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUseProgram(ov_prog);
-    glBindVertexArray(blit_vao);
-    glActiveTexture(GL_TEXTURE0);
-    glBindSampler(0, 0);
     for (int i = 0; i < TC_COUNT; i++) {
         TouchCtl *c = &tctl[i];
         bool held = false;
         for (int f = 0; f < 10; f++) held |= fingers[f].on && fingers[f].ctl == i;
-        /* GL viewport y is bottom-up */
-        glViewport((GLint)(c->x - c->r), (GLint)(wh - c->y - c->r), (GLsizei)(2 * c->r), (GLsizei)(2 * c->r));
-        glUniform1i(ov_mode, 0);
-        glUniform4f(ov_col, 1, 1, 1, held ? 0.55f : 0.28f);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        ov_quad(wh, c->x - c->r, c->y - c->r, 2 * c->r, 2 * c->r, 0, 0, 1, 1, 1, held ? 0.55f : 0.28f);
         if (i == TC_STICK) { /* knob following the finger */
             float kx = c->x, ky = c->y, kr = c->r * 0.42f;
             for (int f = 0; f < 10; f++)
@@ -499,21 +516,14 @@ static void touch_draw(int ww, int wh) {
                     if (d > m) { dx *= m / d; dy *= m / d; }
                     kx += dx; ky += dy;
                 }
-            glViewport((GLint)(kx - kr), (GLint)(wh - ky - kr), (GLsizei)(2 * kr), (GLsizei)(2 * kr));
-            glUniform4f(ov_col, 1, 1, 1, 0.5f);
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+            ov_quad(wh, kx - kr, ky - kr, 2 * kr, 2 * kr, 0, 0, 1, 1, 1, 0.5f);
             continue;
         }
         if (!c->tex) c->tex = label_texture(c->label, &c->tw, &c->th);
         float scale = c->r * (strlen(c->label) > 1 ? 1.3f : 0.75f) / (float)c->tw;
         float lw = c->tw * scale, lh = c->th * scale;
-        glViewport((GLint)(c->x - lw / 2), (GLint)(wh - c->y - lh / 2), (GLsizei)lw, (GLsizei)lh);
-        glBindTexture(GL_TEXTURE_2D, c->tex);
-        glUniform1i(ov_mode, 1);
-        glUniform4f(ov_col, 1, 1, 1, held ? 0.95f : 0.7f);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        ov_quad(wh, c->x - lw / 2, c->y - lh / 2, lw, lh, c->tex, 1, 1, 1, 1, held ? 0.95f : 0.7f);
     }
-    glDisable(GL_BLEND);
 }
 
 /* ---- input ---------------------------------------------------------------------- */
@@ -777,13 +787,15 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
 #ifdef X2_METAL
             int ww, wh;
             SDL_GetWindowSizeInPixels(win, &ww, &wh);
-            gfx_mtl_present((u32)ww, (u32)wh); /* overlays (FPS, touch) are GL-only so far */
+            gfx_mtl_present((u32)ww, (u32)wh); /* no overlays (FPS, touch) on Metal yet */
 #endif
         } else if (use_vk) {
 #ifdef X2_VULKAN
             int ww, wh;
             SDL_GetWindowSizeInPixels(win, &ww, &wh);
-            gfx_vk_present((u32)ww, (u32)wh); /* overlays (FPS, touch) are GL-only so far */
+            fps_draw(true); /* overlays: queued, drawn by the present */
+            touch_draw(ww, wh);
+            gfx_vk_present((u32)ww, (u32)wh);
 #endif
         } else {
             present_image(tex, tw, th);

@@ -16,6 +16,9 @@ Milestones, newest first. `git log` has the details.
   Fights not played yet.
 - **Fix:** CPU uploads into a BGRA render target (KOF MI's movie overlay) had
   red and blue swapped on Vulkan, where render targets are RGBA8.
+- **Overlays on Vulkan:** the app's touch controls and FPS counter are drawn
+  by the Vulkan present too (they were GL-only), so the app keeps them with
+  Vulkan as the default.
 
 ## 2026-11-13: Vulkan backend on Android
 

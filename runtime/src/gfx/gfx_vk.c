@@ -1840,6 +1840,7 @@ static VkExtent2D sc_extent;
 static VkImage sc_img[8];
 static VkImageLayout sc_layout[8];
 static VkSemaphore sc_release[8];
+static VkImageView sc_view[8]; /* overlays render into the swapchain image */
 static u32 sc_n;
 static VkSemaphore acq_sem[INFLIGHT];
 static VkCommandBuffer pr_cb[INFLIGHT];
@@ -1895,7 +1896,17 @@ static void swapchain_create(u32 w, u32 h) {
     swapchain = sc;
     sc_n = 8;
     VK_CHECK(vkGetSwapchainImagesKHR(dev, swapchain, &sc_n, sc_img));
+    for (u32 i = 0; i < 8; i++) {
+        if (sc_view[i]) vkDestroyImageView(dev, sc_view[i], NULL);
+        sc_view[i] = VK_NULL_HANDLE;
+    }
     for (u32 i = 0; i < sc_n; i++) {
+        VkImageViewCreateInfo vi = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        vi.image = sc_img[i];
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format = sc_format;
+        vi.subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VK_CHECK(vkCreateImageView(dev, &vi, NULL, &sc_view[i]));
         sc_layout[i] = VK_IMAGE_LAYOUT_UNDEFINED;
         if (!sc_release[i]) {
             VkSemaphoreCreateInfo si = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -1925,6 +1936,244 @@ static void barrier_raw(VkCommandBuffer c, VkImage img, VkImageLayout from, VkIm
     di.imageMemoryBarrierCount = 1;
     di.pImageMemoryBarriers = &b;
     pvkCmdPipelineBarrier2(c, &di);
+}
+
+/* ---- window overlays (FPS counter, touch controls) --------------------------------
+ * The front end queues quads in window pixels (top-left origin) before each present;
+ * they are drawn over the game image with the modes of platform_sdl.c's GL overlay:
+ * 0 ring (procedural), 1 label (texture alpha x colour), 2 opaque texture. */
+typedef struct {
+    VkImage img;
+    VkImageView view;
+    Alloc mem;
+    VkBuffer stage;
+    Alloc smem;
+    u32 w, h;
+    bool dirty, ready;
+} OvTex;
+typedef struct {
+    float x, y, w, h, col[4];
+    u32 tex;
+    int mode;
+} OvQuad;
+static OvTex ovt[64];
+static u32 ovt_n = 1; /* 0 = none */
+static OvQuad ovq[64];
+static u32 ovq_n;
+static VkPipeline ov_pipe;
+static VkFormat ov_pipe_fmt;
+static VkPipelineLayout ov_layout;
+static VkDescriptorSetLayout ov_dsl;
+static VkSampler ov_samp;
+static u32 ov_white;
+
+/* a new overlay texture (id 0), or new pixels for one of the same size; returns its id */
+u32 gfx_vk_overlay_tex(u32 id, const u8 *rgba, u32 w, u32 h) {
+    if (id >= ovt_n) id = 0;
+    if (id && (ovt[id].w != w || ovt[id].h != h)) { /* a new size (the FPS text): rebuild in place */
+        OvTex *t = &ovt[id];
+        vkDeviceWaitIdle(dev);
+        vkDestroyImageView(dev, t->view, NULL);
+        vkDestroyImage(dev, t->img, NULL);
+        vkDestroyBuffer(dev, t->stage, NULL);
+        mem_free(t->mem);
+        mem_free(t->smem);
+        memset(t, 0, sizeof *t);
+    }
+    if (!id || !ovt[id].img) {
+        if (!id && ovt_n >= 64) return 0;
+        if (!id) id = ovt_n++;
+        OvTex *t = &ovt[id];
+        t->w = w;
+        t->h = h;
+        VkImageCreateInfo ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        ci.imageType = VK_IMAGE_TYPE_2D;
+        ci.format = VK_FORMAT_R8G8B8A8_UNORM;
+        ci.extent = (VkExtent3D){w, h, 1};
+        ci.mipLevels = ci.arrayLayers = 1;
+        ci.samples = VK_SAMPLE_COUNT_1_BIT;
+        ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        VK_CHECK(vkCreateImage(dev, &ci, NULL, &t->img));
+        VkMemoryRequirements req;
+        vkGetImageMemoryRequirements(dev, t->img, &req);
+        t->mem = mem_alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK(vkBindImageMemory(dev, t->img, blocks[t->mem.block].mem, t->mem.off));
+        VkImageViewCreateInfo vi = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        vi.image = t->img;
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format = ci.format;
+        vi.subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VK_CHECK(vkCreateImageView(dev, &vi, NULL, &t->view));
+        VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bi.size = (VkDeviceSize)w * h * 4;
+        bi.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VK_CHECK(vkCreateBuffer(dev, &bi, NULL, &t->stage));
+        vkGetBufferMemoryRequirements(dev, t->stage, &req);
+        t->smem = mem_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VK_CHECK(vkBindBufferMemory(dev, t->stage, blocks[t->smem.block].mem, t->smem.off));
+    }
+    /* the copy of the previous pixels finished presents ago (labels: once; FPS: twice a second) */
+    memcpy(blocks[ovt[id].smem.block].map + ovt[id].smem.off, rgba, (size_t)w * h * 4);
+    ovt[id].dirty = true;
+    return id;
+}
+
+void gfx_vk_overlay_quad(float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a) {
+    if (ovq_n < 64) ovq[ovq_n++] = (OvQuad){x, y, w, h, {r, g, b, a}, tex, mode};
+}
+
+static void ov_init(VkFormat fmt) {
+    if (!ov_layout) {
+        VkDescriptorSetLayoutBinding lb = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                           VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
+        VkDescriptorSetLayoutCreateInfo dl = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
+                                              VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, 1, &lb};
+        VK_CHECK(vkCreateDescriptorSetLayout(dev, &dl, NULL, &ov_dsl));
+        VkPushConstantRange pr = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 32};
+        VkPipelineLayoutCreateInfo pl = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, 1, &ov_dsl, 1, &pr};
+        VK_CHECK(vkCreatePipelineLayout(dev, &pl, NULL, &ov_layout));
+        VkSamplerCreateInfo si = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        si.magFilter = si.minFilter = VK_FILTER_NEAREST;
+        si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        si.maxLod = 0.25f;
+        VK_CHECK(vkCreateSampler(dev, &si, NULL, &ov_samp));
+        static const u8 white[4] = {255, 255, 255, 255};
+        ov_white = gfx_vk_overlay_tex(0, white, 1, 1);
+    }
+    if (ov_pipe && ov_pipe_fmt == fmt) return;
+    if (ov_pipe) {
+        vkDeviceWaitIdle(dev);
+        vkDestroyPipeline(dev, ov_pipe, NULL);
+    }
+    /* a triangle covering the viewport (the quad), uv (0,0) at its top-left */
+    VShader vs = {.pixel = false,
+                  .ok = true,
+                  .src = "#version 450\n"
+                         "layout(location=0) out vec2 uv;\n"
+                         "void main() {\n"
+                         "  vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n"
+                         "  uv = p;\n"
+                         "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+                         "}\n"};
+    VShader fs = {.pixel = true,
+                  .ok = true,
+                  .src = "#version 450\n"
+                         "layout(location=0) in vec2 uv;\n"
+                         "layout(set=0, binding=0) uniform sampler2D img;\n"
+                         "layout(push_constant) uniform P { vec4 col; int mode; } pc;\n"
+                         "layout(location=0) out vec4 o;\n"
+                         "void main() {\n"
+                         "  vec4 t = texture(img, uv);\n"
+                         "  if (pc.mode == 2) { o = vec4(t.rgb, 1.0); return; }\n"
+                         "  if (pc.mode == 1) { o = vec4(pc.col.rgb, t.a * pc.col.a); return; }\n"
+                         "  float d = length(uv * 2.0 - 1.0);\n"
+                         "  float a = (1.0 - smoothstep(0.92, 1.0, d)) * (d > 0.86 ? 1.0 : 0.35);\n"
+                         "  o = vec4(pc.col.rgb, a * pc.col.a);\n"
+                         "}\n"};
+    VkShaderModule mv = compile(&vs, ""), mf = compile(&fs, "");
+    if (!mv || !mf) x2_fatal("vulkan: overlay shaders");
+    VkPipelineShaderStageCreateInfo st[2] = {
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT, mv, "main", NULL},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, mf, "main", NULL}};
+    VkPipelineVertexInputStateCreateInfo vin = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo ia = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo vp = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+    vp.viewportCount = vp.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+    rs.polygonMode = VK_POLYGON_MODE_FILL;
+    rs.cullMode = VK_CULL_MODE_NONE;
+    rs.lineWidth = 1;
+    VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineColorBlendAttachmentState ba = {VK_TRUE,
+                                              VK_BLEND_FACTOR_SRC_ALPHA,
+                                              VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+                                              VK_BLEND_OP_ADD,
+                                              VK_BLEND_FACTOR_ZERO,
+                                              VK_BLEND_FACTOR_ONE,
+                                              VK_BLEND_OP_ADD,
+                                              0xf};
+    VkPipelineColorBlendStateCreateInfo cb = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+    cb.attachmentCount = 1;
+    cb.pAttachments = &ba;
+    VkDynamicState dyn[2] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, 2, dyn};
+    VkPipelineRenderingCreateInfo ri = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+    ri.colorAttachmentCount = 1;
+    ri.pColorAttachmentFormats = &fmt;
+    VkGraphicsPipelineCreateInfo gi = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+    gi.pNext = &ri;
+    gi.stageCount = 2;
+    gi.pStages = st;
+    gi.pVertexInputState = &vin;
+    gi.pInputAssemblyState = &ia;
+    gi.pViewportState = &vp;
+    gi.pRasterizationState = &rs;
+    gi.pMultisampleState = &ms;
+    gi.pColorBlendState = &cb;
+    gi.pDynamicState = &ds;
+    gi.layout = ov_layout;
+    VK_CHECK(vkCreateGraphicsPipelines(dev, pcache, 1, &gi, NULL, &ov_pipe));
+    vkDestroyShaderModule(dev, mv, NULL);
+    vkDestroyShaderModule(dev, mf, NULL);
+    ov_pipe_fmt = fmt;
+}
+
+/* the queued quads into the swapchain image (in TRANSFER_DST layout; left in PRESENT_SRC) */
+static void ov_draw(VkCommandBuffer c, VkImage img, VkImageView view) {
+    for (u32 i = 1; i < ovt_n; i++) {
+        OvTex *t = &ovt[i];
+        if (!t->dirty) continue;
+        barrier_raw(c, t->img, t->ready ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkBufferImageCopy cp = {0};
+        cp.imageSubresource = (VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        cp.imageExtent = (VkExtent3D){t->w, t->h, 1};
+        vkCmdCopyBufferToImage(c, t->stage, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &cp);
+        barrier_raw(c, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        t->dirty = false;
+        t->ready = true;
+    }
+    barrier_raw(c, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo ca = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    ca.imageView = view;
+    ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ca.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    VkRenderingInfo ri = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+    ri.renderArea.extent = sc_extent;
+    ri.layerCount = 1;
+    ri.colorAttachmentCount = 1;
+    ri.pColorAttachments = &ca;
+    pvkCmdBeginRendering(c, &ri);
+    vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_pipe);
+    VkRect2D sc = {{0, 0}, sc_extent};
+    vkCmdSetScissor(c, 0, 1, &sc);
+    for (u32 i = 0; i < ovq_n; i++) {
+        const OvQuad *q = &ovq[i];
+        if (q->w <= 0 || q->h <= 0) continue;
+        u32 id = q->tex && q->tex < ovt_n && ovt[q->tex].ready ? q->tex : ov_white;
+        VkDescriptorImageInfo ii = {ov_samp, ovt[id].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet w = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        w.dstBinding = 0;
+        w.descriptorCount = 1;
+        w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        w.pImageInfo = &ii;
+        pvkCmdPushDescriptorSetKHR(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_layout, 0, 1, &w);
+        struct {
+            float col[4];
+            s32 mode, pad[3];
+        } pc = {{q->col[0], q->col[1], q->col[2], q->col[3]}, q->mode, {0}};
+        vkCmdPushConstants(c, ov_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
+        VkViewport v = {q->x, q->y, q->w, q->h, 0, 1};
+        vkCmdSetViewport(c, 0, 1, &v);
+        vkCmdDraw(c, 3, 1, 0, 0);
+    }
+    pvkCmdEndRendering(c);
+    barrier_raw(c, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    ovq_n = 0;
 }
 
 /* the game's image into the window, letterboxed */
@@ -1979,9 +2228,14 @@ void gfx_vk_present(u32 ww, u32 wh) {
                      {{x0, yy0, 0}, {x0 + vw, yy0 + vh, 1}}};
     vkCmdBlitImage(c, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                    1, &b, VK_FILTER_LINEAR);
-    barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    if (ovq_n) {
+        ov_init(sc_format);
+        ov_draw(c, sc_img[idx], sc_view[idx]);
+    } else {
+        barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    }
     VK_CHECK(vkEndCommandBuffer(c));
-    VkPipelineStageFlags ws = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    VkPipelineStageFlags ws = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     si.waitSemaphoreCount = 1;
     si.pWaitSemaphores = &acq_sem[i];
