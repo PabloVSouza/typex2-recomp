@@ -289,7 +289,16 @@ static void apply_states(Effect *e, FxState *states, u32 n, int stage_override) 
         case FXOP_RENDER: dev_call(e, DEV_SetRenderState, 2, info.value, raw, 0, 0); break;
         case FXOP_TSS: dev_call(e, DEV_SetTextureStageState, 3, st->index, info.value, raw, 0); break;
         case FXOP_SAMPLER_STATE: dev_call(e, DEV_SetSamplerState, 3, stage, info.value, raw, 0); break;
-        case FXOP_TEXTURE: set_stage_texture(e, stage, v); break;
+        case FXOP_TEXTURE:
+            if (raw && raw < 0x10000) {
+                static int once;
+                if (!once++)
+                    x2_log("d3dx9: effect texture state %u kind %u param %s ref %s value %#x (bytes %u type %u)", i,
+                           st->kind, st->param && st->param->name ? st->param->name : "-",
+                           st->ref_name ? st->ref_name : "-", raw, v->bytes, v->type);
+            }
+            set_stage_texture(e, stage, v);
+            break;
         case FXOP_FVF: dev_call(e, DEV_SetFVF, 1, raw, 0, 0, 0); break;
         case FXOP_TRANSFORM: {
             float m[16];

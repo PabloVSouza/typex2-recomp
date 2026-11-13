@@ -164,7 +164,9 @@ static void parse_value(Parser *p, FxParam *t, uint8_t *value, uint32_t *pos) {
             for (uint32_t i = 0; i < t->nstates && !p->failed; i++) parse_state(p, &t->states[i], pos);
         } else {
             t->object_id = rd(p, pos);
-            if (value) memcpy(value, &t->object_id, 4);
+            /* a texture parameter's value is the guest texture SetTexture gave it,
+             * NULL until then (BlazBlue CT can begin a pass before setting one) */
+            if (value && !fx_type_is_texture(t->type)) memcpy(value, &t->object_id, 4);
             if (t->object_id >= p->e->nobjects) fail(p, "object id %u out of range", t->object_id);
         }
         break;

@@ -12,8 +12,9 @@ Android: 60 fps through attract mode, character select and most fights on a
 Mali-G57 tablet; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
 Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
-Calamity Trigger (`games/bbct`) is playable on macOS (attract, character
-select, fights). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader
+Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
+RetroArch on Android (attract, select, fights; 0.3-0.7 s load pauses at fight
+start). Rendering is D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader
 bytecode, shader assembly, runtime HLSL and compiled D3DX effects all
 translated to GLSL).
 
@@ -173,7 +174,7 @@ What the renderer does for Mali-class GPUs, each measured on the tablet with
 * **Loading hitches**: BGRA8 textures upload in the game's byte order and
   swap channels when sampled (texture swizzle) instead of on the CPU;
   `UpdateTexture` uploads straight from the source; hot guest routines get
-  native replacements (zlib, BlazBlue's sprite RLE expander, see
+  native replacements (zlib, both BlazBlue games' sprite RLE expanders, see
   `lift.cpp` / `natives.c`). BlazBlue's worst transition spike went from
   ~430 ms to ~230 ms; fights hold 60 fps.
 

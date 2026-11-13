@@ -168,8 +168,10 @@ void x2n_fill8(X2Cpu *c) {
  * image; each run fills pixels of the dst_w-wide destination at (x0, y0),
  * clipped to dst_rows rows and dst_w columns. Fills use the game's 32-bit /
  * 16-bit loops or memset by dst_bpp; follows the original's control flow
- * exactly (including how a run is split at row and clip edges). */
-void x2n_bb_rle(X2Cpu *c) {
+ * exactly (including how a run is split at row and clip edges).
+ * Calamity Trigger's version (ct) only knows 4- and 1-byte pixels: any other
+ * src_bpp reads one byte, any other dst_bpp fills bytes. */
+static void bb_rle(X2Cpu *c, bool ct) {
     u32 a = c->esp + 4;
     u32 src = g32(a), dst = g32(a + 4);
     s32 rows = (s32)g32(a + 8), dst_w = (s32)g32(a + 12), h = (s32)g32(a + 16), w = (s32)g32(a + 20);
@@ -181,7 +183,7 @@ void x2n_bb_rle(X2Cpu *c) {
             u32 colour;
             if (sbpp == 4)
                 colour = g32(src), src += 4;
-            else if (sbpp == 2)
+            else if (sbpp == 2 && !ct)
                 colour = g16(src), src += 2;
             else
                 colour = *X2P(src), src += 1;
@@ -198,7 +200,7 @@ void x2n_bb_rle(X2Cpu *c) {
                     if (dbpp == 4) {
                         u32 *p = (u32 *)X2P(d);
                         for (s32 i = 0; i < n; i++) memcpy(p + i, &colour, 4);
-                    } else if (dbpp == 2) {
+                    } else if (dbpp == 2 && !ct) {
                         u16 v = (u16)colour, *p = (u16 *)X2P(d);
                         for (s32 i = 0; i < n; i++) memcpy(p + i, &v, 2);
                     } else if (n > 0) {
@@ -216,3 +218,5 @@ void x2n_bb_rle(X2Cpu *c) {
     c->eax = c->ecx = c->edx = 0;
     c->esp += 4 + 0x28; /* ret 0x28 */
 }
+void x2n_bb_rle(X2Cpu *c) { bb_rle(c, false); }
+void x2n_bbct_rle(X2Cpu *c) { bb_rle(c, true); }

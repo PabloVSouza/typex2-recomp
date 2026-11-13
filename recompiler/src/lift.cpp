@@ -289,6 +289,12 @@ const vector<NativeSig>& native_sigs() {
                   "008944240c0f8e46010000538b5c2424565790396c24280f8e310100008b44244483f804750b8b4424208b08"
                   "83c004eb1b83f8"}},
          {}},
+        // BlazBlue CT's version of the same expander (0x41b440)
+        {"BlazBlue CT sprite RLE",
+         "x2n_bbct_rle",
+         {{0x000, "83ec108b4424248b54242c568b7424208d0c103bf157894c242c7f048974242c8b7c24300fafc785c0c744240c00"
+                  "000000894424140f8e2c010000538b5c242c55395424340f8e1a"}},
+         {}},
     };
     return sigs;
 }
