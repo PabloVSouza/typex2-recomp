@@ -17,10 +17,10 @@ Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
 RetroArch on Android (attract, select, fights; 0.3-0.5 s load pauses at fight
 start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
 macOS and in RetroArch on Android (60 fps on the test tablet); KOF Maximum
-Impact Regulation A (`games/kofmira`, Direct3D 8) is playable on macOS. Rendering is
-D3D9 → OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
+Impact Regulation A (`games/kofmira`, Direct3D 8) is playable on macOS and runs its attract mode at 60 fps on Android. Rendering is
+D3D9 → Vulkan (Android), Metal (macOS, opt-in) or OpenGL 3.3 / GLES 3.2 (D3D9 shader bytecode, shader assembly, runtime
 HLSL, compiled D3DX effects and the fixed-function pipeline all translated to
-GLSL).
+GLSL, Vulkan GLSL or Metal Shading Language).
 
 **Documentation:** [`docs/`](docs/Home.md) (also the project wiki) has the
 status of every Type X / X2 game ([Game status](docs/Game-Status.md)), a page
@@ -177,7 +177,11 @@ Installing:
 
 Running:
 
-* Video driver `gl` (OpenGL 3.3 core / GLES 3.2); Vulkan is not supported.
+* Video: on Android the core renders with Vulkan 1.3 and RetroArch switches
+  to its `vulkan` driver by itself (Settings → Drivers → "Allow driver
+  switching", on by default). `X2_RENDERER=gl` in the game's `x2.env` uses
+  OpenGL instead (GLES 3.2; OpenGL 3.3 core on desktop); set it on devices
+  without Vulkan 1.3.
 * The game is clocked by RetroArch's frame loop, so pause, fast-forward and
   slow-motion work. No save states, rewind, run-ahead or reset.
 * One frame in flight: the guest computes frame N+1 while RetroArch shows
@@ -267,7 +271,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_TRACE_READS=1` | log file reads (pipe offsets into `arc locate`) |
 | `X2_CALL="addr:args"` (+ `X2_POKE`, `X2_CALL_DELAY`) | call a guest function |
 | `X2_GIL=1` | serialize guest threads |
-| `X2_RENDERER=metal` / `vulkan` | the Metal backend (`gfx/gfx_metal.m`, macOS standalone) or the Vulkan backend (`gfx/gfx_vk.c`, Android: standalone app, and the RetroArch core through RetroArch's Vulkan driver, which it switches to by itself when driver switching is on; Vulkan 1.3, shaders compiled by glslang) instead of OpenGL. Vulkan: `X2_GPUTIME=1` (GPU ms per frame), `X2_PS_MEDIUMP=0`, `X2_DXT565=0` as on GL. Metal: In testing: every deterministic regression frame is pixel-identical to GL; the FPS overlay is not drawn yet. `X2_DRAWLOG`, `X2_DUMPTEX` (BGRA8 / R8), `X2_SHADERLOG` (prints MSL) and `X2_UPLOADLOG` work with it |
+| `X2_RENDERER=gl` / `metal` / `vulkan` | the renderer. Android: Vulkan by default (`gfx/gfx_vk.c`, Vulkan 1.3, shaders compiled by glslang; the app, and the RetroArch core through RetroArch's Vulkan driver, which it switches to by itself when driver switching is on); `gl` selects OpenGL ES (the app also falls back to it without Vulkan 1.3). macOS: OpenGL by default, `metal` for the Metal backend (`gfx/gfx_metal.m`, standalone). Vulkan: `X2_GPUTIME=1` (GPU ms per frame), `X2_PS_MEDIUMP=0`, `X2_DXT565=0` as on GL. Metal: In testing: every deterministic regression frame is pixel-identical to GL; the FPS overlay is not drawn yet. `X2_DRAWLOG`, `X2_DUMPTEX` (BGRA8 / R8), `X2_SHADERLOG` (prints MSL) and `X2_UPLOADLOG` work with it |
 | `X2_VSYNC=1` / `X2_NOPRESENT=1` | vsynced presentation / never present (headless runs, hidden window; add `SDL_AUDIO_DRIVER=dummy` for silence) |
 | `X2_BB_SCALE=n` | render the backbuffer at n× (default: the largest multiple fitting 1280×1024, so 640×480 games get 2×) |
 | `X2_NO_S3TC=1` | decode DXT textures on the CPU (default on GPUs without S3TC) |

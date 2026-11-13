@@ -50,7 +50,7 @@ static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
 static struct retro_hw_render_callback hw_render;
 
-/* X2_RENDERER=vulkan (x2.env): the Vulkan backend in RetroArch's context (gfx/gfx_vk.c).
+/* Vulkan (the default on Android; X2_RENDERER=gl in x2.env selects GL): gfx/gfx_vk.c in RetroArch's context.
  * RetroArch creates the device through our negotiation interface, so it has what the
  * backend needs (Vulkan 1.3 dynamic rendering, push descriptors). */
 static bool use_vk;
@@ -464,7 +464,7 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     x2_load_env_file(dir); /* X2_RENDERER is needed before the context (x2_boot loads it again) */
 #ifdef X2_VULKAN
-    use_vk = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "vulkan");
+    use_vk = !(getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "gl"));
     if (use_vk) {
         memset(&hw_render, 0, sizeof hw_render);
         hw_render.context_type = RETRO_HW_CONTEXT_VULKAN;
@@ -656,7 +656,7 @@ EXPORT void retro_run(void) {
     }
 
 #ifdef X2_VULKAN
-audio:
+audio:;
 #endif
     /* audio: exactly one frame's worth at 48 kHz / 60 Hz */
     enum { FRAMES = 800 };

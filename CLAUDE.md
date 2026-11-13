@@ -21,7 +21,7 @@ DirectShow, a JVS I/O board and a GL renderer. Front ends: a standalone app
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); 0.3-0.5 s load pauses at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
-| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android untested |
+| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode at 60 fps, not played yet |
 
 Every game in the maintainer's collection is now playable.
 
@@ -181,7 +181,8 @@ gets an entry per milestone. Update them with the README.
 The maintainer tests on an Apple M3 Pro Mac and a Samsung Galaxy Tab A11
 (SM-X130, 8 GB / 128 GB: Helio G99, Mali-G57 MC2, no
 S3TC, 2 big + 6 little cores, Android 16) with RetroArch
-(`com.retroarch.aarch64`, video driver `gl`) and ES-DE
+(`com.retroarch.aarch64`, video driver `gl` with driver switching on: our core
+switches it to `vulkan`, the default renderer on Android) and ES-DE
 (`org.es_de.frontend`). Games live in
 `/storage/emulated/0/ROMs/arcade/<Game>.x2/`.
 

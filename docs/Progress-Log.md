@@ -2,6 +2,21 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-13: Vulkan is the default on Android; KOF MI on the tablet
+
+- **Default renderer:** the RetroArch core and the standalone app render with
+  Vulkan on Android; `X2_RENDERER=gl` in `x2.env` selects OpenGL ES. The app
+  falls back to OpenGL by itself on devices without Vulkan 1.3.
+- **Sweep (RetroArch on the tablet, GL against Vulkan):** every game runs at
+  60 fps on both with no errors. GPU time per frame is close to GL's in the
+  light games (BlazBlue CT, KOF XII, XIII Climax, '98 UM) and 18% lower in
+  SSF4's fights.
+- **KOF Maximum Impact Regulation A on Android:** the opening movie and
+  attract mode run at 60 fps in RetroArch and the app, on Vulkan and on GL.
+  Fights not played yet.
+- **Fix:** CPU uploads into a BGRA render target (KOF MI's movie overlay) had
+  red and blue swapped on Vulkan, where render targets are RGBA8.
+
 ## 2026-11-13: Vulkan backend on Android
 
 - **`gfx_vk.c`** (`X2_RENDERER=vulkan`, Android standalone app), developed on the

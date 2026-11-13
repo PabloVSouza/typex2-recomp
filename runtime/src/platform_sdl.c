@@ -25,10 +25,10 @@ static SDL_Window *win;
 static SDL_GLContext glc;
 /* X2_RENDERER=metal (Apple): the Metal backend (gfx/gfx_metal.m) instead of GL */
 static bool use_metal;
-/* X2_RENDERER=vulkan (Android): the Vulkan backend (gfx/gfx_vk.c) */
+/* Vulkan (gfx/gfx_vk.c): the default on Android; X2_RENDERER=gl selects GL */
 static bool use_vk;
 #ifdef X2_VULKAN
-void gfx_vk_init(SDL_Window *win, u32 w, u32 h);
+bool gfx_vk_init(SDL_Window *win, u32 w, u32 h);
 bool gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_present(u32 ww, u32 wh);
 void gfx_vk_screenshot(const char *path);
@@ -609,7 +609,7 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
     use_metal = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "metal");
 #endif
 #ifdef X2_VULKAN
-    use_vk = getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "vulkan");
+    use_vk = !(getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "gl"));
 #endif
     win = SDL_CreateWindow("Type X2 recomp", 1280, 720,
                            (use_metal ? SDL_WINDOW_METAL
@@ -627,7 +627,14 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
     }
 #endif
 #ifdef X2_VULKAN
-    if (use_vk) gfx_vk_init(win, 1280, 720);
+    if (use_vk && !gfx_vk_init(win, 1280, 720)) { /* no Vulkan 1.3: GL in a new window */
+        x2_log("vulkan unavailable; using OpenGL");
+        use_vk = false;
+        SDL_WindowFlags fl = SDL_GetWindowFlags(win);
+        SDL_DestroyWindow(win);
+        win = SDL_CreateWindow("Type X2 recomp", 1280, 720, (fl & ~SDL_WINDOW_VULKAN) | SDL_WINDOW_OPENGL);
+        if (!win) x2_fatal("SDL_CreateWindow: %s", SDL_GetError());
+    }
 #endif
     if (!use_metal && !use_vk) {
         glc = SDL_GL_CreateContext(win);

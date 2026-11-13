@@ -41,7 +41,7 @@ Mali-G57 MC2) for Android.
 | BlazBlue: Continuum Shift | Type X2 | 2009 | `bbcs` | Playable | not tested | Playable | [BlazBlue CS](Game-BlazBlue-CS.md) |
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | not tested | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |
-| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | not tested | not tested | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
+| The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | Attract mode, 60 fps (not played yet) | Attract mode, 60 fps (not played yet) | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`

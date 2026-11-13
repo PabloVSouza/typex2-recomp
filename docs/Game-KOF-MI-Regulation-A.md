@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |
 | `games/` id | `kofmira` |
-| Status | **Playable** on macOS: opening movie, attract demo, test menu, character select and fights. Android not tested yet. |
+| Status | **Playable** on macOS: opening movie, attract demo, test menu, character select and fights. Android (RetroArch and the app): attract mode at 60 fps; not played yet. |
 | Executable | `game.exe` (PE32, 28 MB image; RenderWare engine; data in `data/`, `diskimg/`) |
 
 ## Controls
@@ -42,7 +42,7 @@ TEST confirms A B C D on cabinet SHOT1, SHOT4, SHOT2 and SHOT5.
 
 ## Known issues
 
-- Not yet tested on Android.
+- Android: the opening movie and attract mode run at 60 fps on the test tablet (RetroArch and the app, Vulkan and GL); fights not played yet.
 - Some test-menu sound effects are missing from the dump (`mmioOpen` fails,
   harmlessly).
 - In the C runtime, `longjmp` and C++ / SEH exception dispatch are not

@@ -28,6 +28,9 @@
 #include "gfx_cmd.h"
 #include "sm3_glsl.h"
 
+/* Vulkan structs are initialised as {sType} by convention; the rest is zero. */
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+
 #define MAX_IDS   (1u << 20)
 #define INFLIGHT  3
 #define RING_SIZE (48u << 20)
@@ -382,6 +385,7 @@ typedef struct {
     u32 fmt, w, h, levels, scale;
     bool rt, depth, cube, vol, dxt, expand16;
     bool rgb565;     /* opaque DXT1, stored as RGB565: half the size and bandwidth (as gfx_gl.c) */
+    bool swap_rb;    /* a BGRA render target stored as RGBA8: uploads swap red and blue */
     bool uploaded;   /* any upload yet: a DXT1 texture picks its storage at the first */
     GfxId id;        /* the game's id (X2_GPUTIME=2 names passes by target) */
     bool vs_sampled; /* read by a vertex shader once: its barriers include the vertex stage */
@@ -513,7 +517,10 @@ static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 
     t->rgb565 = rgb565;
     t->vf = rgb565 ? VK_FORMAT_R5G6B5_UNORM_PACK16 : vk_format(fmt);
     /* render targets as RGBA8, as GL stores them: BGRA attachments cost tile GPUs (Mali) */
-    if (rt && t->vf == VK_FORMAT_B8G8R8A8_UNORM && !getenv("X2_VK_BGRA_RT")) t->vf = VK_FORMAT_R8G8B8A8_UNORM;
+    if (rt && t->vf == VK_FORMAT_B8G8R8A8_UNORM && !getenv("X2_VK_BGRA_RT")) {
+        t->vf = VK_FORMAT_R8G8B8A8_UNORM;
+        t->swap_rb = true;
+    }
     VkImageCreateInfo ci = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
     ci.flags = cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
     ci.imageType = vol ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
@@ -609,7 +616,20 @@ static void upload(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, con
         free(tmp);
         return;
     }
-    for (u32 r = 0; r < h; r++) memcpy((u8 *)ring_ptr(off) + (size_t)r * row, data + (size_t)r * pitch, row);
+    if (t->swap_rb && px == 4) { /* BGRA data, RGBA storage (KOF MI's movie overlay); the ring is
+                                    uncached: write it only, never read it back */
+        for (u32 r = 0; r < h; r++) {
+            const u8 *s = data + (size_t)r * pitch; /* guest rows need not be 4-byte aligned */
+            u32 *d = (u32 *)((u8 *)ring_ptr(off) + (size_t)r * row);
+            for (u32 i = 0; i < w; i++) {
+                u32 v;
+                memcpy(&v, s + i * 4, 4);
+                d[i] = (v & 0xff00ff00u) | (v >> 16 & 0xffu) | (v & 0xffu) << 16;
+            }
+        }
+    } else {
+        for (u32 r = 0; r < h; r++) memcpy((u8 *)ring_ptr(off) + (size_t)r * row, data + (size_t)r * pitch, row);
+    }
     free(tmp);
     end_rendering(); /* copies happen outside rendering */
     transition(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -2064,6 +2084,13 @@ static VTex *black_tex(bool cube, bool vol) {
  * it needs itself); NULL creates it here, with the swapchain extension for `surf`. */
 typedef VkDevice (*VkDeviceWrap)(VkPhysicalDevice gpu, void *opaque, const VkDeviceCreateInfo *ci);
 VkDevice gfx_vk_make_device(VkPhysicalDevice gpu, VkSurfaceKHR surf, VkDeviceWrap wrap, void *opaque, u32 *out_qfam) {
+    VkPhysicalDeviceProperties dp;
+    vkGetPhysicalDeviceProperties(gpu, &dp);
+    if (dp.apiVersion < VK_API_VERSION_1_3) {
+        x2_log("vulkan: %s has only Vulkan %u.%u (1.3 needed)", dp.deviceName, VK_API_VERSION_MAJOR(dp.apiVersion),
+               VK_API_VERSION_MINOR(dp.apiVersion));
+        return VK_NULL_HANDLE;
+    }
     u32 nq = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(gpu, &nq, NULL);
     VkQueueFamilyProperties qp[16];
@@ -2196,7 +2223,8 @@ static void setup(u32 w, u32 h) {
 }
 
 #ifdef X2_VK_SDL
-void gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
+/* false when there is no usable Vulkan 1.3 device (the caller falls back to GL) */
+bool gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
     Uint32 next = 0;
     const char *const *ext = SDL_Vulkan_GetInstanceExtensions(&next);
     VkApplicationInfo app = {VK_STRUCTURE_TYPE_APPLICATION_INFO, NULL, "typex2-recomp", 1, "x2", 1, VK_API_VERSION_1_3};
@@ -2204,15 +2232,30 @@ void gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
     ii.pApplicationInfo = &app;
     ii.enabledExtensionCount = next;
     ii.ppEnabledExtensionNames = ext;
-    VK_CHECK(vkCreateInstance(&ii, NULL, &inst));
-    if (win && !SDL_Vulkan_CreateSurface(win, inst, NULL, &surface)) x2_fatal("vulkan: surface: %s", SDL_GetError());
+    if (!ext || vkCreateInstance(&ii, NULL, &inst) != VK_SUCCESS) {
+        x2_log("vulkan: no instance");
+        return false;
+    }
+    const char *why = NULL;
     u32 np = 1;
-    VkResult er = vkEnumeratePhysicalDevices(inst, &np, &phys);
-    if ((er != VK_SUCCESS && er != VK_INCOMPLETE) || !np) x2_fatal("vulkan: no device");
-    dev = gfx_vk_make_device(phys, surface, NULL, NULL, &qfam);
-    if (!dev) x2_fatal("vulkan: cannot create the device");
+    VkResult er;
+    if (win && !SDL_Vulkan_CreateSurface(win, inst, NULL, &surface))
+        why = SDL_GetError();
+    else if (er = vkEnumeratePhysicalDevices(inst, &np, &phys), (er != VK_SUCCESS && er != VK_INCOMPLETE) || !np)
+        why = "no device";
+    else if (!(dev = gfx_vk_make_device(phys, surface, NULL, NULL, &qfam)))
+        why = "cannot create the device";
+    if (why) {
+        x2_log("vulkan: %s", why);
+        if (surface) SDL_Vulkan_DestroySurface(inst, surface, NULL);
+        surface = VK_NULL_HANDLE;
+        vkDestroyInstance(inst, NULL);
+        inst = VK_NULL_HANDLE;
+        return false;
+    }
     vkGetDeviceQueue(dev, qfam, 0, &queue);
     setup(w, h);
+    return true;
 }
 #endif
 
