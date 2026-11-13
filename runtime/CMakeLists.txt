@@ -68,6 +68,7 @@ add_library(x2rt_common OBJECT
   src/hle/gdi32.c
   src/hle/net.c
   src/hle/pending.c
+  src/gfx/gfx_record.c
   src/gfx/gfx_gl.c
   src/gfx/gfx_gl_draw.c
   src/gfx/sm3_glsl.c
