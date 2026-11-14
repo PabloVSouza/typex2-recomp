@@ -59,7 +59,7 @@ jobs:
 
   linux:
     needs: draft
-    runs-on: ubuntu-22.04 # the oldest glibc we support: the binaries run on newer systems
+    runs-on: ubuntu-24.04 # the binaries need glibc 2.39 or newer (Ubuntu 24.04+)
     steps:
       - uses: actions/checkout@v4
       - name: Packages

@@ -255,16 +255,9 @@ X2Video *x2_video_open(const char *path) {
         v->sws = sws_getContext(v->vdec->width, v->vdec->height, v->vdec->pix_fmt, v->w, v->h, AV_PIX_FMT_YUV420P,
                                 SWS_BILINEAR, NULL, NULL, NULL);
     if (v->adec) {
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(57, 24, 100) /* FFmpeg 5.1: AVChannelLayout */
         AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
         swr_alloc_set_opts2(&v->swr, &stereo, AV_SAMPLE_FMT_FLT, 48000, &v->adec->ch_layout, v->adec->sample_fmt,
                             v->adec->sample_rate, 0, NULL);
-#else /* FFmpeg 4 (Ubuntu 22.04, the Linux release's base) */
-        int64_t in = v->adec->channel_layout ? (int64_t)v->adec->channel_layout
-                                             : av_get_default_channel_layout(v->adec->channels);
-        v->swr = swr_alloc_set_opts(NULL, AV_CH_LAYOUT_STEREO, AV_SAMPLE_FMT_FLT, 48000, in, v->adec->sample_fmt,
-                                    v->adec->sample_rate, 0, NULL);
-#endif
         swr_init(v->swr);
     }
     v->gain = 1.0f;

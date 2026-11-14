@@ -10,10 +10,7 @@ on:
 
 jobs:
   linux:
-    strategy:
-      matrix: # 22.04: the Linux release's base (FFmpeg 4); 24.04: current
-        os: [ubuntu-22.04, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Version is the same in every file

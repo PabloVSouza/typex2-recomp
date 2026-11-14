@@ -206,6 +206,9 @@ if(X2_STANDALONE)
     # Windows: the import library game DLLs link against (libx2-player.dll.a) sits beside it
     set_target_properties(x2-player PROPERTIES ENABLE_EXPORTS ON RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
                                                ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+    if(MINGW) # nothing is dllexport-marked: export the runtime so the import library has it
+      target_link_options(x2-player PRIVATE -Wl,--export-all-symbols)
+    endif()
   endif()
 endif()
 

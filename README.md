@@ -61,7 +61,8 @@ runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,                 └
 The launcher for macOS (Apple Silicon), Linux and Windows is on the
 [releases page](https://github.com/PabloVSouza/typex2-recomp/releases):
 `.dmg` for macOS, `.AppImage` / `.deb` for Linux, `.msi` / setup `.exe` for
-Windows. What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+Windows (Linux: glibc 2.39 or newer, as on Ubuntu 24.04). What changed in each
+version: [CHANGELOG.md](CHANGELOG.md).
 
 The apps are not signed with a developer certificate yet. macOS: open the app
 once, then allow it in System Settings → Privacy & Security ("Open Anyway").
