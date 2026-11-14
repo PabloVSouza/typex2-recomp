@@ -19,6 +19,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #endif
+#include <dirent.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <glslang/Public/resource_limits_c.h>
 #include <stdlib.h>
@@ -764,6 +765,7 @@ typedef struct {
 static VShader *shaders[MAX_IDS];
 static u32 shader_serial;
 
+static VkShaderModule module_for(VShader *s, u32 key);
 static void do_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
     if (id >= MAX_IDS) return;
     VShader *s = calloc(1, sizeof *s);
@@ -781,6 +783,9 @@ static void do_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
         x2_log("vulkan: shader %u:\n%s", id, s->src);
     s->ok = s->src != NULL;
     shaders[id] = s;
+    /* the common variant now (no alpha test, float inputs): games create shaders while loading,
+     * and compiling at the first draw stalled that frame (a new hit effect, a super) */
+    if (s->ok) module_for(s, 0);
 }
 static void do_shader_destroy(GfxId id) {
     VShader *s = id < MAX_IDS ? shaders[id] : NULL;
@@ -830,6 +835,104 @@ static void *read_file(const char *path, size_t *n) {
     return d;
 }
 
+/* SPIR-V cache: one pack file (vk-spirv.pack: records of u64 key, u32 bytes, code) read into
+ * memory at the first lookup. A file per shader cost milliseconds per open on Android's shared
+ * storage, paid in the frame that first draws with the shader; older vk-*.spv files are moved
+ * into the pack as they are used. */
+typedef struct {
+    u64 key;
+    u32 n;
+    u32 *code;
+} SpvEnt;
+static SpvEnt *spv_tab;
+static u32 spv_cap, spv_n;
+static bool spv_loaded;
+
+static SpvEnt *spv_slot(u64 key) {
+    for (u32 i = (u32)key & (spv_cap - 1);; i = (i + 1) & (spv_cap - 1))
+        if (!spv_tab[i].code || spv_tab[i].key == key) return &spv_tab[i];
+}
+static void spv_put(u64 key, const void *code, u32 n) {
+    if ((spv_n + 1) * 2 > spv_cap) { /* grow: keep the table at most half full */
+        SpvEnt *old = spv_tab;
+        u32 oc = spv_cap;
+        spv_cap = spv_cap ? spv_cap * 2 : 1024;
+        spv_tab = calloc(spv_cap, sizeof *spv_tab);
+        for (u32 i = 0; i < oc; i++)
+            if (old[i].code) *spv_slot(old[i].key) = old[i];
+        free(old);
+    }
+    SpvEnt *e = spv_slot(key);
+    if (e->code) return;
+    e->key = key;
+    e->n = n;
+    e->code = malloc(n);
+    memcpy(e->code, code, n);
+    spv_n++;
+}
+static void spv_append(u64 key, const void *code, u32 n);
+static void spv_pack_path(char *path, size_t n) { snprintf(path, n, "%s/vk-spirv.pack", gfx_gl_cache_dir); }
+static void spv_load(void) {
+    spv_loaded = true;
+    if (!gfx_gl_cache_dir[0]) return;
+    char path[700];
+    spv_pack_path(path, sizeof path);
+    size_t sz;
+    u8 *d = read_file(path, &sz);
+    size_t at = 0;
+    while (d && at + 12 <= sz) {
+        u64 key;
+        u32 n;
+        memcpy(&key, d + at, 8);
+        memcpy(&n, d + at + 8, 4);
+        if (n < 20 || n % 4 || at + 12 + n > sz) break; /* a torn last record: ignore it */
+        spv_put(key, d + at + 12, n);
+        at += 12 + n;
+    }
+    free(d);
+    /* the cache from before the pack, all at once (each file open costs milliseconds) */
+    u32 moved = 0;
+    DIR *dir = opendir(gfx_gl_cache_dir);
+    for (struct dirent *de; dir && (de = readdir(dir));) {
+        unsigned long long h;
+        char kind;
+        if (strlen(de->d_name) != 25 || sscanf(de->d_name, "vk-%16llx-%c.spv", &h, &kind) != 2) continue;
+        char old[1024];
+        snprintf(old, sizeof old, "%s/%s", gfx_gl_cache_dir, de->d_name);
+        u8 *code = read_file(old, &sz);
+        if (code && sz >= 20 && sz % 4 == 0) {
+            u64 key = h ^ (kind == 'p' ? 0x9e3779b97f4a7c15ull : 0);
+            if (!spv_cap || !spv_slot(key)->code) {
+                spv_put(key, code, (u32)sz);
+                spv_append(key, code, (u32)sz);
+                moved++;
+            }
+        }
+        free(code);
+        remove(old);
+    }
+    if (dir) closedir(dir);
+    if (spv_n) x2_log("vulkan: %u cached shaders (%u moved into the pack)", spv_n, moved);
+}
+static void spv_append(u64 key, const void *code, u32 n) {
+    if (!gfx_gl_cache_dir[0]) return;
+    char path[700];
+    spv_pack_path(path, sizeof path);
+    FILE *f = fopen(path, "ab");
+    if (!f) return;
+    fwrite(&key, 8, 1, f);
+    fwrite(&n, 4, 1, f);
+    fwrite(code, 1, n, f);
+    fclose(f);
+}
+static VkShaderModule spv_module(const void *code, u32 n) {
+    VkShaderModuleCreateInfo mi = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+    mi.codeSize = n;
+    mi.pCode = code;
+    VkShaderModule m = VK_NULL_HANDLE;
+    return vkCreateShaderModule(dev, &mi, NULL, &m) == VK_SUCCESS ? m : VK_NULL_HANDLE;
+}
+
 static VkShaderModule compile(VShader *s, const char *defines) {
     size_t n = strlen(s->src), dl = strlen(defines);
     const char *nl = strchr(s->src, '\n');
@@ -838,25 +941,17 @@ static VkShaderModule compile(VShader *s, const char *defines) {
     memcpy(src, s->src, at);
     memcpy(src + at, defines, dl);
     memcpy(src + at + dl, s->src + at, n - at + 1);
-    char spv_path[700] = "";
-    if (gfx_gl_cache_dir[0]) {
-        snprintf(spv_path, sizeof spv_path, "%s/vk-%016llx-%c.spv", gfx_gl_cache_dir,
-                 (unsigned long long)fnv64(src, strlen(src)), s->pixel ? 'p' : 'v');
-        size_t sz;
-        void *code = read_file(spv_path, &sz);
-        if (code && sz >= 20 && sz % 4 == 0) {
-            VkShaderModuleCreateInfo mi = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-            mi.codeSize = sz;
-            mi.pCode = code;
-            VkShaderModule m = VK_NULL_HANDLE;
-            VkResult r = vkCreateShaderModule(dev, &mi, NULL, &m);
-            free(code);
-            if (r == VK_SUCCESS) {
+    u64 h = fnv64(src, strlen(src)), key = h ^ (s->pixel ? 0x9e3779b97f4a7c15ull : 0);
+    if (!spv_loaded) spv_load();
+    if (spv_cap) {
+        SpvEnt *e = spv_slot(key);
+        if (e->code) {
+            VkShaderModule m = spv_module(e->code, e->n);
+            if (m) {
                 free(src);
                 return m;
             }
         }
-        free(code);
     }
     glslang_stage_t stage = s->pixel ? GLSLANG_STAGE_FRAGMENT : GLSLANG_STAGE_VERTEX;
     glslang_input_t in = {0};
@@ -886,7 +981,8 @@ static VkShaderModule compile(VShader *s, const char *defines) {
             mi.codeSize = glslang_program_SPIRV_get_size(p) * 4;
             mi.pCode = glslang_program_SPIRV_get_ptr(p);
             VK_CHECK(vkCreateShaderModule(dev, &mi, NULL, &m));
-            if (spv_path[0]) write_file(spv_path, mi.pCode, mi.codeSize);
+            spv_put(key, mi.pCode, (u32)mi.codeSize);
+            spv_append(key, mi.pCode, (u32)mi.codeSize);
         }
         glslang_program_delete(p);
     }
@@ -1036,6 +1132,9 @@ static VkBlendOp blend_op(u32 o) {
 }
 /* the pipeline cache, saved every 300 frames while new pipelines appear */
 static bool pcache_dirty;
+/* pipelines made in the last 120 frames and the time it took (compiles stall the frame) */
+static u32 st_pipes;
+static u64 st_pipe_ns;
 static void pcache_save(void) {
     pcache_dirty = false;
     size_t sz = 0;
@@ -1056,8 +1155,10 @@ static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
     e->k = *k;
     e->next = pipes[h];
     pipes[h] = e;
+    u64 t0 = x2_time_ns();
     VkShaderModule vm = module_for(vs, k->vtkey), fm = module_for(ps, k->atest);
     if (!vm || !fm) return VK_NULL_HANDLE;
+    u64 t_mod = x2_time_ns() - t0; /* shader modules: translation, SPIR-V (glslang or the disk cache) */
     VkPipelineShaderStageCreateInfo st[2] = {
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT, vm, "main", NULL},
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fm, "main", NULL}};
@@ -1147,6 +1248,12 @@ static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
         e->p = VK_NULL_HANDLE;
     }
     pcache_dirty = true;
+    u64 dt = x2_time_ns() - t0;
+    st_pipes++;
+    st_pipe_ns += dt;
+    if (dt > 2000000)
+        x2_log("vulkan: pipeline (vs %u ps %u) took %.1f ms (shaders %.1f)", vs->serial, ps->serial, dt / 1e6,
+               t_mod / 1e6);
     return e->p;
 }
 
@@ -1820,6 +1927,9 @@ static void run_frame(Frame *f) {
                 x2_log("gfx: frame %u: %u draws, %u clears, %u passes in the last 120 frames (vulkan)", st_frames,
                        st_draws, st_clears, st_passes);
                 st_passes = 0;
+                if (st_pipes) x2_log("vulkan: %u new pipelines, %.1f ms", st_pipes, st_pipe_ns / 1e6);
+                st_pipes = 0;
+                st_pipe_ns = 0;
                 if (gpu_n) x2_log("gputime: %.2f ms avg, %.2f max", gpu_ms_sum / gpu_n, gpu_ms_max);
                 gpu_ms_sum = gpu_ms_max = 0;
                 gpu_n = 0;

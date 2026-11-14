@@ -2,6 +2,25 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-14: No more shader hitches on Vulkan
+
+- **Cause:** pipelines are made at the first draw that needs them. With warm
+  caches the driver's part was fast, but reading each shader's SPIR-V from its
+  own file on Android's shared storage cost milliseconds per file, and shaders
+  never seen on the device were compiled by glslang right then (up to 280 ms):
+  the hiccups on new hit effects. SSF4, 150 s of attract mode: 95 pipelines
+  over 2 ms, the slowest 291 ms.
+- **Fix:** SPIR-V lives in one pack file read at start (`vk-spirv.pack`, older
+  per-shader files moved in once), and every shader's common variant is
+  compiled when the game creates it, during loading. Same run: no pipeline over
+  2 ms; the vertex variant for integer inputs and alpha-tested pixel variants
+  are still made at first use.
+- **SSF4 on Vulkan:** 10 minutes of attract fights average about 12 ms of GPU
+  time a frame on the Galaxy Tab A11 and hold 60 fps; the 50-55 fps stages were
+  OpenGL's.
+- **Debugging:** the Vulkan stats line counts new pipelines and their time;
+  any over 2 ms is logged with its shader split.
+
 ## 2026-11-13: Metal is the default on macOS
 
 - **Default renderer:** the standalone app renders with Metal on macOS;

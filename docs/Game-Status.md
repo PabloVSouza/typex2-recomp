@@ -37,7 +37,7 @@ Mali-G57 MC2) for Android.
 | The King of Fighters XII | Type X2 | 2009 | `kof12` | Playable | Playable | Playable | [KOF XII](Game-KOF-XII.md) |
 | The King of Fighters XIII | Type X2 | 2010 | `kof13` | Playable | Playable | Playable | [KOF XIII](Game-KOF-XIII.md) |
 | The King of Fighters XIII Climax | Type X2 | 2012 | `kof13cl` | Playable | Playable | Playable | [KOF XIII Climax](Game-KOF-XIII-Climax.md) |
-| Super Street Fighter IV Arcade Edition | Type X2 | 2010 | `ssf4ae` | Playable | not tested | Playable, issues | [SSF4 AE](Game-SSF4-AE.md) |
+| Super Street Fighter IV Arcade Edition | Type X2 | 2010 | `ssf4ae` | Playable | not tested | Playable | [SSF4 AE](Game-SSF4-AE.md) |
 | BlazBlue: Continuum Shift | Type X2 | 2009 | `bbcs` | Playable | not tested | Playable | [BlazBlue CS](Game-BlazBlue-CS.md) |
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | not tested | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |

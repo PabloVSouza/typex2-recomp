@@ -18,7 +18,7 @@ Android, GL as the reference and fallback). Front ends: a standalone app
 | The King of Fighters XII | `kof12` | playable (macOS, Android standalone + RetroArch) |
 | The King of Fighters XIII | `kof13` | playable |
 | The King of Fighters XIII Climax | `kof13cl` | playable |
-| Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; a few stages 50-55 fps on the test tablet |
+| Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; 60 fps on the test tablet with Vulkan (GL: a few stages 50-55 fps) |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); 0.3-0.5 s load pauses at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |

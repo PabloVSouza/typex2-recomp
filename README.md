@@ -9,8 +9,8 @@ or as a RetroArch/libretro core.
 **Status:** KOF XII, KOF XIII and KOF XIII Climax are playable on macOS and on
 Android (arm64, GLES 3.2), standalone or in RetroArch. Super Street Fighter IV
 Arcade Edition (`games/ssf4ae`) is playable on macOS and in RetroArch on
-Android: 60 fps through attract mode, character select and most fights on a
-Galaxy Tab A11; a few stages are GPU-bound at 50-55 fps. BlazBlue Continuum
+Android: 60 fps through attract mode, character select and the fights measured on a
+Galaxy Tab A11 with Vulkan (OpenGL leaves a few stages at 50-55 fps). BlazBlue Continuum
 Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
