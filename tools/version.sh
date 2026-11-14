@@ -2,7 +2,7 @@
 # The project's version, kept the same everywhere it is written down.
 #   tools/version.sh               print it (and fail if the files disagree)
 #   tools/version.sh set X.Y.Z     write X.Y.Z everywhere
-#   tools/version.sh check [vX.Y.Z]  fail if the files disagree, or differ from a tag
+#   tools/version.sh check [vX.Y.Z[-rc.N]]  fail if the files disagree, or differ from a tag
 # Releases: tools/version.sh set X.Y.Z, add the CHANGELOG.md section, commit,
 # then `git tag vX.Y.Z && git push origin vX.Y.Z` (.github/workflows/release.yml).
 set -eu
@@ -28,7 +28,8 @@ check() {
         echo "$bad" >&2
         exit 1
     fi
-    if [ -n "${1:-}" ] && [ "$1" != "v$v" ]; then
+    # vX.Y.Z, or a release candidate vX.Y.Z-rc.N of the same version
+    if [ -n "${1:-}" ] && [ "${1%%-*}" != "v$v" ]; then
         echo "tag $1 does not match the version in the files ($v)" >&2
         exit 1
     fi

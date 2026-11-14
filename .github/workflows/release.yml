@@ -24,10 +24,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
-          v="${tag#v}"
+          v="${tag#v}"; v="${v%%-*}" # v0.1.0-rc.1: the notes of 0.1.0
           awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1} on' CHANGELOG.md | tail -n +2 > notes.md
           test -s notes.md || { echo "CHANGELOG.md has no section for $v"; exit 1; }
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --draft --title "typex2-recomp $v" --notes-file notes.md
+          pre=; case "$tag" in *-*) pre=--prerelease ;; esac
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --draft $pre --title "typex2-recomp ${tag#v}" --notes-file notes.md
 
   macos:
     needs: draft
@@ -136,4 +137,8 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        run: |
+          case "$GITHUB_REF_NAME" in
+          *-*) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false ;; # a release candidate
+          *) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest ;;
+          esac
