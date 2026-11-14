@@ -1,0 +1,21 @@
+# Posts a release to the Discord server's #releases channel again, from main's CHANGELOG.md
+# (gh workflow run discord-release.yml -f tag=v0.1.0). release.yml posts when a tag is released.
+name: Discord release post
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release, e.g. v0.1.0
+        required: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discord
+        env:
+          DISCORD_RELEASES_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+          TAG: ${{ inputs.tag }}
+        run: tools/discord_release.sh "$TAG"

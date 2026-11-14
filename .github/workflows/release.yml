@@ -134,6 +134,7 @@ jobs:
     needs: [macos, linux, windows]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,3 +143,7 @@ jobs:
           *-*) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false ;; # a release candidate
           *) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest ;;
           esac
+      - name: Post it to Discord's #releases
+        env:
+          DISCORD_RELEASES_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+        run: tools/discord_release.sh "$GITHUB_REF_NAME"

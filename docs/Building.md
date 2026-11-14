@@ -94,4 +94,8 @@ they agree). A release: `tools/version.sh set X.Y.Z`, a dated section in
 tag. [`.github/workflows/release.yml`](../.github/workflows/release.yml) checks
 the tag against the version, builds the launcher for macOS, Linux and Windows
 and publishes the release with the changelog section as its notes.
-`vX.Y.Z-rc.N` tags make pre-releases.
+`vX.Y.Z-rc.N` tags make pre-releases. Then `tools/discord_release.sh` posts it to
+the Discord server's #releases channel (the `DISCORD_RELEASES_WEBHOOK` secret):
+the summary, What's new (a bullet per `**Label:**` paragraph or list) and Known
+issues from the same section. `DRY_RUN=1 tools/discord_release.sh vX.Y.Z` shows
+the post; `gh workflow run discord-release.yml -f tag=vX.Y.Z` posts one again.
