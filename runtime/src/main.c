@@ -13,7 +13,11 @@
 
 #include "core.h"
 
-#ifdef X2_PLAYER
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#elif defined(X2_PLAYER)
 #include <dlfcn.h>
 #endif
 
@@ -46,6 +50,15 @@ int main(int argc, char **argv) {
     }
 #ifdef X2_PLAYER
     if (lib) {
+#ifdef _WIN32
+        /* the library imports the runtime from this executable (linked against its import library) */
+        HMODULE h = LoadLibraryA(lib);
+        if (!h) {
+            fprintf(stderr, "x2-player: cannot load %s: error %lu\n", lib, (unsigned long)GetLastError());
+            return 3;
+        }
+        tables = (const X2GameTables *)(void *)GetProcAddress(h, "x2_game_tables");
+#else
         /* the library's undefined runtime symbols resolve against this executable */
         void *h = dlopen(lib, RTLD_NOW | RTLD_LOCAL);
         if (!h) {
@@ -53,6 +66,7 @@ int main(int argc, char **argv) {
             return 3;
         }
         tables = dlsym(h, "x2_game_tables");
+#endif
         if (!tables) {
             fprintf(stderr, "x2-player: %s is not a game library (no x2_game_tables)\n", lib);
             return 3;
@@ -71,12 +85,21 @@ int main(int argc, char **argv) {
         /* compiled shaders: ~/.cache (desktop), the app's files folder (Android) */
         extern void gfx_gl_set_cache_dir(const char *base, const char *game);
         char base[512] = "";
+#ifdef _WIN32
+        const char *h = getenv("LOCALAPPDATA");
+        if (h && *h) snprintf(base, sizeof base, "%s", h);
+        char full[MAX_PATH];
+        const char *d = _fullpath(full, dir, sizeof full) ? full : dir; /* "." -> the folder's name */
+        const char *game = strrchr(d, '\\');
+        if (!game || (strrchr(d, '/') && strrchr(d, '/') > game)) game = strrchr(d, '/');
+#else
         const char *h = getenv("XDG_CACHE_HOME");
         if (h && *h) snprintf(base, sizeof base, "%s", h);
         else if ((h = getenv("HOME")) && *h) snprintf(base, sizeof base, "%s/.cache", h);
         char full[PATH_MAX];
         const char *d = realpath(dir, full) ? full : dir; /* "." -> the folder's name */
         const char *game = strrchr(d, '/');
+#endif
         gfx_gl_set_cache_dir(base, game && game[1] ? game + 1 : d);
     }
     extern int x2_platform_run(X2Thread *guest, bool fullscreen);

@@ -8,6 +8,10 @@
  * "<module offset> <samples> <outside>" lines, most samples first; symbolize
  * the offsets with the unstripped build (llvm-symbolizer --obj=<file>). */
 #define _GNU_SOURCE
+#ifdef _WIN32 /* no sampling profiler on Windows yet */
+#include "core.h"
+void x2_prof_register(const char *name) { (void)name; }
+#else
 #include <dlfcn.h>
 #include <sched.h>
 #include <pthread.h>
@@ -256,3 +260,4 @@ void x2_prof_register(const char *name) {
     atomic_store(&nthreads, i + 1); /* publish after the slot is filled */
     pthread_mutex_unlock(&reg);
 }
+#endif /* _WIN32 */

@@ -1,10 +1,16 @@
 /* Game startup shared by every front end (desktop/Android executable in
  * main.c, libretro core in platform_libretro.c). */
+#include <pthread.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
 #include <dlfcn.h>
 #include <execinfo.h>
-#include <pthread.h>
 #include <signal.h>
 #include <sys/ucontext.h>
+#endif
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -38,6 +44,7 @@ void x2_load_env_file(const char *dir) {
 /* Faults inside guest memory are guest bugs: report them with guest context.
  * Anything else goes to the previously installed handler (a libretro frontend
  * may have its own crash handling). */
+#ifndef _WIN32
 static struct sigaction prev_segv, prev_bus;
 static void on_fault(int sig, siginfo_t *si, void *uc) {
     uintptr_t a = (uintptr_t)si->si_addr;
@@ -104,16 +111,34 @@ static void on_fault(int sig, siginfo_t *si, void *uc) {
     signal(sig, SIG_DFL);
     raise(sig);
 }
+#else
+/* Windows: the same report from a vectored handler, then the normal crash */
+static LONG WINAPI on_exception(EXCEPTION_POINTERS *e) {
+    DWORD code = e->ExceptionRecord->ExceptionCode;
+    if (code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
+        code == EXCEPTION_INT_DIVIDE_BY_ZERO || code == EXCEPTION_STACK_OVERFLOW) {
+        void *addr = code == EXCEPTION_ACCESS_VIOLATION ? (void *)e->ExceptionRecord->ExceptionInformation[1] : NULL;
+        fprintf(stderr, "[x2] host fault (exception %08lx at %p, address %p)\n", (unsigned long)code,
+                e->ExceptionRecord->ExceptionAddress, addr);
+        fflush(stderr);
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
 
 X2Thread *x2_boot(const X2GameTables *game, const char *dir) {
     x2_game = game;
     x2_load_env_file(dir);
     if (getenv("X2_LOG")) x2_log_level = atoi(getenv("X2_LOG"));
+#ifdef _WIN32
+    AddVectoredExceptionHandler(0, on_exception);
+#else
     struct sigaction sa = {0};
     sa.sa_sigaction = on_fault;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     sigaction(SIGSEGV, &sa, &prev_segv);
     sigaction(SIGBUS, &sa, &prev_bus);
+#endif
 
     char exe[1100];
     x2_game_exe(dir, exe, sizeof exe);

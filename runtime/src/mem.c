@@ -3,7 +3,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
 #include <sys/mman.h>
+#endif
 
 #include "core.h"
 
@@ -20,12 +26,22 @@ static pthread_mutex_t vm_lock = PTHREAD_MUTEX_INITIALIZER;
 void x2_mem_init(void) {
     /* X2_MEM_BASE=<hex>: place guest memory at a fixed host address (debugging) */
     void *hint = getenv("X2_MEM_BASE") ? (void *)(uintptr_t)strtoull(getenv("X2_MEM_BASE"), NULL, 16) : NULL;
+#ifdef _WIN32
+    /* committed but untouched pages cost no memory: Windows zero-fills them on first use;
+     * the commit only counts against the commit limit (RAM + page file) */
+    void *p = VirtualAlloc(hint, (SIZE_T)X2_GUEST_SPACE + X2_GUEST_SLACK, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    if (!p) x2_fatal("cannot reserve 4 GiB guest address space: error %lu", (unsigned long)GetLastError());
+    x2_mem = p;
+    DWORD old;
+    VirtualProtect(x2_mem, X2_VM_LOW, PAGE_NOACCESS, &old); /* null page guard */
+#else
     void *p = mmap(hint, X2_GUEST_SPACE + X2_GUEST_SLACK, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANON | MAP_NORESERVE | (hint ? MAP_FIXED : 0), -1, 0);
     if (p == MAP_FAILED) x2_fatal("cannot reserve 4 GiB guest address space: %s", strerror(errno));
     x2_mem = p;
     /* null page guard: catch guest null dereferences as host faults */
     mprotect(x2_mem, X2_VM_LOW, PROT_NONE);
+#endif
 }
 
 static bool range_free(u32 g, u32 n) {
