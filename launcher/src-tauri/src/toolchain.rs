@@ -44,7 +44,29 @@ const LLVM: Option<Package> = Some(Package {
     url: "https://github.com/bloodborne-native/bloodborne-recomp/releases/download/toolchain-llvm-23.1.4/llvm-23.1.4-macos-arm64.tar.xz",
     sum: Sum::Sha256("7e148b8692fa33ded7e6cba48dc879b8a224a935d05232b0999331d85ed8417c"),
 });
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+/// llvm-mingw (mstorsjo/llvm-mingw, Apache-2.0 with LLVM exception and the MinGW-w64 licences):
+/// clang, lld and a MinGW-w64 UCRT sysroot, the C runtime x2-player is built against (MSYS2 CLANG64).
+#[cfg(all(windows, target_arch = "x86_64"))]
+const LLVM: Option<Package> = Some(Package {
+    id: "llvm",
+    name: "LLVM clang (llvm-mingw)",
+    version: "20261020",
+    size: 190612575,
+    for_what: "Compiling games to play on this computer",
+    url: "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-x86_64.zip",
+    sum: Sum::Sha256("fd5462b7f5d93b2ff981fcd3f9c7e427e47f3203c64ea91c27bcc444eebd74cd"),
+});
+#[cfg(all(windows, target_arch = "aarch64"))]
+const LLVM: Option<Package> = Some(Package {
+    id: "llvm",
+    name: "LLVM clang (llvm-mingw)",
+    version: "20261020",
+    size: 185737889,
+    for_what: "Compiling games to play on this computer",
+    url: "https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-aarch64.zip",
+    sum: Sum::Sha256("8f24fedd0b75c674c6c83dec2d76a7ac31a690120212843a17e465ef49854f69"),
+});
+#[cfg(not(any(all(target_os = "macos", target_arch = "aarch64"), windows)))]
 const LLVM: Option<Package> = None;
 
 macro_rules! pkg {

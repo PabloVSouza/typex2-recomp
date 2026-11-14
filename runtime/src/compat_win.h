@@ -38,6 +38,13 @@ static inline int madvise(void *addr, size_t len, int advice) {
 #define FNM_CASEFOLD 16
 int fnmatch(const char *pattern, const char *name, int flags);
 
+/* reads and writes at an offset that leave the file position alone (guest threads share handles) */
+#include <sys/types.h>
+ssize_t pread(int fd, void *buf, size_t n, off_t offset);
+ssize_t pwrite(int fd, const void *buf, size_t n, off_t offset);
+
+char *strcasestr(const char *haystack, const char *needle);
+
 /* free and total bytes of the volume holding dir; false if unknown */
 bool x2_disk_space(const char *dir, uint64_t *free_bytes, uint64_t *total_bytes);
 #endif

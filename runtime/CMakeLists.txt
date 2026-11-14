@@ -201,7 +201,9 @@ if(X2_STANDALONE)
     target_include_directories(x2-player PRIVATE src)
     # whole archive: the natives are referenced only by the game library
     target_link_libraries(x2-player PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,x2rt>" ${CMAKE_DL_LIBS})
-    set_target_properties(x2-player PROPERTIES ENABLE_EXPORTS ON RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+    # Windows: the import library game DLLs link against (libx2-player.dll.a) sits beside it
+    set_target_properties(x2-player PROPERTIES ENABLE_EXPORTS ON RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+                                               ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
   endif()
 endif()
 

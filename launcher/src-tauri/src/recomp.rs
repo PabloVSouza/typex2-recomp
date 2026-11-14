@@ -325,10 +325,24 @@ fn compiler(data: &Path, kit: &Kit) -> Result<Compiler> {
         // functions are looked up when the player loads it.
         let player = kit.player.as_ref().ok_or("x2-player is missing.")?;
         vec!["-bundle".into(), "-bundle_loader".into(), player.display().to_string(), "-Wl,-undefined,dynamic_lookup".into()]
+    } else if cfg!(windows) {
+        // A DLL cannot leave symbols for the executable to supply: it imports the runtime from
+        // x2-player.exe through the import library the player's build made (its thread-locals
+        // excepted, see X2_YIELD in recomp.h).
+        let player = kit.player.as_ref().ok_or("x2-player is missing.")?;
+        let implib = player.with_file_name("libx2-player.dll.a");
+        if !implib.is_file() {
+            return Err(format!("{} is missing.", implib.display()));
+        }
+        vec!["-shared".into(), implib.display().to_string()]
     } else {
         vec!["-shared".into(), "-fPIC".into()]
     };
     if let Some(llvm) = toolchain::llvm(data) {
+        if cfg!(windows) {
+            // llvm-mingw is a whole MinGW-w64 toolchain: its own headers, C runtime and lld
+            return Ok(Compiler { cc: llvm.clang, compile: Vec::new(), link: shared });
+        }
         let mut target = Vec::new();
         if cfg!(target_os = "macos") {
             target.push(format!("--target={}-apple-macos13", std::env::consts::ARCH.replace("aarch64", "arm64")));

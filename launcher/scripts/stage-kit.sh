@@ -59,6 +59,25 @@ Linux)
         patchelf --set-rpath '$ORIGIN/../lib' "$f" 2>/dev/null || echo "patchelf missing: $f keeps its RPATH"
     done
     ;;
+MINGW*|MSYS*)
+    # MSYS2 CLANG64: the import library game DLLs link against, and the DLLs the binaries
+    # load that are not Windows' own, beside them (where Windows looks first)
+    cp "$BUILD/libx2-player.dll.a" "$KIT/bin/"
+    queue=$(ls "$KIT"/bin/*.exe)
+    while [ -n "$queue" ]; do
+        next=
+        for f in $queue; do
+            for dep in $(ldd "$f" | awk '/=> \// {print $3}' | grep -i -v '^/c/windows/'); do
+                name=$(basename "$dep")
+                if [ ! -f "$KIT/bin/$name" ]; then
+                    cp "$dep" "$KIT/bin/$name"
+                    next="$next $KIT/bin/$name"
+                fi
+            done
+        done
+        queue=$next
+    done
+    ;;
 esac
 echo "kit staged in $KIT:"
 du -sh "$KIT"/bin "$KIT"/lib "$KIT"/source

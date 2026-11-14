@@ -1,6 +1,7 @@
 // Minimal PE32 loader: maps sections into a flat image and reads the import
 // and TLS directories. Only what the recompiler needs; no relocations (the
 // Type X2 executables are linked at a fixed base without .reloc).
+#include <algorithm>
 #include <fstream>
 #include <stdexcept>
 
