@@ -5,7 +5,16 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "compat_win.h"
 #include "x2/recomp.h"
+
+/* mkdir with the mode POSIX wants and Windows lacks */
+#ifdef _WIN32
+static inline int x2_mkdir(const char *path) { return _mkdir(path); }
+#else
+#include <sys/stat.h>
+static inline int x2_mkdir(const char *path) { return mkdir(path, 0755); }
+#endif
 
 /* ---- guest memory layout ---------------------------------------------- */
 #define X2_GUEST_SPACE   0x100000000ull

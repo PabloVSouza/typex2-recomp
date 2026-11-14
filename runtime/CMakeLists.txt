@@ -37,6 +37,7 @@ endif()
 # everything but the platform layer, compiled once for both runtimes
 add_library(x2rt_common OBJECT
   src/boot.c
+  src/compat_win.c
   src/png.c
   src/natives.c
   src/padmap.c

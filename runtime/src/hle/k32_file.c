@@ -4,16 +4,19 @@
  *   relative paths and "C:\game\..."  -> <game_dir>/...
  *   other drive letters "X:\..."       -> <game_dir>/drive_x/...
  * The guest sees its executable as C:\game\game.exe. */
+#define _GNU_SOURCE /* FNM_CASEFOLD (glibc) */
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifndef _WIN32 /* compat_win.h has fnmatch and x2_disk_space there */
 #include <fnmatch.h>
+#include <sys/statvfs.h>
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
-#include <sys/statvfs.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -77,7 +80,7 @@ static void mkdirs_for(const char *path) {
     for (char *s = d + 1; *s; s++)
         if (*s == '/') {
             *s = 0;
-            mkdir(d, 0755);
+            x2_mkdir(d);
             *s = '/';
         }
 }
@@ -395,7 +398,10 @@ static void CreateDirectoryA(X2Cpu *c) {
     char hp[1024];
     x2_host_path(GSTR(ARG(0)), hp, sizeof hp);
     mkdirs_for(hp);
-    if (mkdir(hp, 0755) == 0) { RET(1); return; }
+    if (x2_mkdir(hp) == 0) {
+        RET(1);
+        return;
+    }
     x2_set_last_error(errno == EEXIST ? ERROR_ALREADY_EXISTS : errno_to_win());
     RET(0);
 }
@@ -413,13 +419,24 @@ static void PathFileExistsA(X2Cpu *c) {
 }
 static void GetDriveTypeA(X2Cpu *c) { RET(3); /* DRIVE_FIXED */ }
 static void GetDriveTypeW(X2Cpu *c) { RET(3); }
-static void GetDiskFreeSpaceExA(X2Cpu *c) {
-    u64 free_bytes = 8ull << 30, total = 64ull << 30;
+/* free and total bytes of the game folder's volume (8 / 64 GiB if unknown) */
+static void disk_space(u64 *free_bytes, u64 *total) {
+    *free_bytes = 8ull << 30;
+    *total = 64ull << 30;
+#ifdef _WIN32
+    uint64_t f, t;
+    if (x2_disk_space(x2_module.game_dir, &f, &t)) *free_bytes = f, *total = t;
+#else
     struct statvfs vs;
     if (statvfs(x2_module.game_dir, &vs) == 0) {
-        free_bytes = (u64)vs.f_bavail * vs.f_frsize;
-        total = (u64)vs.f_blocks * vs.f_frsize;
+        *free_bytes = (u64)vs.f_bavail * vs.f_frsize;
+        *total = (u64)vs.f_blocks * vs.f_frsize;
     }
+#endif
+}
+static void GetDiskFreeSpaceExA(X2Cpu *c) {
+    u64 free_bytes, total;
+    disk_space(&free_bytes, &total);
     if (ARG(1)) WR64(ARG(1), free_bytes);
     if (ARG(2)) WR64(ARG(2), total);
     if (ARG(3)) WR64(ARG(3), free_bytes);
@@ -428,12 +445,8 @@ static void GetDiskFreeSpaceExA(X2Cpu *c) {
 static void GetDiskFreeSpaceExW(X2Cpu *c) { GetDiskFreeSpaceExA(c); } /* the path is not used */
 /* GetDiskFreeSpaceA(root, sectors per cluster, bytes per sector, free clusters, total clusters): 32 KiB clusters, capped at 2^31-1 */
 static void GetDiskFreeSpaceA(X2Cpu *c) {
-    u64 free_bytes = 8ull << 30, total = 64ull << 30;
-    struct statvfs vs;
-    if (statvfs(x2_module.game_dir, &vs) == 0) {
-        free_bytes = (u64)vs.f_bavail * vs.f_frsize;
-        total = (u64)vs.f_blocks * vs.f_frsize;
-    }
+    u64 free_bytes, total;
+    disk_space(&free_bytes, &total);
     u64 fc = free_bytes / 32768, tc = total / 32768;
     if (ARG(1)) WR32(ARG(1), 64);
     if (ARG(2)) WR32(ARG(2), 512);

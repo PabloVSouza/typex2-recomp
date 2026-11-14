@@ -32,7 +32,7 @@ target_link_libraries(fxdump PRIVATE m)
 
 # retro_host: minimal libretro frontend for testing the core (desktop, needs SDL3)
 find_package(SDL3 CONFIG QUIET)
-if(SDL3_FOUND)
+if(SDL3_FOUND AND NOT WIN32) # dlopen: Linux and macOS
   add_executable(retro_host retro_host.c)
   target_link_libraries(retro_host PRIVATE SDL3::SDL3 ZLIB::ZLIB ${CMAKE_DL_LIBS})
   if(APPLE)

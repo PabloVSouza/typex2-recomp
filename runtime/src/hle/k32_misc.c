@@ -378,7 +378,13 @@ static s64 tz_bias_100ns(void) {
     time_t t = time(NULL);
     struct tm lt;
     localtime_r(&t, &lt);
+#ifdef _WIN32 /* no tm_gmtoff: the zone's offset west of UTC, less an hour in summer time */
+    long west = 0;
+    _get_timezone(&west);
+    return (s64)(-west + (lt.tm_isdst > 0 ? 3600 : 0)) * 10000000ll;
+#else
     return (s64)lt.tm_gmtoff * 10000000ll;
+#endif
 }
 static void FileTimeToLocalFileTime(X2Cpu *c) {
     WR64(ARG(1), RD64(ARG(0)) + (u64)tz_bias_100ns());

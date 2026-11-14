@@ -13,7 +13,11 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#ifndef _WIN32
 #include <sys/mman.h>
+#endif
+#endif
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -48,13 +52,27 @@ static bool face_is_japanese(const stbtt_fontinfo *fi) {
  * CFF outlines but not CFF2 (variable OpenType, e.g. Android's Noto Sans CJK):
  * such faces fail InitFont and are skipped. */
 static bool load_face(Face *f, const char *path, bool need_cjk) {
+#ifdef _WIN32
+    int fd = open(path, O_RDONLY | O_BINARY);
+#else
     int fd = open(path, O_RDONLY);
+#endif
     if (fd < 0) return false;
     struct stat st;
     if (fstat(fd, &st) || st.st_size < 16) { close(fd); return false; }
+#ifdef _WIN32 /* no mmap: read it (fonts are a few MB, kept for the session) */
+    void *p = malloc((size_t)st.st_size);
+    if (!p || read(fd, p, (unsigned)st.st_size) != st.st_size) {
+        free(p);
+        close(fd);
+        return false;
+    }
+    close(fd);
+#else
     void *p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (p == MAP_FAILED) return false;
+#endif
     int n = stbtt_GetNumberOfFonts(p), best = -1;
     stbtt_fontinfo fi;
     for (int i = 0; i < n; i++) {
@@ -63,7 +81,14 @@ static bool load_face(Face *f, const char *path, bool need_cjk) {
         if (best < 0) best = i;
         if (n == 1 || face_is_japanese(&fi)) { best = i; break; }
     }
-    if (best < 0) { munmap(p, (size_t)st.st_size); return false; }
+    if (best < 0) {
+#ifdef _WIN32
+        free(p);
+#else
+        munmap(p, (size_t)st.st_size);
+#endif
+        return false;
+    }
     stbtt_InitFont(&f->info, p, stbtt_GetFontOffsetForIndex(p, best));
     f->ok = true;
     x2_log("font: using %s (face %d)", path, best);

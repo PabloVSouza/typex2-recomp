@@ -885,8 +885,12 @@ void gfx_gl_set_cache_dir(const char *base, const char *game) {
     char dir[512];
     snprintf(dir, sizeof dir, "%s/typex2-shaders/%s", base, game);
     for (char *p = dir + 1; *p; p++)
-        if (*p == '/') { *p = 0; mkdir(dir, 0755); *p = '/'; }
-    mkdir(dir, 0755);
+        if (*p == '/') {
+            *p = 0;
+            x2_mkdir(dir);
+            *p = '/';
+        }
+    x2_mkdir(dir);
     snprintf(gfx_gl_cache_dir, sizeof gfx_gl_cache_dir, "%s", dir);
     x2_log("gfx: program cache in %s", dir);
 }

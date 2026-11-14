@@ -8,10 +8,11 @@
 //   table.c         guest address -> host function table, import table, image info
 //   sources.cmake   list of generated sources for the runtime build
 //   report.txt      discovery and lifting statistics, unsupported instructions
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cstdio>
 #include <filesystem>
 #include <format>
 #include <fstream>
