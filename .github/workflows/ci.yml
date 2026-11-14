@@ -84,16 +84,3 @@ jobs:
           node-version: 24
       - name: Front end checks (types, lint, locales) and build
         run: npm ci && npm run check && npm run build
-
-  launcher:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: launcher
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Front end checks (types, lint, locales) and build
-        run: npm ci && npm run check && npm run build
