@@ -41,8 +41,3 @@ input test confirms SHOT1-4 = A B C D.
   renderer (it was 0.5-0.6 s). The fight loads ~900 textures (over 100 MB) in
   one frame: with Vulkan their DXT blocks are now decoded on the GPU and uploads
   to textures not yet drawn are spread over the following frames.
-- With Vulkan on the tablet, a floor platform blinks on some stages (seen on
-  Arakune's, Litchi's and Bang's; not on the clock or Rachel's stages). It
-  happens with GPU DXT decoding, lazy uploads, half-precision shaders and RGB565
-  textures all off, and with 32-bit float depth; the Mac renders it correctly.
-  Not yet caught in a frame log.

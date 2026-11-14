@@ -397,6 +397,7 @@ typedef struct {
     u32 gen;         /* creation number: lazy uploads queued for an older texture under its id are dropped */
     u32 npend;       /* uploads waiting in the lazy queue */
     bool sampled;    /* read by a draw or blit at least once (uploads to it are not held back) */
+    bool stored;     /* a pass wrote it and no barrier on it has run since (see ensure_rendering) */
     bool uploaded;   /* any upload yet: a DXT1 texture picks its storage at the first */
     GfxId id;        /* the game's id (X2_GPUTIME=2 names passes by target) */
     bool vs_sampled; /* read by a vertex shader once: its barriers include the vertex stage */
@@ -468,6 +469,7 @@ static void layout_use(VkImageLayout l, VkPipelineStageFlags2 *stage, VkAccessFl
     }
 }
 static VkImageMemoryBarrier2 layout_barrier(VTex *t, VkImageLayout to) {
+    t->stored = false;
     VkImageMemoryBarrier2 b = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     layout_use(t->layout, &b.srcStageMask, &b.srcAccessMask);
     layout_use(to, &b.dstStageMask, &b.dstAccessMask);
@@ -1621,6 +1623,29 @@ static void ensure_rendering(void) {
         pass_h[sl][p] = cur_h;
         pass_open = true;
     }
+    /* a pass resuming targets that an earlier pass stored, with no layout change between (it
+     * ended for another texture's barrier, an upload, a blit elsewhere): its loads must come
+     * after that pass's stores. Without this, a tile GPU (Mali) loaded tiles before they were
+     * written and lost what the earlier pass drew: BlazBlue CT's floors blinked. */
+    bool stored = cur_depth && cur_depth->stored;
+    for (u32 i = 0; i < cur_ncolor; i++) stored |= cur_color[i] && cur_color[i]->stored;
+    if (stored) {
+        VkMemoryBarrier2 mb = {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        mb.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT |
+                          VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        mb.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        mb.dstStageMask = mb.srcStageMask;
+        mb.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                           VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        di.memoryBarrierCount = 1;
+        di.pMemoryBarriers = &mb;
+        pvkCmdPipelineBarrier2(cmd, &di);
+        for (u32 i = 0; i < cur_ncolor; i++)
+            if (cur_color[i]) cur_color[i]->stored = false;
+        if (cur_depth) cur_depth->stored = false;
+    }
     pvkCmdBeginRendering(cmd, &ri);
     pending = false;
     rendering = true;
@@ -1636,6 +1661,9 @@ static void end_rendering(void) {
     if (rendering) {
         pvkCmdEndRendering(cmd);
         rendering = false;
+        for (u32 i = 0; i < cur_ncolor; i++)
+            if (cur_color[i]) cur_color[i]->stored = true;
+        if (cur_depth) cur_depth->stored = true;
         if (pass_open) {
             u32 sl = (u32)(fs - slots);
             vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, passq, sl * 2 * PASSQ + 2 * pass_n[sl] + 1);
@@ -1766,9 +1794,10 @@ static VkRect2D clamp_rect(s64 x, s64 y, s64 w, s64 h) {
 }
 
 static u32 st_draws, st_clears, st_frames;
-static u32 drawlog_at;
+static u32 drawlog_at, drawlog_last; /* X2_DRAWLOG=<frame>[-<last>] */
 
 static void do_clear(const Clear *k) {
+    if (drawlog) x2_log("clear flags %u rt0 %u ds %u color %08x", k->flags, k->st.rt[0], k->st.ds, k->color);
     select_target(&k->st, NULL, 0, (k->flags & 6) != 0);
     const GfxViewport *vp = &k->st.vp;
     float s = (float)target_of(&k->st)->scale;
@@ -1822,6 +1851,7 @@ static void do_clear(const Clear *k) {
 
 /* StretchRect */
 static void do_blit(const Blit *k) {
+    if (drawlog) x2_log("blit %u -> %u", k->src, k->dst);
     VTex *s = tex_get(k->src), *d = tex_get(k->dst);
     if (s) {
         s = tex_ready(s);
@@ -2162,6 +2192,7 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         vkCmdDraw(cmd, n, 1, any_stream ? 0 : start, 0);
     }
     st_draws++;
+    if (drawlog) x2_log("  -> drawn (%u verts, target %u)", use_idx ? nidx : n, st->rt[0]);
 }
 
 /* ---- replay -------------------------------------------------------------------- */
@@ -2231,7 +2262,7 @@ static void run_frame(Frame *f) {
         }
         case C_BLIT: do_blit(p); break;
         case C_PRESENT:
-            drawlog = drawlog_at && st_frames + 2 == drawlog_at;
+            drawlog = drawlog_at && st_frames + 2 >= drawlog_at && st_frames + 2 <= drawlog_last;
             if (drawlog) x2_log("---- frame %u (vulkan) ----", st_frames + 2);
             gfx_frame_replayed();
             if (pcache_dirty && st_frames % 300 == 299) pcache_save();
@@ -2899,6 +2930,9 @@ static void setup(u32 w, u32 h) {
         slots[i].ring_map = blocks[slots[i].ring_mem.block].map + slots[i].ring_mem.off;
     }
     drawlog_at = getenv("X2_DRAWLOG") ? (u32)atoi(getenv("X2_DRAWLOG")) : 0;
+    drawlog_last = getenv("X2_DRAWLOG") && strchr(getenv("X2_DRAWLOG"), '-')
+                       ? (u32)atoi(strchr(getenv("X2_DRAWLOG"), '-') + 1)
+                       : drawlog_at;
     gputime = getenv("X2_GPUTIME") != NULL;
     gputime2 = getenv("X2_GPUTIME") && atoi(getenv("X2_GPUTIME")) == 2;
     if (gputime2) {

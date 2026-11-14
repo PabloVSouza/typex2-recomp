@@ -15,8 +15,13 @@ Milestones, newest first. `git log` has the details.
   trickle up 4 MB a frame.
 - **Result:** the worst replay stall at fight start went from 0.5-0.6 s to
   about 0.25 s. Still a pause, smaller.
-- **Open:** a floor platform blinks on some BlazBlue CT stages with Vulkan on
-  the tablet, independent of these changes (see the game's page).
+- **Blinking floors (fixed):** on some BlazBlue CT stages a walkway vanished
+  every other frame with Vulkan on the tablet. The game issued the same draws
+  every frame; a render pass resuming a target that the previous pass had
+  stored, with no layout change between, had no barrier, and Mali loaded the
+  tiles before they were written. Passes now wait for the earlier stores in
+  that case: on Arakune's stage a recording went from 97 blinks to none, and
+  SSF4's GPU time is unchanged.
 
 ## 2026-11-14: No more shader hitches on Vulkan
 

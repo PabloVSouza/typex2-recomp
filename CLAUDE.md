@@ -20,7 +20,7 @@ Android, GL as the reference and fallback). Front ends: a standalone app
 | The King of Fighters XIII Climax | `kof13cl` | playable |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; 60 fps on the test tablet with Vulkan (GL: a few stages 50-55 fps) |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
-| BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start; a floor blinks on some stages with Vulkan (open) |
+| BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
 | The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode at 60 fps, not played yet |
 
@@ -138,6 +138,13 @@ gets an entry per milestone. Update them with the README.
   shader in D3D9 even when one is bound.
 * Screenshot comparisons across builds: run the same build twice first;
   attract-mode frames with movies or timed fades are not deterministic.
+* Blinking on the tablet: `adb shell screenrecord`, extract the frames
+  (ffmpeg), and look for A-B-A (frame i+1 differs from i, i+2 matches i) with
+  `imgdiff`. If `X2_DRAWLOG=<a>-<b>` shows the same commands every frame, it is
+  GPU synchronisation: on a tile GPU two render passes on one target need a
+  barrier even without a layout change (Vulkan: `stored` in `gfx_vk.c`; DXT
+  decode passes too). BlazBlue CT picks its stage at random: retry until one
+  that shows the bug comes up.
 * Never pipe `x2recomp` into `head`: SIGPIPE kills it halfway and leaves a
   `gen/` whose `funcs.h` and `table.c` disagree (undeclared `f_xxxxxxxx`).
 * A renderer backend against GL: the same regression frames with both
