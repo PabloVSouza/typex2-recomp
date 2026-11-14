@@ -16,6 +16,7 @@ cd "$D/../src-tauri/icons"
 for s in 32 64 128; do ffmpeg -loglevel error -y -i "$T/app.pam" -vf scale=$s:$s:flags=neighbor ${s}x${s}.png; done
 ffmpeg -loglevel error -y -i "$T/app.pam" -vf scale=256:256:flags=neighbor 128x128@2x.png
 ffmpeg -loglevel error -y -i "$T/app.pam" -vf scale=512:512:flags=neighbor icon.png
+cp 64x64.png "$D/../src/assets/app-icon.png" # the sidebar's
 # Android's adaptive icon shows only the middle two thirds of its foreground: the art padded to
 # 54x54 (54 divides every density's 108..432 px, so the pixels stay square)
 LC_ALL=C awk -v MODE=art -v PAD=11 -f "$D/icon.awk" -v SCREEN=triwin > "$T/fg.ppm"

@@ -1,14 +1,18 @@
-import type { AppStateData, GameInfo } from "@/lib/types";
+import type { AppStateData, GameInfo, GameSettings } from "@/lib/types";
 
 /** Browser preview only: a library with a few games in different states. */
-const kof: GameInfo["layouts"] = [{ label: "Game default", pad: "" }];
+type Layouts = GameInfo["layouts"];
+const DEFAULT = { id: "default", label: "Game default", pad: "" };
+const kof: Layouts = [DEFAULT, { id: "stick-kof", label: "8-button stick (L1 / L2 rows): A C over B D", pad: "l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc" }];
+const sf4: Layouts = [DEFAULT, { id: "stick-sf4", label: "8-button stick (L1 / L2 rows)", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456" }];
+const bb: Layouts = [DEFAULT, { id: "stick-bb", label: "8-button stick, Type B panel", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" }];
 const catalog: GameInfo[] = [
   { id: "kof12", title: "The King of Fighters XII", board: "Type X2", year: 2009, publisher: "SNK Playmore", layouts: kof },
   { id: "kof13", title: "The King of Fighters XIII", board: "Type X2", year: 2010, publisher: "SNK Playmore", layouts: kof },
   { id: "kof13cl", title: "The King of Fighters XIII Climax", board: "Type X2", year: 2012, publisher: "SNK Playmore", layouts: kof },
-  { id: "ssf4ae", title: "Super Street Fighter IV Arcade Edition", board: "Type X2", year: 2010, publisher: "Capcom", layouts: [...kof, { label: "8-button stick (L1 / L2 rows)", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456" }] },
-  { id: "bbcs", title: "BlazBlue: Continuum Shift", board: "Type X2", year: 2009, publisher: "Arc System Works", layouts: kof },
-  { id: "bbct", title: "BlazBlue: Calamity Trigger", board: "Type X2", year: 2008, publisher: "Arc System Works", layouts: kof },
+  { id: "ssf4ae", title: "Super Street Fighter IV Arcade Edition", board: "Type X2", year: 2010, publisher: "Capcom", layouts: sf4 },
+  { id: "bbcs", title: "BlazBlue: Continuum Shift", board: "Type X2", year: 2009, publisher: "Arc System Works", layouts: bb },
+  { id: "bbct", title: "BlazBlue: Calamity Trigger", board: "Type X2", year: 2008, publisher: "Arc System Works", layouts: bb },
   { id: "kof98um", title: "The King of Fighters '98 Ultimate Match", board: "Type X", year: 2008, publisher: "SNK Playmore", layouts: kof },
   { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", layouts: kof },
 ];
@@ -21,7 +25,7 @@ const state: AppStateData = {
   version: "0.1.0", os: "macos", arch: "aarch64", data: "~/Library/Application Support/io.github.typex2-recomp.launcher",
   kit: { source: "~/typex2-recomp", x2recomp: "build/recompiler/x2recomp", player: "build/x2-player", kind: "checkout" },
   can_play: true, catalog, games: [entry("kof13", "ready"), entry("ssf4ae", "none"), entry("bbcs", "stale"), entry("kof98um", "ready")],
-  ndk: "", jobs: 0, job: null, running: null,
+  ndk: "", jobs: 0, language: "", job: null, running: null,
   targets: [
     { id: "android-retroarch", name: "RetroArch core for Android", description: "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
     { id: "android-app", name: "Android app", description: "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
@@ -45,8 +49,13 @@ const state: AppStateData = {
   tools_size: 342000000,
 };
 
-export async function mockInvoke(cmd: string, _args?: Record<string, unknown>): Promise<unknown> {
+export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === "load_state") return structuredClone(state);
+  if (cmd === "save_language") state.language = args?.language as string;
+  if (cmd === "save_game_settings") {
+    const g = state.games.find((x) => x.id === args?.id);
+    if (g) g.settings = args?.settings as GameSettings;
+  }
   if (cmd === "read_pad") return new Promise((done) => setTimeout(() => done("north"), 800)); // a button pressed
   return null;
 }

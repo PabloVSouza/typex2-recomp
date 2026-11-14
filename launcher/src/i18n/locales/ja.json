@@ -1,0 +1,235 @@
+{
+  "app": {
+    "stateError": "ランチャーの状態を読み込めませんでした: {{error}}"
+  },
+  "common": {
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "remove": "削除",
+    "show": "表示"
+  },
+  "nav": {
+    "library": "ライブラリ",
+    "games": "ゲーム",
+    "export": "エクスポート",
+    "tools": "ビルドツール",
+    "log": "ログ",
+    "about": "情報"
+  },
+  "jobs": {
+    "build": "ビルド",
+    "export": "エクスポート",
+    "download": "ダウンロード",
+    "finished": "{{job}}が完了しました",
+    "failed": "{{job}}に失敗しました",
+    "gameStopped": "ゲームが終了しました (終了コード {{code}})。ログを確認してください。",
+    "bytesOf": "{{done}} / {{total}}"
+  },
+  "steps": {
+    "hash": "ゲームの実行ファイルを確認中",
+    "generate": "実行ファイルを C に再コンパイル中",
+    "compile": "コンパイル中",
+    "link": "リンク中",
+    "configure": "ビルドを構成中",
+    "build": "ビルド中",
+    "download": "{{tool}} をダウンロード中",
+    "unpack": "{{tool}} を展開中"
+  },
+  "library": {
+    "kicker": "ライブラリ",
+    "title": "あなたのゲームセンター",
+    "description": "お持ちのゲームのフォルダを追加してください。ランチャーはご自身のファイルから各ゲームをこのコンピュータ上で再コンパイルし、ここでプレイしたり、Android や RetroArch 向けにエクスポートしたりできます。",
+    "add": "ゲームフォルダを追加",
+    "discordHint": "ヘルプ、ニュース、スティック配置",
+    "pickFolder": "ゲームフォルダを選択 (game.exe があるフォルダ)",
+    "emptyTitle": "ゲームがありません",
+    "emptyText": "ゲームのフォルダ (<code>game.exe</code> があるフォルダ) を選択してください。ランチャーは実行ファイルから対応ゲームを識別します。",
+    "alsoSupported": "その他の対応ゲーム"
+  },
+  "game": {
+    "play": "プレイ",
+    "stop": "停止",
+    "build": "ビルド",
+    "rebuild": "再ビルド",
+    "badge": {
+      "missing": "フォルダなし",
+      "ready": "準備完了",
+      "stale": "要再ビルド",
+      "none": "未ビルド"
+    },
+    "status": {
+      "title": "状態",
+      "missing": "フォルダが見つからないか、このゲームが含まれていません。下でもう一度フォルダを指定してください。",
+      "ready": "このコンピュータ向けに再コンパイル済みで、プレイできます。",
+      "stale": "別のゲームのコピーまたは古いランチャーでビルドされています。もう一度ビルドしてください。",
+      "none": "まだ再コンパイルされていません。ビルドには 1〜2 分かかり、お持ちのゲームのコピーのみを使用します。"
+    },
+    "noPlayer": "このコンピュータではまだプレイできません",
+    "noPlayerText": "このシステム用の x2-player がありません。Android や RetroArch 向けのエクスポートは可能です。",
+    "here": "このコンピュータ",
+    "code": "再コンパイル済みコード",
+    "codeText": "{{functions}} 関数 · {{size}} · {{when}}にビルド ({{seconds}} 秒)",
+    "folder": "ゲームフォルダ",
+    "change": "変更",
+    "pickFolder": "ゲームのフォルダを選択",
+    "folderUpdated": "フォルダを更新しました",
+    "buildsDeleted": "ビルドを削除しました",
+    "remove": "ライブラリから削除",
+    "removeText": "このフォルダの登録を解除し、そこからビルドしたものを削除します。ゲーム本体のファイルには触れません。",
+    "display": {
+      "title": "表示",
+      "fullscreen": "フルスクリーン",
+      "vsync": "垂直同期",
+      "vsyncText": "ディスプレイに同期して表示します。オフの場合、ゲーム自身が 60 Hz でフレームを刻みます。",
+      "fps": "FPS 表示",
+      "fpsText": "フレームレート表示をオンにして起動します。",
+      "scale": "描画スケール",
+      "scaleText": "ゲーム画面を元のサイズの整数倍で描画します。自動では 1280×1024 に収まる最大の倍率を選びます。",
+      "scaleAuto": "自動",
+      "scaleOriginal": "1× (オリジナル)"
+    },
+    "advanced": {
+      "title": "詳細設定",
+      "log": "ログの詳細度",
+      "logNormal": "標準",
+      "logVerbose": "詳細 (-v)",
+      "logMore": "より詳細 (-vv)",
+      "logAll": "すべて (-vvv)",
+      "env": "環境変数",
+      "envText": "追加のランタイムスイッチ。1 行に 1 つ KEY=VALUE の形式で記入します (ドキュメントの Debugging → Switches を参照)。"
+    }
+  },
+  "controls": {
+    "title": "操作設定",
+    "description": "筐体の各ボタンをコントローラーのどのボタンで押すかを設定します。キーボードも使えます (ドキュメントの Controls を参照)。",
+    "layout": "配置",
+    "layoutText": "初期配置です。個々のボタンは下で変更できます。",
+    "custom": "カスタム",
+    "assign": "割り当て",
+    "pressButton": "コントローラーのボタンを押してください…",
+    "notAssigned": "未割り当て",
+    "resetOne": "ゲームの初期設定に戻す",
+    "resetAll": "すべてリセット",
+    "other": "その他",
+    "fixed": "Start、Back (コイン。長押しでテストメニュー)、十字キーの役割は固定です。",
+    "readFailed": "コントローラーを読み取れませんでした",
+    "test": "テスト",
+    "service": "サービス",
+    "hints": {
+      "test": "オペレーターメニュー",
+      "service": "クレジット追加 (無料)",
+      "lightPunch": "弱パンチ",
+      "mediumPunch": "中パンチ",
+      "heavyPunch": "強パンチ",
+      "lightKick": "弱キック",
+      "mediumKick": "中キック",
+      "heavyKick": "強キック",
+      "punches": "パンチ 3 つ同時",
+      "kicks": "キック 3 つ同時",
+      "evade": "回避",
+      "blowback": "ふっとばし攻撃",
+      "weak": "弱",
+      "medium": "中",
+      "heavy": "強",
+      "drive": "ドライブ",
+      "barrier": "バリア",
+      "throw": "投げ"
+    }
+  },
+  "layouts": {
+    "default": "ゲームの初期設定",
+    "stickKof": "8 ボタンスティック (L1 / L2 列): 上段 A C、下段 B D",
+    "stickSf4": "8 ボタンスティック (L1 / L2 列)",
+    "stickBb": "8 ボタンスティック、Type B パネル"
+  },
+  "export": {
+    "kicker": "エクスポート",
+    "title": "他のプラットフォーム向けにビルド",
+    "description": "ゲームを RetroArch コアまたは Android アプリに再コンパイルします。すべてご自身のファイルからここでビルドされます。完成したファイルをデバイスにコピーしてください。",
+    "needed": "必要なツール",
+    "neededAll": "{{tools}}。",
+    "neededSome": "{{tools}}。一部は別途インストールが必要です (ビルドツールを参照)。",
+    "noGames": "まずライブラリにゲームを追加してください。",
+    "start_other": "{{count}} 本のゲームをエクスポート",
+    "last": "最近のエクスポート",
+    "none": "まだエクスポートしていません"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "Android 用 RetroArch コア",
+      "description": "選択したゲームを含む typex2_libretro_android.so。デバイスの RetroArch/downloads/ にコピーし、Load Core → Install or Restore a Core を選択してください。"
+    },
+    "androidApp": {
+      "name": "Android アプリ",
+      "description": "typex2.apk: 選択したゲームを含む単体アプリ (ES-DE から起動可能)。NDK と同じ場所に Android SDK のビルドツールが必要です。"
+    },
+    "hostRetroarch": {
+      "name": "このコンピュータ用 RetroArch コア",
+      "description": "このコンピュータの RetroArch 用 libretro コア (選択したゲームを含む)。typex2_libretro.info と一緒に RetroArch の cores フォルダにコピーしてください。"
+    }
+  },
+  "tools": {
+    "title": "ビルドに必要なもの",
+    "description": "ランチャーはコンパイラを自身のフォルダにダウンロードします。コンピュータには何もインストールされず、「削除」ですべて取り除けます。何もダウンロードしていない場合は、既にお持ちのツールを使用します。",
+    "download": "ダウンロード",
+    "downloadAll": "すべてダウンロード",
+    "downloadSize": "ダウンロード ({{size}})、または:",
+    "downloadOr": "ダウンロード、または:",
+    "for": "用途: {{use}}",
+    "source": {
+      "kit": "アプリに同梱",
+      "downloaded": "ダウンロード済み",
+      "system": "このコンピュータ上"
+    },
+    "names": {
+      "cc": "C コンパイラ (clang)"
+    },
+    "use": {
+      "every": "すべてのビルド",
+      "play": "このコンピュータでのプレイ",
+      "exports": "エクスポート",
+      "android": "Android 向けエクスポート",
+      "compile": "このコンピュータでプレイするためのコンパイル"
+    },
+    "hints": {
+      "kit": "アプリに同梱。チェックアウトの場合: {{command}}",
+      "ccMac": "または Apple の Command Line Tools をインストール: xcode-select --install",
+      "ccWindows": "llvm.org から LLVM (clang) をインストールしてください",
+      "ccLinux": "ディストリビューションのパッケージから clang をインストールしてください",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "ストレージ",
+    "downloaded": "ダウンロードしたツール",
+    "downloadedText": "ランチャーのフォルダに {{size}}。",
+    "removed": "ビルドツールを削除しました",
+    "building": "ビルド",
+    "jobs": "並列ジョブ数",
+    "jobsText": "同時に実行するコンパイラの数。0 にすると 2 コアを残してすべてのコアを使い、コンピュータの応答性を保ちます。",
+    "ndk": "Android NDK フォルダ",
+    "ndkText": "ご自身でインストールした NDK が自動で見つからない場合のみ指定します。"
+  },
+  "log": {
+    "title": "出力",
+    "game": "ゲーム",
+    "builds": "ビルド",
+    "clear": "クリア",
+    "gameEmpty": "ゲームの実行中、その出力がここに表示されます。",
+    "buildEmpty": "ビルドの出力がここに表示されます。"
+  },
+  "about": {
+    "description": "タイトー Type X / Type X2 アーケードゲームの静的再コンパイル: 各ゲームの x86 コードを C に変換してネイティブコードにコンパイルし、Windows、Direct3D、DirectSound、JVS I/O ボードはランタイムが提供します。",
+    "settings": "ランチャー",
+    "language": "言語",
+    "languageSystem": "システムの設定",
+    "noFiles": "ゲームファイルは含まれていません",
+    "yours": "ゲームはあなたのもの",
+    "yoursText": "ランチャー、リコンパイラ、ランタイムにはゲームのコードやデータは一切含まれていません。ゲームはご自身のコピーからお使いのコンピュータ上で再コンパイルされ、ビルドしたものはランチャーのフォルダと作成したエクスポートにのみ保存されます。",
+    "installation": "このインストール",
+    "launcher": "ランチャー",
+    "kit": "キット",
+    "kitBundled": "アプリに同梱",
+    "kitCheckout": "リポジトリのチェックアウト",
+    "kitMissing": "見つかりません",
+    "data": "データフォルダ"
+  }
+}

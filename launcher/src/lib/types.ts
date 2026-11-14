@@ -1,4 +1,4 @@
-export interface Layout { label: string; pad: string }
+export interface Layout { id: string; label: string; pad: string }
 export interface GameInfo { id: string; title: string; board: string; year: number; publisher: string; layouts: Layout[] }
 export interface GameSettings { fullscreen: boolean; fps: boolean; pad: string; scale: number; vsync: boolean; log_level: number; env: string }
 export interface LibraryRecord { built: number; seconds: number; size: number; functions: number }
@@ -11,7 +11,7 @@ export interface Package { id: string; name: string; version: string; size: numb
 export interface Kit { source: string; x2recomp: string | null; player: string | null; kind: "checkout" | "bundled" }
 export interface AppStateData {
   version: string; os: string; arch: string; data: string; kit: Kit | null; can_play: boolean;
-  catalog: GameInfo[]; games: GameEntry[]; ndk: string; jobs: number; job: string | null; running: string | null;
+  catalog: GameInfo[]; games: GameEntry[]; ndk: string; jobs: number; language: string; job: string | null; running: string | null;
   targets: Target[]; exports: ExportRecord[]; tools: Tool[]; packages: Package[]; tools_size: number;
 }
 /** A "job" event: one step of a build, download or export. */

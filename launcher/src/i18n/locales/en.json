@@ -1,0 +1,236 @@
+{
+  "app": {
+    "stateError": "Could not read the launcher's state: {{error}}"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "remove": "Remove",
+    "show": "Show"
+  },
+  "nav": {
+    "library": "Library",
+    "games": "Games",
+    "export": "Export",
+    "tools": "Build tools",
+    "log": "Log",
+    "about": "About"
+  },
+  "jobs": {
+    "build": "Build",
+    "export": "Export",
+    "download": "Download",
+    "finished": "{{job}} finished",
+    "failed": "{{job}} failed",
+    "gameStopped": "The game stopped (exit code {{code}}). See Log.",
+    "bytesOf": "{{done}} of {{total}}"
+  },
+  "steps": {
+    "hash": "Checking the game's executable",
+    "generate": "Recompiling the executable to C",
+    "compile": "Compiling",
+    "link": "Linking",
+    "configure": "Configuring the build",
+    "build": "Building",
+    "download": "Downloading {{tool}}",
+    "unpack": "Unpacking {{tool}}"
+  },
+  "library": {
+    "kicker": "Library",
+    "title": "Your arcade",
+    "description": "Add the folders of the games you own. The launcher recompiles each one on this computer from your own files, to play here or to export for Android and RetroArch.",
+    "add": "Add game folder",
+    "discordHint": "Help, news and stick layouts",
+    "pickFolder": "Choose a game folder (the one holding game.exe)",
+    "emptyTitle": "No games yet",
+    "emptyText": "Choose a game's folder: the one with its <code>game.exe</code>. The launcher recognises the supported games by their executable.",
+    "alsoSupported": "Also supported"
+  },
+  "game": {
+    "play": "Play",
+    "stop": "Stop",
+    "build": "Build",
+    "rebuild": "Rebuild",
+    "badge": {
+      "missing": "Folder missing",
+      "ready": "Ready",
+      "stale": "Rebuild needed",
+      "none": "Not built"
+    },
+    "status": {
+      "title": "Status",
+      "missing": "The folder is gone or no longer holds this game. Point the launcher at it again below.",
+      "ready": "Recompiled for this computer and ready to play.",
+      "stale": "Built from another copy of the game or by an older launcher: build it again.",
+      "none": "Not recompiled yet. Building takes a minute or two and uses only your own copy of the game."
+    },
+    "noPlayer": "Playing here is not available on this computer yet",
+    "noPlayerText": "There is no x2-player for this system. You can still export the game for Android or RetroArch.",
+    "here": "This computer",
+    "code": "Recompiled code",
+    "codeText": "{{functions}} functions · {{size}} · built {{when}} in {{seconds}} s",
+    "folder": "Game folder",
+    "change": "Change",
+    "pickFolder": "Choose the game's folder",
+    "folderUpdated": "Folder updated",
+    "buildsDeleted": "Builds deleted",
+    "remove": "Remove from the library",
+    "removeText": "Forgets this folder and deletes what was built from it. The game's own files are not touched.",
+    "display": {
+      "title": "Display",
+      "fullscreen": "Full screen",
+      "vsync": "Vsync",
+      "vsyncText": "Present in step with the display. Off, the game paces itself at its own 60 Hz.",
+      "fps": "FPS counter",
+      "fpsText": "Starts with the frame-rate overlay on.",
+      "scale": "Render scale",
+      "scaleText": "The game's frame rendered at a multiple of its size. Automatic picks the largest that fits 1280×1024.",
+      "scaleAuto": "Automatic",
+      "scaleOriginal": "1× (original)"
+    },
+    "advanced": {
+      "title": "Advanced",
+      "log": "Log detail",
+      "logNormal": "Normal",
+      "logVerbose": "Verbose (-v)",
+      "logMore": "More (-vv)",
+      "logAll": "Everything (-vvv)",
+      "env": "Environment",
+      "envText": "Extra runtime switches, one KEY=VALUE per line (see Debugging → Switches in the docs)."
+    }
+  },
+  "controls": {
+    "title": "Controls",
+    "description": "Which controller button presses each of the cabinet's buttons. The keyboard works too (see Controls in the docs).",
+    "layout": "Layout",
+    "layoutText": "A starting point; change single buttons below.",
+    "custom": "Custom",
+    "assign": "Assign",
+    "pressButton": "Press a button on your controller…",
+    "notAssigned": "Not assigned",
+    "resetOne": "Back to the game's default",
+    "resetAll": "Reset all",
+    "other": "Other",
+    "fixed": "Start, Back (coin; hold for the test menu) and the d-pad keep their roles.",
+    "readFailed": "Could not read the controller",
+    "test": "Test",
+    "service": "Service",
+    "hints": {
+      "test": "the operator menu",
+      "service": "a free credit",
+      "lightPunch": "light punch",
+      "mediumPunch": "medium punch",
+      "heavyPunch": "heavy punch",
+      "lightKick": "light kick",
+      "mediumKick": "medium kick",
+      "heavyKick": "heavy kick",
+      "punches": "three punches",
+      "kicks": "three kicks",
+      "evade": "evade",
+      "blowback": "blowback",
+      "weak": "weak",
+      "medium": "medium",
+      "heavy": "heavy",
+      "drive": "drive",
+      "barrier": "barrier",
+      "throw": "throw"
+    }
+  },
+  "layouts": {
+    "default": "Game default",
+    "stickKof": "8-button stick (L1 / L2 rows): A C over B D",
+    "stickSf4": "8-button stick (L1 / L2 rows)",
+    "stickBb": "8-button stick, Type B panel"
+  },
+  "export": {
+    "kicker": "Export",
+    "title": "Build for another platform",
+    "description": "Recompile your games into a RetroArch core or the Android app. Everything is built here, from your own files; copy the result to your device.",
+    "needed": "Tools needed",
+    "neededAll": "{{tools}}.",
+    "neededSome": "{{tools}}. Some must be installed separately (see Build tools).",
+    "noGames": "Add games in the Library first.",
+    "start_one": "Export {{count}} game",
+    "start_other": "Export {{count}} games",
+    "last": "Last exports",
+    "none": "Nothing exported yet"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "RetroArch core for Android",
+      "description": "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core."
+    },
+    "androidApp": {
+      "name": "Android app",
+      "description": "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK."
+    },
+    "hostRetroarch": {
+      "name": "RetroArch core for this computer",
+      "description": "The libretro core for RetroArch on this computer, with the chosen games. Copy it and typex2_libretro.info into RetroArch's cores folder."
+    }
+  },
+  "tools": {
+    "title": "What building needs",
+    "description": "The launcher downloads its compilers into its own folder: nothing is installed on your computer, and Remove takes it all away. Tools you already have are used when nothing was downloaded.",
+    "download": "Download",
+    "downloadAll": "Download all",
+    "downloadSize": "Download ({{size}}), or:",
+    "downloadOr": "Download, or:",
+    "for": "For: {{use}}.",
+    "source": {
+      "kit": "Part of this app",
+      "downloaded": "Downloaded",
+      "system": "On this computer"
+    },
+    "names": {
+      "cc": "C compiler (clang)"
+    },
+    "use": {
+      "every": "Every build",
+      "play": "Playing on this computer",
+      "exports": "Exports",
+      "android": "Android exports",
+      "compile": "Compiling games to play on this computer"
+    },
+    "hints": {
+      "kit": "Part of this app. In a checkout: {{command}}",
+      "ccMac": "Or install Apple's Command Line Tools: xcode-select --install",
+      "ccWindows": "Install LLVM (clang) from llvm.org",
+      "ccLinux": "Install clang from your distribution's packages",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "Storage",
+    "downloaded": "Downloaded tools",
+    "downloadedText": "{{size}} in the launcher's folder.",
+    "removed": "Build tools removed",
+    "building": "Building",
+    "jobs": "Parallel jobs",
+    "jobsText": "Compilers running at once. 0 uses every core but two, so the computer stays responsive.",
+    "ndk": "Android NDK folder",
+    "ndkText": "Only when an NDK you installed yourself is not found by itself."
+  },
+  "log": {
+    "title": "Output",
+    "game": "Game",
+    "builds": "Builds",
+    "clear": "Clear",
+    "gameEmpty": "The game's output appears here while it runs.",
+    "buildEmpty": "Build output appears here."
+  },
+  "about": {
+    "description": "Static recompilation of Taito Type X and Type X2 arcade games: each game's x86 code is translated to C and compiled to native code, with Windows, Direct3D, DirectSound and the JVS I/O board provided by the runtime.",
+    "settings": "Launcher",
+    "language": "Language",
+    "languageSystem": "The system's",
+    "noFiles": "No game files included",
+    "yours": "Your games stay yours",
+    "yoursText": "The launcher, the recompiler and the runtime contain no game code or data. Games are recompiled on your computer from your own copies; what is built stays in the launcher's folder and in the exports you make.",
+    "installation": "This installation",
+    "launcher": "Launcher",
+    "kit": "Kit",
+    "kitBundled": "Bundled with the app",
+    "kitCheckout": "Repository checkout",
+    "kitMissing": "Missing",
+    "data": "Data folder"
+  }
+}

@@ -38,6 +38,8 @@ pub struct Config {
     pub ndk: String,
     /// Build jobs; 0 = all cores but two.
     pub jobs: u32,
+    /// The launcher's language ("" = the system's).
+    pub language: String,
 }
 
 impl Config {

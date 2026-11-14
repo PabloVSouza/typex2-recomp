@@ -1,7 +1,8 @@
 /** Controller layouts: what each game's cabinet buttons are called, its default layout (as
  *  runtime/src/padmap.c has it), and X2_PAD strings to and from a full button -> action map.
  *  X2_PAD keys: a b c d = KOF's A-D (cabinet buttons 1, 4, 2, 5), 1-6 = cabinet buttons 1-6,
- *  t = Test, v = Service. */
+ *  t = Test, v = Service. Button and action names are shown as they are; hints are i18n keys. */
+import type { ParseKeys } from "i18next";
 
 export type PadButton = "south" | "east" | "west" | "north" | "l1" | "r1" | "l2" | "r2" | "l3" | "r3";
 
@@ -18,49 +19,49 @@ export const PAD_BUTTONS: { id: PadButton; label: string }[] = [
   { id: "r3", label: "R3" },
 ];
 
-/** A cabinet action: the X2_PAD keys it presses, and its name. */
-export interface Action { keys: string; label: string; hint?: string }
+/** A cabinet action: the X2_PAD keys it presses, its name (shown as it is, or an i18n key) and a hint. */
+export interface Action { keys: string; name?: string; nameKey?: ParseKeys; hint?: ParseKeys }
 
 type Family = "kof" | "sf4" | "bb";
 
 const SYSTEM: Action[] = [
-  { keys: "t", label: "Test", hint: "the operator menu" },
-  { keys: "v", label: "Service", hint: "a free credit" },
+  { keys: "t", nameKey: "controls.test", hint: "controls.hints.test" },
+  { keys: "v", nameKey: "controls.service", hint: "controls.hints.service" },
 ];
 
 const ACTIONS: Record<Family, Action[]> = {
   kof: [
-    { keys: "a", label: "A", hint: "light punch" },
-    { keys: "b", label: "B", hint: "light kick" },
-    { keys: "c", label: "C", hint: "heavy punch" },
-    { keys: "d", label: "D", hint: "heavy kick" },
-    { keys: "ab", label: "A + B", hint: "evade" },
-    { keys: "cd", label: "C + D", hint: "blowback" },
-    { keys: "bc", label: "B + C" },
-    { keys: "abc", label: "A + B + C" },
-    { keys: "bcd", label: "B + C + D" },
+    { keys: "a", name: "A", hint: "controls.hints.lightPunch" },
+    { keys: "b", name: "B", hint: "controls.hints.lightKick" },
+    { keys: "c", name: "C", hint: "controls.hints.heavyPunch" },
+    { keys: "d", name: "D", hint: "controls.hints.heavyKick" },
+    { keys: "ab", name: "A + B", hint: "controls.hints.evade" },
+    { keys: "cd", name: "C + D", hint: "controls.hints.blowback" },
+    { keys: "bc", name: "B + C" },
+    { keys: "abc", name: "A + B + C" },
+    { keys: "bcd", name: "B + C + D" },
     ...SYSTEM,
   ],
   sf4: [
-    { keys: "1", label: "LP", hint: "light punch" },
-    { keys: "2", label: "MP", hint: "medium punch" },
-    { keys: "3", label: "HP", hint: "heavy punch" },
-    { keys: "4", label: "LK", hint: "light kick" },
-    { keys: "5", label: "MK", hint: "medium kick" },
-    { keys: "6", label: "HK", hint: "heavy kick" },
-    { keys: "123", label: "3 punches" },
-    { keys: "456", label: "3 kicks" },
+    { keys: "1", name: "LP", hint: "controls.hints.lightPunch" },
+    { keys: "2", name: "MP", hint: "controls.hints.mediumPunch" },
+    { keys: "3", name: "HP", hint: "controls.hints.heavyPunch" },
+    { keys: "4", name: "LK", hint: "controls.hints.lightKick" },
+    { keys: "5", name: "MK", hint: "controls.hints.mediumKick" },
+    { keys: "6", name: "HK", hint: "controls.hints.heavyKick" },
+    { keys: "123", name: "LP + MP + HP", hint: "controls.hints.punches" },
+    { keys: "456", name: "LK + MK + HK", hint: "controls.hints.kicks" },
     ...SYSTEM,
   ],
   bb: [
-    { keys: "1", label: "A", hint: "weak" },
-    { keys: "2", label: "B", hint: "medium" },
-    { keys: "3", label: "C", hint: "heavy" },
-    { keys: "4", label: "D", hint: "drive" },
-    { keys: "12", label: "A + B", hint: "barrier" },
-    { keys: "23", label: "B + C", hint: "throw" },
-    { keys: "123", label: "A + B + C" },
-    { keys: "1234", label: "A + B + C + D" },
+    { keys: "1", name: "A", hint: "controls.hints.weak" },
+    { keys: "2", name: "B", hint: "controls.hints.medium" },
+    { keys: "3", name: "C", hint: "controls.hints.heavy" },
+    { keys: "4", name: "D", hint: "controls.hints.drive" },
+    { keys: "12", name: "A + B", hint: "controls.hints.barrier" },
+    { keys: "23", name: "B + C", hint: "controls.hints.throw" },
+    { keys: "123", name: "A + B + C" },
+    { keys: "1234", name: "A + B + C + D" },
     ...SYSTEM,
   ],
 };

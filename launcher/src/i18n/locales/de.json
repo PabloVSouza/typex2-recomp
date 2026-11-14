@@ -1,0 +1,236 @@
+{
+  "app": {
+    "stateError": "Der Zustand des Launchers konnte nicht gelesen werden: {{error}}"
+  },
+  "common": {
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "remove": "Entfernen",
+    "show": "Anzeigen"
+  },
+  "nav": {
+    "library": "Bibliothek",
+    "games": "Spiele",
+    "export": "Export",
+    "tools": "Build-Tools",
+    "log": "Log",
+    "about": "Info"
+  },
+  "jobs": {
+    "build": "Build",
+    "export": "Export",
+    "download": "Download",
+    "finished": "{{job}} abgeschlossen",
+    "failed": "{{job}} fehlgeschlagen",
+    "gameStopped": "Das Spiel wurde beendet (Exit-Code {{code}}). Siehe Log.",
+    "bytesOf": "{{done}} von {{total}}"
+  },
+  "steps": {
+    "hash": "Ausführbare Datei des Spiels wird geprüft",
+    "generate": "Ausführbare Datei wird nach C rekompiliert",
+    "compile": "Kompilieren",
+    "link": "Linken",
+    "configure": "Build wird konfiguriert",
+    "build": "Bauen",
+    "download": "{{tool}} wird heruntergeladen",
+    "unpack": "{{tool}} wird entpackt"
+  },
+  "library": {
+    "kicker": "Bibliothek",
+    "title": "Ihre Spielhalle",
+    "description": "Fügen Sie die Ordner der Spiele hinzu, die Sie besitzen. Der Launcher rekompiliert jedes Spiel auf diesem Computer aus Ihren eigenen Dateien, um es hier zu spielen oder für Android und RetroArch zu exportieren.",
+    "add": "Spielordner hinzufügen",
+    "discordHint": "Hilfe, Neuigkeiten und Stick-Layouts",
+    "pickFolder": "Spielordner wählen (der Ordner mit game.exe)",
+    "emptyTitle": "Noch keine Spiele",
+    "emptyText": "Wählen Sie den Ordner eines Spiels: den mit seiner <code>game.exe</code>. Der Launcher erkennt die unterstützten Spiele an ihrer ausführbaren Datei.",
+    "alsoSupported": "Ebenfalls unterstützt"
+  },
+  "game": {
+    "play": "Spielen",
+    "stop": "Beenden",
+    "build": "Bauen",
+    "rebuild": "Neu bauen",
+    "badge": {
+      "missing": "Ordner fehlt",
+      "ready": "Bereit",
+      "stale": "Neu bauen nötig",
+      "none": "Nicht gebaut"
+    },
+    "status": {
+      "title": "Status",
+      "missing": "Der Ordner ist nicht mehr vorhanden oder enthält dieses Spiel nicht mehr. Wählen Sie ihn unten erneut aus.",
+      "ready": "Für diesen Computer rekompiliert und spielbereit.",
+      "stale": "Aus einer anderen Kopie des Spiels oder mit einem älteren Launcher gebaut: bitte neu bauen.",
+      "none": "Noch nicht rekompiliert. Der Build dauert ein bis zwei Minuten und verwendet nur Ihre eigene Kopie des Spiels."
+    },
+    "noPlayer": "Spielen ist auf diesem Computer noch nicht möglich",
+    "noPlayerText": "Für dieses System gibt es keinen x2-player. Sie können das Spiel trotzdem für Android oder RetroArch exportieren.",
+    "here": "Dieser Computer",
+    "code": "Rekompilierter Code",
+    "codeText": "{{functions}} Funktionen · {{size}} · gebaut {{when}} in {{seconds}} s",
+    "folder": "Spielordner",
+    "change": "Ändern",
+    "pickFolder": "Ordner des Spiels wählen",
+    "folderUpdated": "Ordner aktualisiert",
+    "buildsDeleted": "Builds gelöscht",
+    "remove": "Aus der Bibliothek entfernen",
+    "removeText": "Vergisst diesen Ordner und löscht alles, was daraus gebaut wurde. Die Dateien des Spiels selbst bleiben unberührt.",
+    "display": {
+      "title": "Anzeige",
+      "fullscreen": "Vollbild",
+      "vsync": "VSync",
+      "vsyncText": "Bildausgabe im Takt des Displays. Aus: Das Spiel taktet sich selbst mit seinen 60 Hz.",
+      "fps": "FPS-Anzeige",
+      "fpsText": "Startet mit eingeblendeter Bildrate.",
+      "scale": "Renderskalierung",
+      "scaleText": "Das Bild des Spiels wird in einem Vielfachen seiner Größe gerendert. Automatisch wählt das größte, das in 1280×1024 passt.",
+      "scaleAuto": "Automatisch",
+      "scaleOriginal": "1× (Original)"
+    },
+    "advanced": {
+      "title": "Erweitert",
+      "log": "Log-Detail",
+      "logNormal": "Normal",
+      "logVerbose": "Ausführlich (-v)",
+      "logMore": "Mehr (-vv)",
+      "logAll": "Alles (-vvv)",
+      "env": "Umgebung",
+      "envText": "Zusätzliche Runtime-Schalter, ein KEY=VALUE pro Zeile (siehe Debugging → Switches in der Dokumentation)."
+    }
+  },
+  "controls": {
+    "title": "Steuerung",
+    "description": "Welche Controller-Taste welche Taste des Automaten drückt. Die Tastatur funktioniert ebenfalls (siehe Controls in der Dokumentation).",
+    "layout": "Layout",
+    "layoutText": "Ein Ausgangspunkt; einzelne Tasten lassen sich unten ändern.",
+    "custom": "Eigenes",
+    "assign": "Zuweisen",
+    "pressButton": "Drücken Sie eine Taste auf Ihrem Controller…",
+    "notAssigned": "Nicht zugewiesen",
+    "resetOne": "Zurück zur Vorgabe des Spiels",
+    "resetAll": "Alle zurücksetzen",
+    "other": "Sonstige",
+    "fixed": "Start, Back (Münze; halten für das Testmenü) und das Steuerkreuz behalten ihre Funktion.",
+    "readFailed": "Controller konnte nicht gelesen werden",
+    "test": "Test",
+    "service": "Service",
+    "hints": {
+      "test": "das Operator-Menü",
+      "service": "ein Gratis-Credit",
+      "lightPunch": "Light Punch",
+      "mediumPunch": "Medium Punch",
+      "heavyPunch": "Heavy Punch",
+      "lightKick": "Light Kick",
+      "mediumKick": "Medium Kick",
+      "heavyKick": "Heavy Kick",
+      "punches": "drei Punches",
+      "kicks": "drei Kicks",
+      "evade": "Evade",
+      "blowback": "Blowback",
+      "weak": "Weak",
+      "medium": "Medium",
+      "heavy": "Heavy",
+      "drive": "Drive",
+      "barrier": "Barrier",
+      "throw": "Throw"
+    }
+  },
+  "layouts": {
+    "default": "Vorgabe des Spiels",
+    "stickKof": "8-Tasten-Stick (Reihen L1 / L2): A C über B D",
+    "stickSf4": "8-Tasten-Stick (Reihen L1 / L2)",
+    "stickBb": "8-Tasten-Stick, Type-B-Panel"
+  },
+  "export": {
+    "kicker": "Export",
+    "title": "Für eine andere Plattform bauen",
+    "description": "Rekompilieren Sie Ihre Spiele zu einem RetroArch-Core oder zur Android-App. Alles wird hier aus Ihren eigenen Dateien gebaut; kopieren Sie das Ergebnis auf Ihr Gerät.",
+    "needed": "Benötigte Tools",
+    "neededAll": "{{tools}}.",
+    "neededSome": "{{tools}}. Einige müssen separat installiert werden (siehe Build-Tools).",
+    "noGames": "Fügen Sie zuerst Spiele in der Bibliothek hinzu.",
+    "start_one": "{{count}} Spiel exportieren",
+    "start_other": "{{count}} Spiele exportieren",
+    "last": "Letzte Exporte",
+    "none": "Noch nichts exportiert"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "RetroArch-Core für Android",
+      "description": "typex2_libretro_android.so mit den gewählten Spielen. Kopieren Sie die Datei nach RetroArch/downloads/ auf dem Gerät, dann Load Core → Install or Restore a Core."
+    },
+    "androidApp": {
+      "name": "Android-App",
+      "description": "typex2.apk: die eigenständige App (ES-DE kann sie starten) mit den gewählten Spielen. Benötigt die Build-Tools des Android SDK neben dem NDK."
+    },
+    "hostRetroarch": {
+      "name": "RetroArch-Core für diesen Computer",
+      "description": "Der libretro-Core für RetroArch auf diesem Computer, mit den gewählten Spielen. Kopieren Sie ihn und typex2_libretro.info in den Core-Ordner von RetroArch."
+    }
+  },
+  "tools": {
+    "title": "Was der Build benötigt",
+    "description": "Der Launcher lädt seine Compiler in seinen eigenen Ordner: Auf Ihrem Computer wird nichts installiert, und Entfernen beseitigt alles wieder. Bereits vorhandene Tools werden verwendet, wenn nichts heruntergeladen wurde.",
+    "download": "Herunterladen",
+    "downloadAll": "Alle herunterladen",
+    "downloadSize": "Herunterladen ({{size}}) oder:",
+    "downloadOr": "Herunterladen oder:",
+    "for": "Für: {{use}}.",
+    "source": {
+      "kit": "Teil dieser App",
+      "downloaded": "Heruntergeladen",
+      "system": "Auf diesem Computer"
+    },
+    "names": {
+      "cc": "C-Compiler (clang)"
+    },
+    "use": {
+      "every": "Jeden Build",
+      "play": "Spielen auf diesem Computer",
+      "exports": "Exporte",
+      "android": "Android-Exporte",
+      "compile": "Kompilieren von Spielen für diesen Computer"
+    },
+    "hints": {
+      "kit": "Teil dieser App. In einem Checkout: {{command}}",
+      "ccMac": "Oder installieren Sie Apples Command Line Tools: xcode-select --install",
+      "ccWindows": "Installieren Sie LLVM (clang) von llvm.org",
+      "ccLinux": "Installieren Sie clang aus den Paketen Ihrer Distribution",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "Speicher",
+    "downloaded": "Heruntergeladene Tools",
+    "downloadedText": "{{size}} im Ordner des Launchers.",
+    "removed": "Build-Tools entfernt",
+    "building": "Build",
+    "jobs": "Parallele Jobs",
+    "jobsText": "Gleichzeitig laufende Compiler. 0 nutzt alle Kerne bis auf zwei, damit der Computer reaktionsfähig bleibt.",
+    "ndk": "Android-NDK-Ordner",
+    "ndkText": "Nur nötig, wenn ein selbst installiertes NDK nicht automatisch gefunden wird."
+  },
+  "log": {
+    "title": "Ausgabe",
+    "game": "Spiel",
+    "builds": "Builds",
+    "clear": "Leeren",
+    "gameEmpty": "Die Ausgabe des Spiels erscheint hier, während es läuft.",
+    "buildEmpty": "Die Build-Ausgabe erscheint hier."
+  },
+  "about": {
+    "description": "Statische Rekompilierung von Taito-Type-X- und Type-X2-Arcadespielen: Der x86-Code jedes Spiels wird nach C übersetzt und zu nativem Code kompiliert; Windows, Direct3D, DirectSound und das JVS-I/O-Board stellt die Runtime bereit.",
+    "settings": "Launcher",
+    "language": "Sprache",
+    "languageSystem": "Systemsprache",
+    "noFiles": "Keine Spieldateien enthalten",
+    "yours": "Ihre Spiele bleiben Ihre",
+    "yoursText": "Launcher, Recompiler und Runtime enthalten keinen Spielcode und keine Spieldaten. Die Spiele werden auf Ihrem Computer aus Ihren eigenen Kopien rekompiliert; was gebaut wird, bleibt im Ordner des Launchers und in den Exporten, die Sie erstellen.",
+    "installation": "Diese Installation",
+    "launcher": "Launcher",
+    "kit": "Kit",
+    "kitBundled": "Mit der App geliefert",
+    "kitCheckout": "Repository-Checkout",
+    "kitMissing": "Fehlt",
+    "data": "Datenordner"
+  }
+}

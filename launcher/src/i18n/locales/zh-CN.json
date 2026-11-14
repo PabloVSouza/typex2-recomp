@@ -1,0 +1,235 @@
+{
+  "app": {
+    "stateError": "无法读取启动器状态：{{error}}"
+  },
+  "common": {
+    "cancel": "取消",
+    "delete": "删除",
+    "remove": "移除",
+    "show": "显示"
+  },
+  "nav": {
+    "library": "游戏库",
+    "games": "游戏",
+    "export": "导出",
+    "tools": "构建工具",
+    "log": "日志",
+    "about": "关于"
+  },
+  "jobs": {
+    "build": "构建",
+    "export": "导出",
+    "download": "下载",
+    "finished": "{{job}}完成",
+    "failed": "{{job}}失败",
+    "gameStopped": "游戏已退出（退出码 {{code}}）。请查看日志。",
+    "bytesOf": "{{done}} / {{total}}"
+  },
+  "steps": {
+    "hash": "正在检查游戏可执行文件",
+    "generate": "正在将可执行文件重编译为 C",
+    "compile": "正在编译",
+    "link": "正在链接",
+    "configure": "正在配置构建",
+    "build": "正在构建",
+    "download": "正在下载 {{tool}}",
+    "unpack": "正在解压 {{tool}}"
+  },
+  "library": {
+    "kicker": "游戏库",
+    "title": "你的街机厅",
+    "description": "添加你拥有的游戏文件夹。启动器会在本机上用你自己的文件重编译每款游戏，可在此游玩，也可导出到 Android 和 RetroArch。",
+    "add": "添加游戏文件夹",
+    "discordHint": "帮助、动态与摇杆布局",
+    "pickFolder": "选择游戏文件夹（包含 game.exe 的文件夹）",
+    "emptyTitle": "暂无游戏",
+    "emptyText": "选择游戏所在的文件夹，即包含 <code>game.exe</code> 的文件夹。启动器通过可执行文件识别支持的游戏。",
+    "alsoSupported": "其他支持的游戏"
+  },
+  "game": {
+    "play": "开始游戏",
+    "stop": "停止",
+    "build": "构建",
+    "rebuild": "重新构建",
+    "badge": {
+      "missing": "文件夹丢失",
+      "ready": "就绪",
+      "stale": "需重新构建",
+      "none": "未构建"
+    },
+    "status": {
+      "title": "状态",
+      "missing": "文件夹已不存在，或其中已没有此游戏。请在下方重新指定文件夹。",
+      "ready": "已为本机重编译，可以开始游戏。",
+      "stale": "由另一份游戏副本或旧版启动器构建，请重新构建。",
+      "none": "尚未重编译。构建需要一两分钟，且只使用你自己的游戏副本。"
+    },
+    "noPlayer": "本机暂不支持在此游玩",
+    "noPlayerText": "此系统没有可用的 x2-player。你仍可将游戏导出到 Android 或 RetroArch。",
+    "here": "本机",
+    "code": "重编译代码",
+    "codeText": "{{functions}} 个函数 · {{size}} · 构建于 {{when}}，耗时 {{seconds}} 秒",
+    "folder": "游戏文件夹",
+    "change": "更改",
+    "pickFolder": "选择游戏文件夹",
+    "folderUpdated": "文件夹已更新",
+    "buildsDeleted": "构建已删除",
+    "remove": "从游戏库移除",
+    "removeText": "移除此文件夹并删除由其构建的内容。游戏本身的文件不受影响。",
+    "display": {
+      "title": "显示",
+      "fullscreen": "全屏",
+      "vsync": "垂直同步",
+      "vsyncText": "与显示器同步输出画面。关闭后，游戏按自身的 60 Hz 控制速度。",
+      "fps": "FPS 计数器",
+      "fpsText": "启动时开启帧率显示。",
+      "scale": "渲染倍数",
+      "scaleText": "按原始尺寸的整数倍渲染游戏画面。自动会选择能放入 1280×1024 的最大倍数。",
+      "scaleAuto": "自动",
+      "scaleOriginal": "1×（原始）"
+    },
+    "advanced": {
+      "title": "高级",
+      "log": "日志详细程度",
+      "logNormal": "普通",
+      "logVerbose": "详细 (-v)",
+      "logMore": "更详细 (-vv)",
+      "logAll": "全部 (-vvv)",
+      "env": "环境变量",
+      "envText": "额外的运行时开关，每行一个 KEY=VALUE（参见文档中的 Debugging → Switches）。"
+    }
+  },
+  "controls": {
+    "title": "按键设置",
+    "description": "设置手柄上的哪个按钮对应机台上的各个按钮。也可以使用键盘（参见文档中的 Controls）。",
+    "layout": "布局",
+    "layoutText": "作为起点，可在下方逐个修改按钮。",
+    "custom": "自定义",
+    "assign": "分配",
+    "pressButton": "请按下手柄上的按钮…",
+    "notAssigned": "未分配",
+    "resetOne": "恢复游戏默认",
+    "resetAll": "全部重置",
+    "other": "其他",
+    "fixed": "Start、Back（投币；长按进入测试菜单）和方向键的功能固定不变。",
+    "readFailed": "无法读取手柄",
+    "test": "测试",
+    "service": "服务",
+    "hints": {
+      "test": "运营菜单",
+      "service": "免费加一次信用",
+      "lightPunch": "轻拳",
+      "mediumPunch": "中拳",
+      "heavyPunch": "重拳",
+      "lightKick": "轻脚",
+      "mediumKick": "中脚",
+      "heavyKick": "重脚",
+      "punches": "三拳同按",
+      "kicks": "三脚同按",
+      "evade": "回避",
+      "blowback": "吹飞攻击",
+      "weak": "轻",
+      "medium": "中",
+      "heavy": "重",
+      "drive": "驱动技",
+      "barrier": "屏障",
+      "throw": "投技"
+    }
+  },
+  "layouts": {
+    "default": "游戏默认",
+    "stickKof": "8 键摇杆（L1 / L2 行）：A C 在上，B D 在下",
+    "stickSf4": "8 键摇杆（L1 / L2 行）",
+    "stickBb": "8 键摇杆，Type B 面板"
+  },
+  "export": {
+    "kicker": "导出",
+    "title": "为其他平台构建",
+    "description": "将游戏重编译为 RetroArch 核心或 Android 应用。一切都在本机用你自己的文件构建，再把结果复制到设备上即可。",
+    "needed": "所需工具",
+    "neededAll": "{{tools}}。",
+    "neededSome": "{{tools}}。部分工具需单独安装（参见构建工具）。",
+    "noGames": "请先在游戏库中添加游戏。",
+    "start_other": "导出 {{count}} 款游戏",
+    "last": "最近导出",
+    "none": "尚未导出任何内容"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "Android 版 RetroArch 核心",
+      "description": "包含所选游戏的 typex2_libretro_android.so。将其复制到设备的 RetroArch/downloads/，然后执行 Load Core → Install or Restore a Core。"
+    },
+    "androidApp": {
+      "name": "Android 应用",
+      "description": "typex2.apk：包含所选游戏的独立应用（可由 ES-DE 启动）。需要在 NDK 旁安装 Android SDK 的构建工具。"
+    },
+    "hostRetroarch": {
+      "name": "本机 RetroArch 核心",
+      "description": "适用于本机 RetroArch 的 libretro 核心，包含所选游戏。将它和 typex2_libretro.info 复制到 RetroArch 的 cores 文件夹。"
+    }
+  },
+  "tools": {
+    "title": "构建所需",
+    "description": "启动器会把编译器下载到自己的文件夹中：不会在你的电脑上安装任何东西，点击移除即可全部清除。未下载时会使用你已有的工具。",
+    "download": "下载",
+    "downloadAll": "全部下载",
+    "downloadSize": "下载（{{size}}），或：",
+    "downloadOr": "下载，或：",
+    "for": "用于：{{use}}。",
+    "source": {
+      "kit": "应用自带",
+      "downloaded": "已下载",
+      "system": "本机已安装"
+    },
+    "names": {
+      "cc": "C 编译器（clang）"
+    },
+    "use": {
+      "every": "所有构建",
+      "play": "在本机游玩",
+      "exports": "导出",
+      "android": "Android 导出",
+      "compile": "编译游戏以在本机游玩"
+    },
+    "hints": {
+      "kit": "应用自带。在源码检出中：{{command}}",
+      "ccMac": "或安装 Apple's Command Line Tools：xcode-select --install",
+      "ccWindows": "从 llvm.org 安装 LLVM（clang）",
+      "ccLinux": "通过发行版的软件包安装 clang",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "存储",
+    "downloaded": "已下载的工具",
+    "downloadedText": "启动器文件夹中占用 {{size}}。",
+    "removed": "构建工具已移除",
+    "building": "构建",
+    "jobs": "并行任务数",
+    "jobsText": "同时运行的编译器数量。0 表示保留两个核心、使用其余全部核心，让电脑保持流畅响应。",
+    "ndk": "Android NDK 文件夹",
+    "ndkText": "仅在无法自动找到你自行安装的 NDK 时设置。"
+  },
+  "log": {
+    "title": "输出",
+    "game": "游戏",
+    "builds": "构建",
+    "clear": "清空",
+    "gameEmpty": "游戏运行时，其输出显示在这里。",
+    "buildEmpty": "构建输出显示在这里。"
+  },
+  "about": {
+    "description": "Taito Type X 与 Type X2 街机游戏的静态重编译：将每款游戏的 x86 代码翻译为 C 并编译为原生代码，Windows、Direct3D、DirectSound 和 JVS I/O 板由运行时提供。",
+    "settings": "启动器",
+    "language": "语言",
+    "languageSystem": "跟随系统",
+    "noFiles": "不含任何游戏文件",
+    "yours": "游戏始终属于你",
+    "yoursText": "启动器、重编译器和运行时均不含任何游戏代码或数据。游戏在你的电脑上用你自己的副本重编译；构建结果只保存在启动器文件夹和你导出的文件中。",
+    "installation": "当前安装",
+    "launcher": "启动器",
+    "kit": "套件",
+    "kitBundled": "随应用附带",
+    "kitCheckout": "仓库检出",
+    "kitMissing": "缺失",
+    "data": "数据文件夹"
+  }
+}

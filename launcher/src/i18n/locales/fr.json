@@ -1,0 +1,237 @@
+{
+  "app": {
+    "stateError": "Impossible de lire l'état du launcher : {{error}}"
+  },
+  "common": {
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "remove": "Retirer",
+    "show": "Afficher"
+  },
+  "nav": {
+    "library": "Bibliothèque",
+    "games": "Jeux",
+    "export": "Exporter",
+    "tools": "Outils",
+    "log": "Journal",
+    "about": "À propos"
+  },
+  "jobs": {
+    "build": "Compilation",
+    "export": "Export",
+    "download": "Téléchargement",
+    "finished": "{{job}} : terminé",
+    "failed": "{{job}} : échec",
+    "gameStopped": "Le jeu s'est arrêté (code de sortie {{code}}). Voir le Journal.",
+    "bytesOf": "{{done}} sur {{total}}"
+  },
+  "steps": {
+    "hash": "Vérification de l'exécutable du jeu",
+    "generate": "Recompilation de l'exécutable en C",
+    "compile": "Compilation",
+    "link": "Édition des liens",
+    "configure": "Configuration de la compilation",
+    "build": "Compilation",
+    "download": "Téléchargement de {{tool}}",
+    "unpack": "Décompression de {{tool}}"
+  },
+  "library": {
+    "kicker": "Bibliothèque",
+    "title": "Votre salle d'arcade",
+    "description": "Ajoutez les dossiers des jeux que vous possédez. Le launcher recompile chacun d'eux sur cet ordinateur à partir de vos propres fichiers, pour y jouer ici ou l'exporter vers Android et RetroArch.",
+    "add": "Ajouter un dossier",
+    "discordHint": "Aide, actualités et configurations de stick",
+    "pickFolder": "Choisissez le dossier d'un jeu (celui qui contient game.exe)",
+    "emptyTitle": "Aucun jeu pour l'instant",
+    "emptyText": "Choisissez le dossier d'un jeu : celui qui contient son <code>game.exe</code>. Le launcher reconnaît les jeux pris en charge grâce à leur exécutable.",
+    "alsoSupported": "Également pris en charge"
+  },
+  "game": {
+    "play": "Jouer",
+    "stop": "Arrêter",
+    "build": "Compiler",
+    "rebuild": "Recompiler",
+    "badge": {
+      "missing": "Dossier absent",
+      "ready": "Prêt",
+      "stale": "À recompiler",
+      "none": "Non compilé"
+    },
+    "status": {
+      "title": "État",
+      "missing": "Le dossier a disparu ou ne contient plus ce jeu. Indiquez-le de nouveau au launcher ci-dessous.",
+      "ready": "Recompilé pour cet ordinateur et prêt à jouer.",
+      "stale": "Compilé à partir d'une autre copie du jeu ou par une version antérieure du launcher : compilez-le de nouveau.",
+      "none": "Pas encore recompilé. La compilation prend une ou deux minutes et n'utilise que votre propre copie du jeu."
+    },
+    "noPlayer": "Impossible de jouer sur cet ordinateur pour l'instant",
+    "noPlayerText": "Il n'existe pas de x2-player pour ce système. Vous pouvez tout de même exporter le jeu pour Android ou RetroArch.",
+    "here": "Cet ordinateur",
+    "code": "Code recompilé",
+    "codeText": "{{functions}} fonctions · {{size}} · compilé {{when}} en {{seconds}} s",
+    "folder": "Dossier du jeu",
+    "change": "Modifier",
+    "pickFolder": "Choisissez le dossier du jeu",
+    "folderUpdated": "Dossier mis à jour",
+    "buildsDeleted": "Compilations supprimées",
+    "remove": "Retirer de la bibliothèque",
+    "removeText": "Oublie ce dossier et supprime ce qui a été compilé à partir de lui. Les fichiers du jeu ne sont pas modifiés.",
+    "display": {
+      "title": "Affichage",
+      "fullscreen": "Plein écran",
+      "vsync": "Vsync",
+      "vsyncText": "Affiche les images au rythme de l'écran. Désactivé, le jeu suit sa propre cadence de 60 Hz.",
+      "fps": "Compteur de FPS",
+      "fpsText": "Démarre avec l'indicateur d'images par seconde affiché.",
+      "scale": "Échelle de rendu",
+      "scaleText": "L'image du jeu est rendue à un multiple de sa taille. Automatique choisit le plus grand qui tient dans 1280×1024.",
+      "scaleAuto": "Automatique",
+      "scaleOriginal": "1× (original)"
+    },
+    "advanced": {
+      "title": "Avancé",
+      "log": "Niveau de détail du journal",
+      "logNormal": "Normal",
+      "logVerbose": "Détaillé (-v)",
+      "logMore": "Plus (-vv)",
+      "logAll": "Tout (-vvv)",
+      "env": "Environnement",
+      "envText": "Options supplémentaires du runtime, une KEY=VALUE par ligne (voir Debugging → Switches dans la documentation)."
+    }
+  },
+  "controls": {
+    "title": "Commandes",
+    "description": "Le bouton de la manette qui actionne chacun des boutons de la borne. Le clavier fonctionne aussi (voir Controls dans la documentation).",
+    "layout": "Disposition",
+    "layoutText": "Un point de départ ; modifiez les boutons un par un ci-dessous.",
+    "custom": "Personnalisée",
+    "assign": "Attribuer",
+    "pressButton": "Appuyez sur un bouton de votre manette…",
+    "notAssigned": "Non attribué",
+    "resetOne": "Revenir au réglage du jeu",
+    "resetAll": "Tout réinitialiser",
+    "other": "Autres",
+    "fixed": "Start, Back (pièce ; maintenir pour le menu de test) et la croix directionnelle gardent leur rôle.",
+    "readFailed": "Impossible de lire la manette",
+    "test": "Test",
+    "service": "Service",
+    "hints": {
+      "test": "le menu opérateur",
+      "service": "un crédit gratuit",
+      "lightPunch": "poing faible",
+      "mediumPunch": "poing moyen",
+      "heavyPunch": "poing fort",
+      "lightKick": "pied faible",
+      "mediumKick": "pied moyen",
+      "heavyKick": "pied fort",
+      "punches": "trois poings",
+      "kicks": "trois pieds",
+      "evade": "esquive",
+      "blowback": "blowback",
+      "weak": "faible",
+      "medium": "moyen",
+      "heavy": "fort",
+      "drive": "drive",
+      "barrier": "barrier",
+      "throw": "chope"
+    }
+  },
+  "layouts": {
+    "default": "Réglage du jeu",
+    "stickKof": "Stick 8 boutons (rangées L1 / L2) : A C au-dessus de B D",
+    "stickSf4": "Stick 8 boutons (rangées L1 / L2)",
+    "stickBb": "Stick 8 boutons, panneau type B"
+  },
+  "export": {
+    "kicker": "Exporter",
+    "title": "Compiler pour une autre plateforme",
+    "description": "Recompilez vos jeux en un core RetroArch ou en l'application Android. Tout est compilé ici, à partir de vos propres fichiers ; copiez ensuite le résultat sur votre appareil.",
+    "needed": "Outils nécessaires",
+    "neededAll": "{{tools}}.",
+    "neededSome": "{{tools}}. Certains doivent être installés séparément (voir Outils).",
+    "noGames": "Ajoutez d'abord des jeux dans la Bibliothèque.",
+    "start_one": "Exporter {{count}} jeu",
+    "start_many": "Exporter {{count}} jeux",
+    "start_other": "Exporter {{count}} jeux",
+    "last": "Derniers exports",
+    "none": "Rien n'a encore été exporté"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "Core RetroArch pour Android",
+      "description": "typex2_libretro_android.so avec les jeux choisis. Copiez-le dans RetroArch/downloads/ sur l'appareil, puis Load Core → Install or Restore a Core."
+    },
+    "androidApp": {
+      "name": "Application Android",
+      "description": "typex2.apk : l'application autonome (ES-DE peut la lancer) avec les jeux choisis. Nécessite les build tools du SDK Android à côté du NDK."
+    },
+    "hostRetroarch": {
+      "name": "Core RetroArch pour cet ordinateur",
+      "description": "Le core libretro pour RetroArch sur cet ordinateur, avec les jeux choisis. Copiez-le avec typex2_libretro.info dans le dossier des cores de RetroArch."
+    }
+  },
+  "tools": {
+    "title": "Ce qu'il faut pour compiler",
+    "description": "Le launcher télécharge ses compilateurs dans son propre dossier : rien n'est installé sur votre ordinateur, et Retirer supprime tout. Les outils que vous avez déjà sont utilisés si rien n'a été téléchargé.",
+    "download": "Télécharger",
+    "downloadAll": "Tout télécharger",
+    "downloadSize": "Télécharger ({{size}}), ou :",
+    "downloadOr": "Télécharger, ou :",
+    "for": "Pour : {{use}}.",
+    "source": {
+      "kit": "Fourni avec l'application",
+      "downloaded": "Téléchargé",
+      "system": "Sur cet ordinateur"
+    },
+    "names": {
+      "cc": "Compilateur C (clang)"
+    },
+    "use": {
+      "every": "Toutes les compilations",
+      "play": "Jouer sur cet ordinateur",
+      "exports": "Exports",
+      "android": "Exports Android",
+      "compile": "Compiler les jeux pour jouer sur cet ordinateur"
+    },
+    "hints": {
+      "kit": "Fourni avec l'application. Dans une copie du dépôt : {{command}}",
+      "ccMac": "Ou installez les Command Line Tools d'Apple : xcode-select --install",
+      "ccWindows": "Installez LLVM (clang) depuis llvm.org",
+      "ccLinux": "Installez clang depuis les paquets de votre distribution",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "Stockage",
+    "downloaded": "Outils téléchargés",
+    "downloadedText": "{{size}} dans le dossier du launcher.",
+    "removed": "Outils de compilation supprimés",
+    "building": "Compilation",
+    "jobs": "Tâches en parallèle",
+    "jobsText": "Nombre de compilateurs exécutés en même temps. 0 utilise tous les cœurs sauf deux, pour que l'ordinateur reste réactif.",
+    "ndk": "Dossier de l'Android NDK",
+    "ndkText": "Uniquement si un NDK que vous avez installé vous-même n'est pas trouvé automatiquement."
+  },
+  "log": {
+    "title": "Sortie",
+    "game": "Jeu",
+    "builds": "Compilations",
+    "clear": "Effacer",
+    "gameEmpty": "La sortie du jeu s'affiche ici pendant son exécution.",
+    "buildEmpty": "La sortie des compilations s'affiche ici."
+  },
+  "about": {
+    "description": "Recompilation statique des jeux d'arcade Taito Type X et Type X2 : le code x86 de chaque jeu est traduit en C et compilé en code natif, Windows, Direct3D, DirectSound et la carte d'E/S JVS étant fournis par le runtime.",
+    "settings": "Launcher",
+    "language": "Langue",
+    "languageSystem": "Celle du système",
+    "noFiles": "Aucun fichier de jeu inclus",
+    "yours": "Vos jeux restent les vôtres",
+    "yoursText": "Le launcher, le recompilateur et le runtime ne contiennent aucun code ni aucune donnée de jeu. Les jeux sont recompilés sur votre ordinateur à partir de vos propres copies ; ce qui est compilé reste dans le dossier du launcher et dans les exports que vous créez.",
+    "installation": "Cette installation",
+    "launcher": "Launcher",
+    "kit": "Kit",
+    "kitBundled": "Fourni avec l'application",
+    "kitCheckout": "Copie du dépôt",
+    "kitMissing": "Introuvable",
+    "data": "Dossier des données"
+  }
+}

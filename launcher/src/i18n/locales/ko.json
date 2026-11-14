@@ -1,0 +1,235 @@
+{
+  "app": {
+    "stateError": "런처 상태를 읽을 수 없습니다: {{error}}"
+  },
+  "common": {
+    "cancel": "취소",
+    "delete": "삭제",
+    "remove": "제거",
+    "show": "보기"
+  },
+  "nav": {
+    "library": "라이브러리",
+    "games": "게임",
+    "export": "내보내기",
+    "tools": "빌드 도구",
+    "log": "로그",
+    "about": "정보"
+  },
+  "jobs": {
+    "build": "빌드",
+    "export": "내보내기",
+    "download": "다운로드",
+    "finished": "{{job}} 완료",
+    "failed": "{{job}} 실패",
+    "gameStopped": "게임이 종료되었습니다(종료 코드 {{code}}). 로그를 확인하세요.",
+    "bytesOf": "{{total}} 중 {{done}}"
+  },
+  "steps": {
+    "hash": "게임 실행 파일 확인 중",
+    "generate": "실행 파일을 C로 재컴파일하는 중",
+    "compile": "컴파일 중",
+    "link": "링크 중",
+    "configure": "빌드 구성 중",
+    "build": "빌드 중",
+    "download": "{{tool}} 다운로드 중",
+    "unpack": "{{tool}} 압축 해제 중"
+  },
+  "library": {
+    "kicker": "라이브러리",
+    "title": "나의 아케이드",
+    "description": "보유한 게임의 폴더를 추가하세요. 런처가 이 컴퓨터에서 사용자의 파일로 각 게임을 재컴파일하며, 여기서 플레이하거나 Android와 RetroArch용으로 내보낼 수 있습니다.",
+    "add": "게임 폴더 추가",
+    "discordHint": "도움말, 소식, 스틱 배치",
+    "pickFolder": "게임 폴더 선택(game.exe가 있는 폴더)",
+    "emptyTitle": "아직 게임이 없습니다",
+    "emptyText": "<code>game.exe</code>가 있는 게임 폴더를 선택하세요. 런처는 실행 파일로 지원 게임을 인식합니다.",
+    "alsoSupported": "그 밖의 지원 게임"
+  },
+  "game": {
+    "play": "플레이",
+    "stop": "중지",
+    "build": "빌드",
+    "rebuild": "다시 빌드",
+    "badge": {
+      "missing": "폴더 없음",
+      "ready": "준비됨",
+      "stale": "다시 빌드 필요",
+      "none": "빌드 안 됨"
+    },
+    "status": {
+      "title": "상태",
+      "missing": "폴더가 없거나 더 이상 이 게임이 들어 있지 않습니다. 아래에서 폴더를 다시 지정하세요.",
+      "ready": "이 컴퓨터용으로 재컴파일되어 플레이할 준비가 되었습니다.",
+      "stale": "다른 게임 사본이나 이전 버전의 런처로 빌드되었습니다. 다시 빌드하세요.",
+      "none": "아직 재컴파일되지 않았습니다. 빌드는 1~2분 정도 걸리며 사용자의 게임 사본만 사용합니다."
+    },
+    "noPlayer": "이 컴퓨터에서는 아직 플레이할 수 없습니다",
+    "noPlayerText": "이 시스템용 x2-player가 없습니다. Android나 RetroArch용으로 게임을 내보낼 수는 있습니다.",
+    "here": "이 컴퓨터",
+    "code": "재컴파일된 코드",
+    "codeText": "함수 {{functions}}개 · {{size}} · {{when}} 빌드, {{seconds}}초 소요",
+    "folder": "게임 폴더",
+    "change": "변경",
+    "pickFolder": "게임 폴더 선택",
+    "folderUpdated": "폴더를 변경했습니다",
+    "buildsDeleted": "빌드를 삭제했습니다",
+    "remove": "라이브러리에서 제거",
+    "removeText": "이 폴더를 목록에서 지우고 이 폴더로 빌드한 결과물을 삭제합니다. 게임 파일은 건드리지 않습니다.",
+    "display": {
+      "title": "화면",
+      "fullscreen": "전체 화면",
+      "vsync": "수직 동기화",
+      "vsyncText": "디스플레이 주사율에 맞춰 화면을 출력합니다. 끄면 게임이 자체 60Hz로 속도를 맞춥니다.",
+      "fps": "FPS 표시",
+      "fpsText": "프레임 레이트 오버레이를 켠 상태로 시작합니다.",
+      "scale": "렌더링 배율",
+      "scaleText": "게임 화면을 원래 크기의 배수로 렌더링합니다. 자동은 1280×1024에 맞는 가장 큰 배율을 고릅니다.",
+      "scaleAuto": "자동",
+      "scaleOriginal": "1×(원본)"
+    },
+    "advanced": {
+      "title": "고급",
+      "log": "로그 상세도",
+      "logNormal": "보통",
+      "logVerbose": "상세(-v)",
+      "logMore": "더 자세히(-vv)",
+      "logAll": "전부(-vvv)",
+      "env": "환경 변수",
+      "envText": "추가 런타임 스위치를 한 줄에 하나씩 KEY=VALUE 형식으로 입력합니다(문서의 Debugging → Switches 참고)."
+    }
+  },
+  "controls": {
+    "title": "조작",
+    "description": "기판의 각 버튼을 컨트롤러의 어느 버튼으로 누를지 정합니다. 키보드도 사용할 수 있습니다(문서의 Controls 참고).",
+    "layout": "배치",
+    "layoutText": "기본 출발점입니다. 아래에서 버튼을 하나씩 바꿀 수 있습니다.",
+    "custom": "사용자 지정",
+    "assign": "지정",
+    "pressButton": "컨트롤러의 버튼을 누르세요…",
+    "notAssigned": "지정 안 됨",
+    "resetOne": "게임 기본값으로",
+    "resetAll": "모두 초기화",
+    "other": "기타",
+    "fixed": "Start, Back(코인, 길게 누르면 테스트 메뉴), 방향 패드는 역할이 고정됩니다.",
+    "readFailed": "컨트롤러를 읽을 수 없습니다",
+    "test": "테스트",
+    "service": "서비스",
+    "hints": {
+      "test": "운영자 메뉴",
+      "service": "무료 크레딧",
+      "lightPunch": "약펀치",
+      "mediumPunch": "중펀치",
+      "heavyPunch": "강펀치",
+      "lightKick": "약킥",
+      "mediumKick": "중킥",
+      "heavyKick": "강킥",
+      "punches": "펀치 3개 동시",
+      "kicks": "킥 3개 동시",
+      "evade": "회피",
+      "blowback": "날리기 공격",
+      "weak": "약",
+      "medium": "중",
+      "heavy": "강",
+      "drive": "드라이브",
+      "barrier": "배리어",
+      "throw": "잡기"
+    }
+  },
+  "layouts": {
+    "default": "게임 기본값",
+    "stickKof": "8버튼 스틱(L1 / L2 줄): 위 A C, 아래 B D",
+    "stickSf4": "8버튼 스틱(L1 / L2 줄)",
+    "stickBb": "8버튼 스틱, Type B 패널"
+  },
+  "export": {
+    "kicker": "내보내기",
+    "title": "다른 플랫폼용으로 빌드",
+    "description": "게임을 RetroArch 코어나 Android 앱으로 재컴파일합니다. 모든 빌드는 사용자의 파일로 여기서 이루어지며, 결과물을 기기에 복사하면 됩니다.",
+    "needed": "필요한 도구",
+    "neededAll": "{{tools}}.",
+    "neededSome": "{{tools}}. 일부는 따로 설치해야 합니다(빌드 도구 참고).",
+    "noGames": "먼저 라이브러리에 게임을 추가하세요.",
+    "start_other": "게임 {{count}}개 내보내기",
+    "last": "최근 내보내기",
+    "none": "아직 내보낸 항목이 없습니다"
+  },
+  "targets": {
+    "androidRetroarch": {
+      "name": "Android용 RetroArch 코어",
+      "description": "선택한 게임이 담긴 typex2_libretro_android.so입니다. 기기의 RetroArch/downloads/에 복사한 뒤 Load Core → Install or Restore a Core를 실행하세요."
+    },
+    "androidApp": {
+      "name": "Android 앱",
+      "description": "typex2.apk: 선택한 게임이 담긴 독립 실행형 앱입니다(ES-DE에서 실행 가능). NDK와 함께 Android SDK의 빌드 도구가 필요합니다."
+    },
+    "hostRetroarch": {
+      "name": "이 컴퓨터용 RetroArch 코어",
+      "description": "선택한 게임이 담긴, 이 컴퓨터의 RetroArch용 libretro 코어입니다. 코어와 typex2_libretro.info를 RetroArch의 cores 폴더에 복사하세요."
+    }
+  },
+  "tools": {
+    "title": "빌드에 필요한 것",
+    "description": "런처는 컴파일러를 자체 폴더에 다운로드합니다. 컴퓨터에는 아무것도 설치되지 않으며, 제거를 누르면 모두 지워집니다. 다운로드한 것이 없으면 이미 설치된 도구를 사용합니다.",
+    "download": "다운로드",
+    "downloadAll": "모두 다운로드",
+    "downloadSize": "다운로드({{size}}) 또는:",
+    "downloadOr": "다운로드 또는:",
+    "for": "용도: {{use}}.",
+    "source": {
+      "kit": "앱에 포함됨",
+      "downloaded": "다운로드됨",
+      "system": "이 컴퓨터에 설치됨"
+    },
+    "names": {
+      "cc": "C 컴파일러(clang)"
+    },
+    "use": {
+      "every": "모든 빌드",
+      "play": "이 컴퓨터에서 플레이",
+      "exports": "내보내기",
+      "android": "Android 내보내기",
+      "compile": "이 컴퓨터에서 플레이할 게임 컴파일"
+    },
+    "hints": {
+      "kit": "앱에 포함되어 있습니다. 소스 체크아웃에서는: {{command}}",
+      "ccMac": "또는 Apple's Command Line Tools 설치: xcode-select --install",
+      "ccWindows": "llvm.org에서 LLVM(clang)을 설치하세요",
+      "ccLinux": "배포판 패키지로 clang을 설치하세요",
+      "ndk": "Android Studio → SDK Manager → NDK"
+    },
+    "storage": "저장 공간",
+    "downloaded": "다운로드한 도구",
+    "downloadedText": "런처 폴더에 {{size}}.",
+    "removed": "빌드 도구를 제거했습니다",
+    "building": "빌드",
+    "jobs": "병렬 작업 수",
+    "jobsText": "동시에 실행할 컴파일러 수입니다. 0이면 코어 2개를 남기고 모두 사용해 컴퓨터가 계속 원활하게 반응합니다.",
+    "ndk": "Android NDK 폴더",
+    "ndkText": "직접 설치한 NDK를 자동으로 찾지 못할 때만 지정하세요."
+  },
+  "log": {
+    "title": "출력",
+    "game": "게임",
+    "builds": "빌드",
+    "clear": "지우기",
+    "gameEmpty": "게임이 실행되는 동안 출력이 여기에 표시됩니다.",
+    "buildEmpty": "빌드 출력이 여기에 표시됩니다."
+  },
+  "about": {
+    "description": "Taito Type X 및 Type X2 아케이드 게임의 정적 재컴파일: 각 게임의 x86 코드를 C로 변환해 네이티브 코드로 컴파일하며, Windows, Direct3D, DirectSound, JVS I/O 보드는 런타임이 제공합니다.",
+    "settings": "런처",
+    "language": "언어",
+    "languageSystem": "시스템 설정",
+    "noFiles": "게임 파일 미포함",
+    "yours": "게임은 사용자의 것입니다",
+    "yoursText": "런처, 재컴파일러, 런타임에는 게임 코드나 데이터가 전혀 들어 있지 않습니다. 게임은 사용자가 가진 사본으로 사용자의 컴퓨터에서 재컴파일되며, 빌드 결과는 런처 폴더와 사용자가 만든 내보내기 파일에만 남습니다.",
+    "installation": "현재 설치",
+    "launcher": "런처",
+    "kit": "키트",
+    "kitBundled": "앱에 포함됨",
+    "kitCheckout": "저장소 체크아웃",
+    "kitMissing": "없음",
+    "data": "데이터 폴더"
+  }
+}

@@ -18,6 +18,7 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 | Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. |
 | Log | The game's output and the build tools' output. |
+| About | The launcher's language, the installation (version, kit, data folder). |
 
 ## How a game is built
 
@@ -89,3 +90,38 @@ cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> tools
 cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> library "<game dir>"
 cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> export android-retroarch "<game dir>"...
 ```
+
+Before committing: `npm run check` (types, ESLint, locales) and `npm run build`;
+`cargo clippy` in `src-tauri`. CI runs the front-end checks.
+
+### Front end conventions
+
+ESLint (`eslint.config.js`) enforces what it can:
+
+- **One component per file** (`react/no-multi-comp`); shadcn's generated
+  `src/components/ui` is exempt.
+- **Imports go through the `@/` alias** (`src/`), never relative paths.
+- **Every folder has an `index.ts`** exporting its contents. Code outside a
+  folder imports the folder (`@/components/common`, `@/hooks`, `@/lib`); files
+  inside it import their siblings by full path (`@/pages/game/ActionRow`).
+- **A folder holds a feature and its parts:** `pages/<page>/` has the page and
+  its rows and sections, `components/sidebar` the sidebar and its items,
+  `components/games` the Build / Play button and the status badge.
+- **State:** backend data through TanStack Query (`src/hooks`: `useAppState`,
+  `useAction` for commands, `useEvents` for the backend's events); client state
+  in Zustand stores (`src/stores`: the page shown, the job's progress and the
+  logs); component state in `useState`.
+- **All text comes from i18n** (`src/i18n/locales/*.json`, react-i18next).
+  `en.json` is the reference and its keys are typed (`i18next.d.ts`), so a
+  missing key is a type error; a missing translation falls back to English.
+  `scripts/check-locales.mjs` checks every locale against it (keys, `{{values}}`
+  and tags). Names the backend sends (layouts, export targets, tools) are
+  translated by id in `src/lib/data/names.ts`; the backend's error messages are
+  English.
+- **UI components come from shadcn** (`npx shadcn@latest add <name>`, then
+  export them from `src/components/ui/index.ts`).
+
+Languages: English, Spanish, French, Portuguese (Brazil and Portugal), German,
+Japanese, Korean and Simplified Chinese. The system's language is used unless
+one is chosen in About; a new language is a file in `locales/` plus a line in
+`LAUNCHER_LANGUAGES` (`src/i18n/i18n.ts`).

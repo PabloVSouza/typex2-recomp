@@ -33,7 +33,8 @@ The first release.
 **Launcher:** add the folders of the games you own, recompile them, play them
 on this computer, or export the Android core or app. Build tools (clang,
 CMake, Ninja, the Android NDK) are downloaded on demand into the launcher's own
-folder.
+folder. In English, Spanish, French, Portuguese (Brazil and Portugal), German,
+Japanese, Korean and Simplified Chinese.
 
 **Controls:** gamepads and arcade sticks with per-game layouts (`X2_PAD`), remapped in the launcher by pressing the buttons,
 on-screen touch controls on Android with each game's buttons.

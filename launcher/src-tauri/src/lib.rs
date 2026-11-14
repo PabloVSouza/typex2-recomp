@@ -78,6 +78,7 @@ fn load_state(state: State<AppState>) -> Result<Value> {
         "games": games,
         "ndk": config.ndk,
         "jobs": config.jobs,
+        "language": config.language,
         "job": state.jobs.running(),
         "running": running,
         "targets": recomp::TARGETS,
@@ -127,6 +128,14 @@ fn save_build_settings(state: State<AppState>, ndk: String, jobs: u32) -> Result
     state.update(|c| {
         c.ndk = ndk;
         c.jobs = jobs;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn save_language(state: State<AppState>, language: String) -> Result<()> {
+    state.update(|c| {
+        c.language = language;
         Ok(())
     })
 }
@@ -302,7 +311,8 @@ pub fn run() {
             delete_builds,
             launch,
             stop,
-            read_pad
+            read_pad,
+            save_language
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

@@ -27,6 +27,7 @@ export const api = {
   stop: () => call<void>("stop"),
   /** The next controller button pressed (X2_PAD name), or null when cancelled. */
   readPad: () => call<string | null>("read_pad"),
+  saveLanguage: (language: string) => call<void>("save_language", { language }),
 };
 
 export async function pickFolder(title: string): Promise<string | null> {

@@ -87,6 +87,11 @@ gets an entry per milestone. Update them with the README.
   `runtime/include/sdkless/` stands in for the C headers when the downloaded
   clang compiles without an OS SDK; a game library is linked as a bundle against
   `x2-player` on macOS.
+  Front end (`src/`): one component per file, `@/` imports, an `index.ts` per
+  folder, TanStack Query for backend data, Zustand for client state, every
+  text in i18n (`src/i18n/locales/en.json` is the typed reference; 9 languages).
+  Details in `docs/Launcher.md#front-end-conventions`; `npm run check` before
+  committing.
 
 ## Adding a game
 
