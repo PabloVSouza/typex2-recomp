@@ -56,7 +56,13 @@ Several values together make one button press several at once
 X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 # BlazBlue CS / CT
 X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234
+# KOF (A C over B D)
+X2_PAD=l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc
 ```
+
+The launcher's game page edits the layout without typing it: pick a preset,
+or press Assign next to an action and then the controller button for it. It
+saves the whole layout as one `X2_PAD` line.
 
 In RetroArch, remaps apply on top, exactly as with FBNeo.
 

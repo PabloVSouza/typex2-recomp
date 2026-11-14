@@ -14,7 +14,7 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 | Page | |
 |---|---|
 | Library | Add game folders. A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. |
-| Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (`X2_PAD` presets per game, or a custom line), log detail and extra `X2_*` switches. |
+| Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (presets per game, or remapped button by button: Assign, then press the controller button; saved as an `X2_PAD` line), log detail and extra `X2_*` switches. |
 | Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. |
 | Log | The game's output and the build tools' output. |

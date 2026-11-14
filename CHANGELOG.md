@@ -35,7 +35,7 @@ on this computer, or export the Android core or app. Build tools (clang,
 CMake, Ninja, the Android NDK) are downloaded on demand into the launcher's own
 folder.
 
-**Controls:** gamepads and arcade sticks with per-game layouts (`X2_PAD`),
+**Controls:** gamepads and arcade sticks with per-game layouts (`X2_PAD`), remapped in the launcher by pressing the buttons,
 on-screen touch controls on Android with each game's buttons.
 
 **Known issues:** BlazBlue Calamity Trigger pauses for about 0.25 s at fight

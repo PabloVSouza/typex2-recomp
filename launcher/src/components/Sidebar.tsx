@@ -3,6 +3,7 @@ import { Boxes, Gamepad2, Info, Library, ScrollText, Wrench } from "lucide-react
 import { useAppState } from "@/hooks";
 import { useUi, type Page } from "@/stores";
 import { cn } from "@/lib/utils";
+import appIcon from "../../src-tauri/icons/64x64.png"; // the pixel art at 2x (launcher/icon)
 
 function NavItem({ label, icon, active, onClick, badge }: { label: string; icon: ReactNode; active: boolean; onClick: () => void; badge?: ReactNode }) {
   return (
@@ -27,7 +28,7 @@ const Dot = ({ className }: { className: string }) => <span className={cn("block
 export function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-amber to-pink font-display text-sm font-bold text-[#1a1206]">X</div>
+      <img src={appIcon} alt="" className="size-9 [image-rendering:pixelated]" />
       <div className="leading-tight">
         <div className="font-display text-sm font-bold tracking-[0.18em]">TYPE X</div>
         <div className="font-display text-[10px] tracking-[0.3em] text-muted-foreground">RECOMP</div>

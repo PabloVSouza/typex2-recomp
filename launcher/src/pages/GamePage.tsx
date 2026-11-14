@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { FolderOpen, FolderSync, Trash2, X } from "lucide-react";
-import { Button, Input } from "@/components/ui";
+import { Button } from "@/components/ui";
+import { LayoutEditor } from "@/components/LayoutEditor";
+import { layoutOf, padOf } from "@/lib/controls";
 import { JobProgress, LibraryBadge, PageHeader, Row, Section, SelectRow, SwitchRow } from "@/components/common";
 import { GameAction } from "@/pages/LibraryPage";
 import { useAction, useAppState } from "@/hooks";
@@ -21,7 +23,8 @@ function Settings({ game }: { game: GameEntry }) {
     save.mutate(next);
   };
   const layouts = game.info?.layouts ?? [];
-  const preset = layouts.find((l) => l.pad === s.pad);
+  const same = (a: string, b: string) => padOf(layoutOf(game.id, a)) === padOf(layoutOf(game.id, b));
+  const preset = layouts.find((l) => same(l.pad, s.pad));
   return (
     <>
       <Section title="Display">
@@ -36,18 +39,15 @@ function Settings({ game }: { game: GameEntry }) {
           onChange={(scale) => set({ scale })}
         />
       </Section>
-      <Section title="Controls" description="Gamepad buttons to the cabinet's buttons. Keyboard and gamepad both work; hold Select for the test menu.">
+      <Section title="Controls" description="Which controller button presses each of the cabinet's buttons. The keyboard works too (see Controls in the docs).">
         <SelectRow
-          title="Gamepad layout"
+          title="Layout"
+          description="A starting point; change single buttons below."
           value={preset ? preset.pad : CUSTOM}
-          options={[...layouts.map((l) => ({ value: l.pad, label: l.label })), { value: CUSTOM, label: "Custom…" }]}
-          onChange={(v) => set({ pad: v === CUSTOM ? s.pad || "south=1,east=2" : v })}
+          options={[...layouts.map((l) => ({ value: l.pad, label: l.label })), ...(preset ? [] : [{ value: CUSTOM, label: "Custom" }])]}
+          onChange={(v) => v !== CUSTOM && set({ pad: v })}
         />
-        {!preset && (
-          <Row title="Custom layout" description="X2_PAD: south east west north l1 r1 l2 r2 l3 r3 = cabinet buttons (1-6, a-d, t test, v service).">
-            <Input className="w-80 font-mono text-xs" value={s.pad} onChange={(e) => setS({ ...s, pad: e.target.value })} onBlur={() => save.mutate(s)} />
-          </Row>
-        )}
+        <LayoutEditor game={game.id} pad={s.pad} onChange={(pad) => set({ pad })} />
       </Section>
       <Section title="Advanced">
         <SelectRow
@@ -58,7 +58,7 @@ function Settings({ game }: { game: GameEntry }) {
         />
         <div className="px-5 pb-4 pt-2">
           <div className="text-sm font-medium">Environment</div>
-          <div className="mb-2 mt-0.5 text-xs text-muted-foreground">Extra runtime switches, one KEY=VALUE per line (see the README's debugging switches).</div>
+          <div className="mb-2 mt-0.5 text-xs text-muted-foreground">Extra runtime switches, one KEY=VALUE per line (see Debugging → Switches in the docs).</div>
           <textarea
             className="h-24 w-full resize-y rounded-lg border border-input bg-secondary px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             value={s.env}

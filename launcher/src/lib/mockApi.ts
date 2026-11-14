@@ -47,5 +47,6 @@ const state: AppStateData = {
 
 export async function mockInvoke(cmd: string, _args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === "load_state") return structuredClone(state);
+  if (cmd === "read_pad") return new Promise((done) => setTimeout(() => done("north"), 800)); // a button pressed
   return null;
 }

@@ -25,6 +25,8 @@ export const api = {
   deleteBuilds: (id: string) => call<void>("delete_builds", { id }),
   launch: (id: string) => call<void>("launch", { id }),
   stop: () => call<void>("stop"),
+  /** The next controller button pressed (X2_PAD name), or null when cancelled. */
+  readPad: () => call<string | null>("read_pad"),
 };
 
 export async function pickFolder(title: string): Promise<string | null> {
@@ -44,4 +46,11 @@ export async function listen<T>(event: string, handler: (payload: T) => void): P
   if (!inTauri) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen<T>(event, (e) => handler(e.payload));
+}
+
+/** A web page in the system's browser. */
+export async function openUrl(url: string) {
+  if (!inTauri) return void window.open(url, "_blank");
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
 }

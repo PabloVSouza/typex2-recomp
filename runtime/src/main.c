@@ -41,6 +41,12 @@ int main(int argc, char **argv) {
     tables = &X2_GAME_TABLES;
 #endif
     const char *lib = NULL;
+#ifdef X2_PLAYER
+    if (argc > 1 && !strcmp(argv[1], "--read-input")) { /* the launcher's button assignment */
+        extern int x2_read_pad_input(void);
+        return x2_read_pad_input();
+    }
+#endif
     for (int i = 1; i < argc; i++) {
         if (!strncmp(argv[i], "-v", 2)) x2_log_level = 1 + (int)strlen(argv[i]) - 1;
         else if (!strcmp(argv[i], "--fullscreen") || !strcmp(argv[i], "-f")) fullscreen = true;

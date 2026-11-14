@@ -246,6 +246,23 @@ fn launch(app: AppHandle, state: State<AppState>, id: String) -> Result<()> {
     Ok(())
 }
 
+/// One controller button for the layout editor: x2-player opens a small window and prints
+/// "pad <name>" (south, east, west, north, l1, r1, l2, r2, l3, r3); None when cancelled.
+#[tauri::command]
+async fn read_pad(state: State<'_, AppState>) -> Result<Option<String>> {
+    let player = state.kit()?.player.clone().ok_or("No x2-player for this computer.")?;
+    let out = tauri::async_runtime::spawn_blocking(move || Command::new(player).arg("--read-input").output())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        let error = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(if error.is_empty() { format!("the input reader exited with {}", out.status) } else { error });
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(text.lines().find_map(|l| l.strip_prefix("pad ")).map(|s| s.trim().to_string()))
+}
+
 #[tauri::command]
 fn stop(state: State<AppState>) -> Result<()> {
     if let Some(r) = state.running.lock().map_err(|e| e.to_string())?.as_mut() {
@@ -284,7 +301,8 @@ pub fn run() {
             cancel_job,
             delete_builds,
             launch,
-            stop
+            stop,
+            read_pad
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

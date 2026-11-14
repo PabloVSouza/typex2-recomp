@@ -552,6 +552,66 @@ static void touch_draw(int ww, int wh) {
 static SDL_Gamepad *pads[2];
 SDL_Gamepad *x2_pad0(void) { return pads[0]; }
 
+/* x2-player --read-input (the launcher's button assignment): a small window asking for a
+ * controller button; prints "pad <name>" with the name X2_PAD uses (south ... r3) for the first one
+ * pressed, nothing when cancelled (Esc, the window closed, 15 s). Start, Back and the d-pad keep
+ * their fixed roles and are not offered. */
+int x2_read_pad_input(void) {
+    /* the launcher keeps focus (macOS does not give it to a process started in the background) */
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        return 1;
+    }
+    SDL_Window *w = SDL_CreateWindow("Press a controller button", 460, 110, 0);
+    SDL_Renderer *r = w ? SDL_CreateRenderer(w, NULL) : NULL;
+    if (w) SDL_RaiseWindow(w);
+    int n = 0;
+    SDL_JoystickID *ids = SDL_GetGamepads(&n);
+    for (int i = 0; i < n; i++) SDL_OpenGamepad(ids[i]);
+    SDL_free(ids);
+    const char *got = NULL;
+    for (Uint64 end = SDL_GetTicks() + 15000; !got && SDL_GetTicks() < end;) {
+        SDL_Event e;
+        while (!got && SDL_PollEvent(&e)) {
+            if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_ESCAPE))
+                end = 0;
+            else if (e.type == SDL_EVENT_GAMEPAD_ADDED)
+                SDL_OpenGamepad(e.gdevice.which);
+            else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+                switch (e.gbutton.button) {
+                case SDL_GAMEPAD_BUTTON_SOUTH: got = "south"; break;
+                case SDL_GAMEPAD_BUTTON_EAST: got = "east"; break;
+                case SDL_GAMEPAD_BUTTON_WEST: got = "west"; break;
+                case SDL_GAMEPAD_BUTTON_NORTH: got = "north"; break;
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: got = "l1"; break;
+                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: got = "r1"; break;
+                case SDL_GAMEPAD_BUTTON_LEFT_STICK: got = "l3"; break;
+                case SDL_GAMEPAD_BUTTON_RIGHT_STICK: got = "r3"; break;
+                default: break;
+                }
+            } else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && e.gaxis.value > 16000) {
+                if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER) got = "l2";
+                if (e.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) got = "r2";
+            }
+        }
+        if (r) {
+            SDL_SetRenderDrawColor(r, 27, 30, 62, 255);
+            SDL_RenderClear(r);
+            SDL_SetRenderDrawColor(r, 60, 220, 255, 255);
+            SDL_RenderDebugText(r, 20, 34, "Press a button on your controller");
+            SDL_SetRenderDrawColor(r, 150, 150, 180, 255);
+            SDL_RenderDebugText(r, 20, 62, "(Esc or close this window to cancel)");
+            SDL_RenderPresent(r);
+        }
+        SDL_Delay(10);
+    }
+    if (got) printf("pad %s\n", got);
+    fflush(stdout);
+    SDL_Quit();
+    return 0;
+}
+
 static u16 pad_bits(SDL_Gamepad *g) {
     if (!g) return 0;
     u16 v = 0;

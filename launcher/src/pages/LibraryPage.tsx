@@ -1,11 +1,14 @@
-import { FolderPlus, Gamepad2, Hammer, Play, Square } from "lucide-react";
+import { FolderPlus, Gamepad2, Hammer, MessagesSquare, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui";
 import { Empty, JobProgress, LibraryBadge, PageHeader } from "@/components/common";
 import { useAction, useAppState } from "@/hooks";
-import { api, pickFolder } from "@/lib/api";
+import { api, openUrl, pickFolder } from "@/lib/api";
 import type { GameEntry } from "@/lib/types";
 import { useUi } from "@/stores";
 import { cn } from "@/lib/utils";
+
+/** The project's Discord server (a permanent invite) */
+const DISCORD = "https://discord.gg/bEQYMsEe9A";
 
 export function useAddGame() {
   const go = useUi((s) => s.go);
@@ -75,7 +78,14 @@ export function LibraryPage() {
         kicker="Library"
         title="Your arcade"
         description="Add the folders of the games you own. The launcher recompiles each one on this computer from your own files, to play here or to export for Android and RetroArch."
-        actions={<Button onClick={addGame}><FolderPlus /> Add game folder</Button>}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => openUrl(DISCORD)} title="Help, news and stick layouts">
+              <MessagesSquare /> Discord
+            </Button>
+            <Button onClick={addGame}><FolderPlus /> Add game folder</Button>
+          </>
+        }
       />
       {data.games.length === 0 ? (
         <Empty icon={<Gamepad2 />} title="No games yet">
