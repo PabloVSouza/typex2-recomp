@@ -72,6 +72,6 @@ SDL_AUDIO_DRIVER=dummy X2_NOPRESENT=1 X2_SHOT=300,600 X2_SHOT_PATH=$TMPDIR/s.png
   change should not alter output.
 - **Update the docs:**
   - the game's page and [Game status](Game-Status.md);
-  - the README (status, switches, known gaps);
+  - the README's games table, and [Debugging](Debugging.md#switches) for new switches;
   - `CLAUDE.md` (game table).
 - **Commit and push.**

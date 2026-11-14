@@ -18,6 +18,7 @@ Each game then runs in one of two ways:
 | [Game status](Game-Status.md) | Status of every Type X / X+ and Type X2 game, and the next candidates |
 | [Launcher](Launcher.md) | The desktop app: play, export for Android / RetroArch, downloaded build tools |
 | [Hardware](Hardware.md) | The Type X and Type X2 boards, and how the runtime stands in for them |
+| [Building from source](Building.md) | Desktop builds, tools, contributing, releases |
 | [Architecture](Architecture.md) | Recompiler and runtime internals |
 | [Porting a game](Porting-a-Game.md) | Steps to bring up a new game |
 | [Controls](Controls.md) | Keyboard, pads, `X2_PAD` / `X2_INPUT`, each game's layout |
@@ -37,9 +38,11 @@ Game pages:
 
 ## Quick start
 
-Build steps, run commands and the full list of `X2_*` switches are in the
-repository's [README](../README.md). Rules for contributors and coding agents
-are in [CLAUDE.md](../CLAUDE.md).
+Players: the repository's [README](../README.md) (download, getting
+started), then [Android and RetroArch](Android-and-RetroArch.md) and
+[Controls](Controls.md). Developers: [Building from source](Building.md), and
+the full list of `X2_*` switches in [Debugging](Debugging.md#switches). Rules
+for contributors and coding agents are in [CLAUDE.md](../CLAUDE.md).
 
 ## Legal
 

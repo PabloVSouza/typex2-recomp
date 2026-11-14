@@ -67,7 +67,7 @@ HLE functions follow one pattern:
 - **Guest threads.** Every guest thread is a host thread, and they run in
   parallel.
 - **Frames.** The game's main thread records each frame. In the standalone
-  app the platform thread replays it with GL. In the core, `retro_run` both
+  app the platform thread replays it with the renderer (Metal, Vulkan or GL). In the core, `retro_run` both
   replays and clocks the guest, with one frame in flight: the guest computes
   frame N+1 while RetroArch shows frame N.
 - **Ending a session.** Guest threads can't be torn down. On libretro unload
@@ -80,3 +80,18 @@ HLE functions follow one pattern:
   the game.
 - **Choosing the game.** The core picks the game from the PE header of the
   `game.exe` it is given.
+
+## Limits
+
+- **Structured exceptions** (`RaiseException`, C++ `throw`) are not
+  dispatched to the guest.
+- **Memory ordering.** Guest threads run truly parallel. On ARM, shared
+  (non-stack) guest stores are release stores (and loads acquire, with
+  `X2_TSO=1`), so code relying on x86's ordering (the games' spinlocks) stays
+  correct.
+- **GDI text** on Android uses stb_truetype: heavy weights are emboldened by
+  one pixel only, so they look lighter than on macOS (CoreText).
+- **D3DX effects:** `Get*Array`, parameter blocks and `CloneEffect` are not
+  implemented, and stop with a named error if a game calls them.
+
+Per-game issues are on each game's page ([Game status](Game-Status.md)).

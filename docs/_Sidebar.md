@@ -16,9 +16,12 @@
 
 **Guides**
 - [Launcher](Launcher.md)
-- [Hardware](Hardware.md)
+- [Android and RetroArch](Android-and-RetroArch.md)
+- [Controls](Controls.md)
+
+**Development**
+- [Building from source](Building.md)
 - [Architecture](Architecture.md)
 - [Porting a game](Porting-a-Game.md)
-- [Controls](Controls.md)
-- [Android and RetroArch](Android-and-RetroArch.md)
 - [Debugging](Debugging.md)
+- [Hardware](Hardware.md)

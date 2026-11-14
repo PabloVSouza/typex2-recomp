@@ -49,6 +49,13 @@ Settings and limits:
 - **Missing features.** No save states, rewind, run-ahead or reset.
 - **One game per session.** After closing a game, restart RetroArch before
   loading another.
+- **Latency.** One frame in flight: the game computes frame N+1 while
+  RetroArch shows frame N, as on the cabinet's driver. `X2_PIPELINE=0` runs in
+  lockstep (a frame less latency, drops when a frame's work exceeds 16.7 ms).
+- **Remaps.** RetroArch's remaps work as with FinalBurn Neo: copy
+  `remaps/FinalBurn Neo/FinalBurn Neo.rmp` to `remaps/Type X2/Type X2.rmp`
+  (with `input_libretro_device_p1/p2 = "1"`) to share one layout. Button
+  layouts per game: [Controls](Controls.md).
 
 ## ES-DE
 

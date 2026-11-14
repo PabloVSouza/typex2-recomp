@@ -1,8 +1,9 @@
 # CLAUDE.md
 
 Guidance for AI coding agents (Claude Code, Codex, ...) working in this
-repository. `AGENTS.md` is a symlink to this file. Read `README.md` for the
-architecture, build steps and the full list of `X2_*` switches.
+repository. `AGENTS.md` is a symlink to this file. The README is for players; for
+developers read `docs/Building.md` (build steps), `docs/Architecture.md` and the
+full list of `X2_*` switches in `docs/Debugging.md#switches`.
 
 ## What this is
 
@@ -54,10 +55,11 @@ gets an entry per milestone. Update them with the README.
   saves (`sv/`, `Ranking/`, ...) are the exception: the game writes them.
 * **Run automated tests without audio**: `SDL_AUDIO_DRIVER=dummy`, plus
   `X2_NOPRESENT=1` for headless runs.
-* **Keep `README.md` current** with every user-visible change: game status,
-  new `X2_*` switches (debugging table), known gaps. This file too, when a
-  rule, game status or workflow changes, and `docs/` (game status, the
-  game's page, progress log); then run `tools/wiki_sync.sh`.
+* **Keep the docs current** with every user-visible change: the README (for
+  players: games table, platforms, getting started), `docs/` (game status,
+  the game's page, `Debugging.md#switches` for new `X2_*` switches,
+  `Building.md`, progress log), this file when a rule, game status or
+  workflow changes, and `CHANGELOG.md`; then run `tools/wiki_sync.sh`.
 
 ## Layout
 
@@ -102,7 +104,7 @@ gets an entry per milestone. Update them with the README.
    (`loader.c`) and `fake_modules[]` (`hle/k32_misc.c`).
 5. Find the cabinet button layout in the game's test menu INPUT TEST
    (`X2_INPUT=900:t,910:-,...` scripts the test switch and buttons) and
-   document the `X2_PAD` line in the README.
+   document the `X2_PAD` line in `docs/Controls.md`.
 6. Regression-check the other games (attract mode at least) before
    committing.
 7. Add it to the launcher: `launcher/src-tauri/src/games.rs` (size and entry
@@ -127,7 +129,7 @@ gets an entry per milestone. Update them with the README.
   suspends itself every frame and the main thread resumes it), and what the
   reply parser accepts.
 * ARM memory ordering: guests rely on x86 TSO (spinlocks released with plain
-  stores); see `X2_TSO` in the README.
+  stores); see `X2_TSO` in `docs/Debugging.md#switches`.
 * GPU / pacing work on Android: measure with `X2_AB` + `X2_AB_TEST` (both
   variants in one run: the games pick random stages, separate runs are not
   comparable), `X2_GPUTIME`, `X2_PACELOG`, `X2_PROF`, `X2_CSPROF`.
@@ -238,4 +240,4 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
 * Log once per unusual event with `x2_log`; verbose detail behind
   `X2_TRACE` / `-vv`.
 * New debugging switches are environment variables named `X2_*`, read once,
-  and documented in the README table.
+  and documented in the table in `docs/Debugging.md#switches`.
