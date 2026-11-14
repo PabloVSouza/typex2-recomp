@@ -739,7 +739,6 @@ typedef struct PendUp {
     u8 data[]; /* the TexUpload command */
 } PendUp;
 static PendUp *pend_head, *pend_tail;
-static u32 pend_count;
 static int lazy_up = -1;
 
 static void pend_apply(PendUp *e) {
@@ -749,7 +748,6 @@ static void pend_apply(PendUp *e) {
         tex_upload_now((const TexUpload *)e->data);
     }
     free(e);
-    pend_count--;
 }
 /* everything queued for a texture about to be read; returns it (an upload may replace it) */
 static VTex *tex_ready(VTex *t) {
@@ -802,7 +800,6 @@ static void do_tex_upload(const TexUpload *k, u32 len) {
     else
         pend_head = e;
     pend_tail = e;
-    pend_count++;
     t->npend++;
 }
 

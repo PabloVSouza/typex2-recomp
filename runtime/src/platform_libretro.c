@@ -276,6 +276,9 @@ static void context_reset(void) {
         x2_log("libretro: context_reset on a live session (resources lost)");
     }
     gl_ready = true;
+#ifdef _WIN32
+    x2_gl_load((void *(*)(const char *))hw_render.get_proc_address);
+#endif
     x2_log("libretro: GL %s / %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
     gfx_gl_init(1280, 720);
     blit_init();

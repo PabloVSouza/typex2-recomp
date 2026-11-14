@@ -72,6 +72,7 @@ add_library(x2rt_common OBJECT
   src/gfx/gfx_record.c
   src/gfx/gfx_texconv.c
   src/gfx/gfx_gl.c
+  src/gfx/gl_win.c
   src/gfx/gfx_gl_draw.c
   src/gfx/sm3_glsl.c
   src/gfx/d3dasm.c

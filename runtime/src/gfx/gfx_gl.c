@@ -476,7 +476,6 @@ const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size) {
 }
 bool gfx_gl_is_backbuffer(GfxId id) { return id == gfx_backbuffer || !texs[id] || !texs[id]->fbo; }
 
-static GfxId last_rt0;
 static u32 st_draws, st_clears, st_frames, st_uploads;
 bool gfx_gl_drawlog;      /* X2_DRAWLOG=<frame>: log every draw of that frame */
 static u32 drawlog_frame, drawlog_last; /* X2_DRAWLOG=<first>[-<last>] */
@@ -653,7 +652,6 @@ static void run_frame(Frame *f) {
             case C_DRAW: {
                 const Draw *k = p;
                 gpu_pass(k->st.rt[0]);
-                last_rt0 = k->st.rt[0];
                 st_draws++;
                 gfx_gl_draw(&k->st, k->prim, k->start, k->count, k->indexed, k->base, NULL, 0, NULL, 0);
                 break;

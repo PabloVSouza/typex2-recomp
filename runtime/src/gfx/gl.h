@@ -17,6 +17,9 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/gl.h>
 #include <GL/glext.h>
+#ifdef _WIN32 /* opengl32.dll has GL 1.1 only: the rest through pointers (gl_win.h) */
+#include "gl_win.h"
+#endif
 #endif
 
 #ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT

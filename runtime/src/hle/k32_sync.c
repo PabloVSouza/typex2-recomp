@@ -491,6 +491,7 @@ void x2_exit_thread(u32 code) {
     x2_vm_free(t->stack_base - t->stack_size); /* as in thread_main: the stack and thread block are dead */
     x2_vm_free(t->teb);
     pthread_exit(NULL);
+    __builtin_unreachable(); /* MinGW's pthread_exit is not declared noreturn */
 }
 static void ExitThread(X2Cpu *c) { x2_exit_thread(ARG(0)); }
 

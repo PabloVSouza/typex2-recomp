@@ -679,6 +679,9 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
         glc = SDL_GL_CreateContext(win);
         if (!glc) x2_fatal("SDL_GL_CreateContext: %s", SDL_GetError());
         SDL_GL_MakeCurrent(win, glc);
+#ifdef _WIN32
+        x2_gl_load((void *(*)(const char *))SDL_GL_GetProcAddress);
+#endif
         /* The guest paces itself to 60 Hz; a vsynced swap can block forever when the
          * screen is locked or the display sleeps, so vsync is opt-in (X2_VSYNC=1). */
         SDL_GL_SetSwapInterval(getenv("X2_VSYNC") ? 1 : 0);
