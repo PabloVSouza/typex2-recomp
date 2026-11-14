@@ -40,10 +40,16 @@
     "title": "Ihre Spielhalle",
     "description": "Fügen Sie die Ordner der Spiele hinzu, die Sie besitzen. Der Launcher rekompiliert jedes Spiel auf diesem Computer aus Ihren eigenen Dateien, um es hier zu spielen oder für Android und RetroArch zu exportieren.",
     "add": "Spielordner hinzufügen",
+    "scan": "Ordner durchsuchen",
+    "scanHint": "Ein Ordner mit mehreren Spielordnern: Jedes unterstützte Spiel darin wird hinzugefügt",
+    "pickScanFolder": "Wählen Sie den Ordner, der Ihre Spielordner enthält",
+    "scanFound_one": "{{count}} Spiel gefunden",
+    "scanFound_other": "{{count}} Spiele gefunden",
+    "scanNone": "In diesem Ordner wurden keine unterstützten Spiele gefunden",
     "discordHint": "Hilfe, Neuigkeiten und Stick-Layouts",
     "pickFolder": "Spielordner wählen (der Ordner mit game.exe)",
     "emptyTitle": "Noch keine Spiele",
-    "emptyText": "Wählen Sie den Ordner eines Spiels: den mit seiner <code>game.exe</code>. Der Launcher erkennt die unterstützten Spiele an ihrer ausführbaren Datei.",
+    "emptyText": "Wählen Sie den Ordner eines Spiels (den mit seiner <code>game.exe</code>) oder durchsuchen Sie einen Ordner mit mehreren. Der Launcher erkennt die unterstützten Spiele an ihrer ausführbaren Datei.",
     "alsoSupported": "Ebenfalls unterstützt"
   },
   "game": {

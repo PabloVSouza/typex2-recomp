@@ -13,7 +13,7 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 
 | Page | |
 |---|---|
-| Library | Add game folders. A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. |
+| Library | Add game folders, or scan a folder that holds several (searched 4 levels deep; hidden folders skipped; each game's first copy counts). A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. |
 | Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (presets per game, or remapped button by button: Assign, then press the controller button; saved as an `X2_PAD` line), log detail and extra `X2_*` switches. |
 | Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. |
@@ -88,6 +88,7 @@ npm run tauri dev       # uses the checkout's build/recompiler/x2recomp and buil
 npm run dev             # the pages in a browser with mock data (#tools, #export, #game:kof13)
 cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> tools llvm
 cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> library "<game dir>"
+cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> scan "<folder>"
 cargo run --manifest-path src-tauri/Cargo.toml --example cli -- <data dir> export android-retroarch "<game dir>"...
 ```
 

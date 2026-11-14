@@ -40,10 +40,16 @@
     "title": "Your arcade",
     "description": "Add the folders of the games you own. The launcher recompiles each one on this computer from your own files, to play here or to export for Android and RetroArch.",
     "add": "Add game folder",
+    "scan": "Scan a folder",
+    "scanHint": "A folder holding several game folders: every supported game in it is added",
+    "pickScanFolder": "Choose the folder that holds your game folders",
+    "scanFound_one": "Found {{count}} game",
+    "scanFound_other": "Found {{count}} games",
+    "scanNone": "No supported games found in that folder",
     "discordHint": "Help, news and stick layouts",
     "pickFolder": "Choose a game folder (the one holding game.exe)",
     "emptyTitle": "No games yet",
-    "emptyText": "Choose a game's folder: the one with its <code>game.exe</code>. The launcher recognises the supported games by their executable.",
+    "emptyText": "Choose a game's folder (the one with its <code>game.exe</code>), or scan a folder that holds several. The launcher recognises the supported games by their executable.",
     "alsoSupported": "Also supported"
   },
   "game": {

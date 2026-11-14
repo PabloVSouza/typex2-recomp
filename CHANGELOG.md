@@ -33,7 +33,8 @@ The first release.
   games on these systems is new in this release and not yet tested with games
   (Vulkan, with OpenGL as a fallback).
 
-**Launcher:** add the folders of the games you own, recompile them, play them
+**Launcher:** add the folders of the games you own (or scan a folder holding
+them all), recompile them, play them
 on this computer, or export the Android core or app. Build tools (clang,
 CMake, Ninja, the Android NDK) are downloaded on demand into the launcher's own
 folder. In English, Spanish, French, Portuguese (Brazil and Portugal), German,

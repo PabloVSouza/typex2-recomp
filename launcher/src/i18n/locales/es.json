@@ -40,10 +40,17 @@
     "title": "Tu arcade",
     "description": "Añade las carpetas de los juegos que tienes. El launcher recompila cada uno en este equipo a partir de tus propios archivos, para jugar aquí o exportarlo a Android y RetroArch.",
     "add": "Añadir carpeta",
+    "scan": "Buscar en una carpeta",
+    "scanHint": "Una carpeta con varias carpetas de juegos: se añaden todos los juegos compatibles que contenga",
+    "pickScanFolder": "Elige la carpeta que contiene tus carpetas de juegos",
+    "scanFound_one": "Se encontró {{count}} juego",
+    "scanFound_many": "Se encontraron {{count}} juegos",
+    "scanFound_other": "Se encontraron {{count}} juegos",
+    "scanNone": "No se encontraron juegos compatibles en esa carpeta",
     "discordHint": "Ayuda, novedades y configuraciones de stick",
     "pickFolder": "Elige la carpeta de un juego (la que contiene game.exe)",
     "emptyTitle": "Aún no hay juegos",
-    "emptyText": "Elige la carpeta de un juego: la que tiene su <code>game.exe</code>. El launcher reconoce los juegos compatibles por su ejecutable.",
+    "emptyText": "Elige la carpeta de un juego (la que tiene su <code>game.exe</code>) o busca en una carpeta que contenga varios. El launcher reconoce los juegos compatibles por su ejecutable.",
     "alsoSupported": "También compatibles"
   },
   "game": {

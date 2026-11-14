@@ -40,10 +40,17 @@
     "title": "Seu fliperama",
     "description": "Adicione as pastas dos jogos que você tem. O launcher recompila cada um neste computador a partir dos seus próprios arquivos, para jogar aqui ou exportar para Android e RetroArch.",
     "add": "Adicionar pasta de jogo",
+    "scan": "Procurar em uma pasta",
+    "scanHint": "Uma pasta com várias pastas de jogos: todos os jogos compatíveis nela são adicionados",
+    "pickScanFolder": "Escolha a pasta que contém as pastas dos seus jogos",
+    "scanFound_one": "{{count}} jogo encontrado",
+    "scanFound_many": "{{count}} jogos encontrados",
+    "scanFound_other": "{{count}} jogos encontrados",
+    "scanNone": "Nenhum jogo compatível encontrado nessa pasta",
     "discordHint": "Ajuda, novidades e layouts de controle",
     "pickFolder": "Escolha a pasta de um jogo (a que contém o game.exe)",
     "emptyTitle": "Nenhum jogo ainda",
-    "emptyText": "Escolha a pasta de um jogo: a que tem o <code>game.exe</code>. O launcher reconhece os jogos suportados pelo executável.",
+    "emptyText": "Escolha a pasta de um jogo (a que tem o <code>game.exe</code>) ou procure em uma pasta que tenha vários. O launcher reconhece os jogos compatíveis pelo executável.",
     "alsoSupported": "Também suportados"
   },
   "game": {

@@ -2,6 +2,7 @@
 //!   cargo run --example cli -- <data dir> tools <llvm|cmake|ninja|ndk>...
 //!   cargo run --example cli -- <data dir> library <game dir>
 //!   cargo run --example cli -- <data dir> export <target> <game dir>...
+//!   cargo run --example cli -- <data dir> scan <folder>   (the games the launcher would add; reads only)
 //! The kit is found as the app finds it (X2_REPO, or the checkout above the working directory).
 use std::path::{Path, PathBuf};
 use typex2_launcher_lib::{games, kit, recomp, toolchain};
@@ -9,7 +10,7 @@ use typex2_launcher_lib::{games, kit, recomp, toolchain};
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        eprintln!("usage: cli <data dir> tools <id>... | library <game dir> | export <target> <game dir>...");
+        eprintln!("usage: cli <data dir> tools <id>... | library <game dir> | export <target> <game dir>... | scan <folder>");
         std::process::exit(2);
     }
     let data = PathBuf::from(&args[0]);
@@ -26,6 +27,12 @@ fn main() {
             let target = recomp::target(&args[2]).expect("unknown target");
             let chosen: Vec<_> = args[3..].iter().map(|d| identify(d)).collect();
             recomp::export(&recomp::Ctx::console(&format!("export:{}", target.id)), &data, &kit, target, &chosen, kit::ndk(None), jobs)
+        }
+        "scan" => {
+            for (game, dir) in games::scan(Path::new(&args[2])) {
+                println!("{:8} {}", game.id, dir.display());
+            }
+            Ok(serde_json::Value::Null)
         }
         other => Err(format!("unknown command {other}")),
     };

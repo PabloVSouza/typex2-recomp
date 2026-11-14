@@ -40,10 +40,17 @@
     "title": "A sua arcada",
     "description": "Adicione as pastas dos jogos que possui. O launcher recompila cada um neste computador a partir dos seus próprios ficheiros, para jogar aqui ou exportar para Android e RetroArch.",
     "add": "Adicionar pasta de jogo",
+    "scan": "Procurar numa pasta",
+    "scanHint": "Uma pasta com várias pastas de jogos: todos os jogos compatíveis que contém são adicionados",
+    "pickScanFolder": "Escolha a pasta que contém as pastas dos seus jogos",
+    "scanFound_one": "{{count}} jogo encontrado",
+    "scanFound_many": "{{count}} jogos encontrados",
+    "scanFound_other": "{{count}} jogos encontrados",
+    "scanNone": "Não foram encontrados jogos compatíveis nessa pasta",
     "discordHint": "Ajuda, novidades e esquemas de comando",
     "pickFolder": "Escolha a pasta de um jogo (a que contém o game.exe)",
     "emptyTitle": "Ainda não há jogos",
-    "emptyText": "Escolha a pasta de um jogo: a que tem o <code>game.exe</code>. O launcher reconhece os jogos suportados pelo executável.",
+    "emptyText": "Escolha a pasta de um jogo (a que tem o <code>game.exe</code>) ou procure numa pasta que tenha vários. O launcher reconhece os jogos compatíveis pelo executável.",
     "alsoSupported": "Também suportados"
   },
   "game": {

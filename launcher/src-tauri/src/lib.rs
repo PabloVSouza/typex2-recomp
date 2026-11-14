@@ -103,6 +103,33 @@ fn add_game(state: State<AppState>, path: String) -> Result<Value> {
     Ok(json!({"id": game.id, "title": game.title}))
 }
 
+/// Adds every supported game found under `path` (games::scan); a game already in the library
+/// gets the folder found. Returns the games found, each with whether it was new.
+#[tauri::command]
+async fn scan_folder(state: State<'_, AppState>, path: String) -> Result<Value> {
+    let root = PathBuf::from(&path);
+    let found = tauri::async_runtime::spawn_blocking(move || games::scan(&root)).await.map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    state.update(|c| {
+        for (game, dir) in &found {
+            let dir = dir.to_string_lossy().into_owned();
+            let new = match c.games.iter_mut().find(|g| g.id == game.id) {
+                Some(g) => {
+                    g.path = dir;
+                    false
+                }
+                None => {
+                    c.games.push(GameEntry { id: game.id.into(), path: dir, settings: GameSettings::default() });
+                    true
+                }
+            };
+            out.push(json!({"id": game.id, "title": game.title, "new": new}));
+        }
+        Ok(())
+    })?;
+    Ok(json!(out))
+}
+
 #[tauri::command]
 fn remove_game(state: State<AppState>, id: String, delete_builds: bool) -> Result<()> {
     if delete_builds {
@@ -300,6 +327,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_state,
             add_game,
+            scan_folder,
             remove_game,
             save_game_settings,
             save_build_settings,

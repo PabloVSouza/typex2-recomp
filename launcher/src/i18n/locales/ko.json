@@ -40,10 +40,15 @@
     "title": "나의 아케이드",
     "description": "보유한 게임의 폴더를 추가하세요. 런처가 이 컴퓨터에서 사용자의 파일로 각 게임을 재컴파일하며, 여기서 플레이하거나 Android와 RetroArch용으로 내보낼 수 있습니다.",
     "add": "게임 폴더 추가",
+    "scan": "폴더 검색",
+    "scanHint": "여러 게임 폴더가 들어 있는 폴더: 그 안의 지원 게임을 모두 추가합니다",
+    "pickScanFolder": "게임 폴더들이 들어 있는 폴더를 선택하세요",
+    "scanFound_other": "게임 {{count}}개를 찾았습니다",
+    "scanNone": "그 폴더에서 지원 게임을 찾지 못했습니다",
     "discordHint": "도움말, 소식, 스틱 배치",
     "pickFolder": "게임 폴더 선택(game.exe가 있는 폴더)",
     "emptyTitle": "아직 게임이 없습니다",
-    "emptyText": "<code>game.exe</code>가 있는 게임 폴더를 선택하세요. 런처는 실행 파일로 지원 게임을 인식합니다.",
+    "emptyText": "게임 폴더(<code>game.exe</code>가 있는 폴더)를 선택하거나, 여러 게임이 들어 있는 폴더를 검색하세요. 런처는 실행 파일로 지원 게임을 인식합니다.",
     "alsoSupported": "그 밖의 지원 게임"
   },
   "game": {

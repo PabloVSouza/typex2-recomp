@@ -1,8 +1,8 @@
-import { FolderPlus, Gamepad2, MessagesSquare } from "lucide-react";
+import { FolderPlus, FolderSearch, Gamepad2, MessagesSquare } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { Empty, PageHeader } from "@/components/common";
 import { Button } from "@/components/ui";
-import { useAddGame, useAppState } from "@/hooks";
+import { useAddGame, useAppState, useScanFolder } from "@/hooks";
 import { openUrl } from "@/lib";
 import { AlsoSupported } from "@/pages/library/AlsoSupported";
 import { GameCard } from "@/pages/library/GameCard";
@@ -14,6 +14,7 @@ export function LibraryPage() {
   const { t } = useTranslation();
   const { data } = useAppState();
   const addGame = useAddGame();
+  const scanFolder = useScanFolder();
   if (!data) return null;
   const added = new Set(data.games.map((g) => g.id));
   return (
@@ -27,6 +28,7 @@ export function LibraryPage() {
             <Button variant="secondary" onClick={() => openUrl(DISCORD)} title={t("library.discordHint")}>
               <MessagesSquare /> Discord
             </Button>
+            <Button variant="secondary" onClick={scanFolder} title={t("library.scanHint")}><FolderSearch /> {t("library.scan")}</Button>
             <Button onClick={addGame}><FolderPlus /> {t("library.add")}</Button>
           </>
         }
@@ -34,6 +36,10 @@ export function LibraryPage() {
       {data.games.length === 0 ? (
         <Empty icon={<Gamepad2 />} title={t("library.emptyTitle")}>
           <Trans i18nKey="library.emptyText" components={{ code: <code className="text-foreground" /> }} />
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Button variant="secondary" onClick={scanFolder}><FolderSearch /> {t("library.scan")}</Button>
+            <Button onClick={addGame}><FolderPlus /> {t("library.add")}</Button>
+          </div>
         </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">{data.games.map((g) => <GameCard key={g.id} game={g} />)}</div>

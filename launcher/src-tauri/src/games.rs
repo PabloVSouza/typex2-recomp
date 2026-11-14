@@ -104,6 +104,42 @@ pub fn identify(dir: &Path) -> Result<(&'static Game, PathBuf), String> {
     })
 }
 
+/// The supported games under `root` (a folder holding the game folders, like a collection on
+/// another disk), each with its folder: folders are searched breadth-first, at most `SCAN_DEPTH`
+/// levels down, skipping hidden folders and links; a folder holding a game is not searched further,
+/// and only the first copy of a game counts. `SCAN_MAX_DIRS` keeps a whole disk from being walked.
+pub fn scan(root: &Path) -> Vec<(&'static Game, PathBuf)> {
+    const SCAN_DEPTH: usize = 4;
+    const SCAN_MAX_DIRS: usize = 20_000;
+    let mut found: Vec<(&'static Game, PathBuf)> = Vec::new();
+    let mut queue = std::collections::VecDeque::from([(root.to_path_buf(), 0usize)]);
+    let mut visited = 0;
+    while let Some((dir, depth)) = queue.pop_front() {
+        visited += 1;
+        if visited > SCAN_MAX_DIRS {
+            break;
+        }
+        if let Ok((game, _)) = identify(&dir) {
+            if !found.iter().any(|(g, _)| g.id == game.id) {
+                found.push((game, dir));
+            }
+            continue;
+        }
+        if depth == SCAN_DEPTH {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let mut subdirs: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) && !e.file_name().to_string_lossy().starts_with('.'))
+            .map(|e| e.path())
+            .collect();
+        subdirs.sort();
+        queue.extend(subdirs.into_iter().map(|d| (d, depth + 1)));
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,5 +170,28 @@ mod tests {
         std::fs::remove_file(dir.join("launcher.exe")).unwrap();
         assert!(identify(&dir).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_collection_folder_is_scanned_for_games() {
+        let root = std::env::temp_dir().join(format!("x2-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let bbct = root.join("BlazBlue Calamity Trigger");
+        let kof = root.join("SNK").join("KOF 98 UM").join("data"); // deeper, under a publisher folder
+        let copy = root.join("Backups").join("BlazBlue CT copy");
+        let hidden = root.join(".trash").join("BlazBlue");
+        for d in [&bbct, &kof, &copy, &hidden] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(bbct.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
+        std::fs::write(copy.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
+        std::fs::write(hidden.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
+        std::fs::write(kof.join("game.exe"), pe(0x400000, 0x1b5250, 0x18e5000)).unwrap();
+        let found = scan(&root);
+        let ids: Vec<&str> = found.iter().map(|(g, _)| g.id).collect();
+        assert_eq!(ids, ["bbct", "kof98um"]); // the first copy only, nothing from the hidden folder
+        assert_eq!(found[0].1, bbct);
+        assert_eq!(found[1].1, kof);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

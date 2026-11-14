@@ -40,10 +40,17 @@
     "title": "Votre salle d'arcade",
     "description": "Ajoutez les dossiers des jeux que vous possédez. Le launcher recompile chacun d'eux sur cet ordinateur à partir de vos propres fichiers, pour y jouer ici ou l'exporter vers Android et RetroArch.",
     "add": "Ajouter un dossier",
+    "scan": "Analyser un dossier",
+    "scanHint": "Un dossier contenant plusieurs dossiers de jeux : chaque jeu pris en charge qu'il contient est ajouté",
+    "pickScanFolder": "Choisissez le dossier qui contient vos dossiers de jeux",
+    "scanFound_one": "{{count}} jeu trouvé",
+    "scanFound_many": "{{count}} jeux trouvés",
+    "scanFound_other": "{{count}} jeux trouvés",
+    "scanNone": "Aucun jeu pris en charge dans ce dossier",
     "discordHint": "Aide, actualités et configurations de stick",
     "pickFolder": "Choisissez le dossier d'un jeu (celui qui contient game.exe)",
     "emptyTitle": "Aucun jeu pour l'instant",
-    "emptyText": "Choisissez le dossier d'un jeu : celui qui contient son <code>game.exe</code>. Le launcher reconnaît les jeux pris en charge grâce à leur exécutable.",
+    "emptyText": "Choisissez le dossier d'un jeu (celui qui contient son <code>game.exe</code>), ou analysez un dossier qui en contient plusieurs. Le launcher reconnaît les jeux pris en charge à leur exécutable.",
     "alsoSupported": "Également pris en charge"
   },
   "game": {

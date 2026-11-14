@@ -40,10 +40,15 @@
     "title": "你的街机厅",
     "description": "添加你拥有的游戏文件夹。启动器会在本机上用你自己的文件重编译每款游戏，可在此游玩，也可导出到 Android 和 RetroArch。",
     "add": "添加游戏文件夹",
+    "scan": "扫描文件夹",
+    "scanHint": "包含多个游戏文件夹的文件夹：其中所有受支持的游戏都会被添加",
+    "pickScanFolder": "选择存放游戏文件夹的文件夹",
+    "scanFound_other": "找到 {{count}} 个游戏",
+    "scanNone": "该文件夹中没有找到受支持的游戏",
     "discordHint": "帮助、动态与摇杆布局",
     "pickFolder": "选择游戏文件夹（包含 game.exe 的文件夹）",
     "emptyTitle": "暂无游戏",
-    "emptyText": "选择游戏所在的文件夹，即包含 <code>game.exe</code> 的文件夹。启动器通过可执行文件识别支持的游戏。",
+    "emptyText": "选择游戏的文件夹（包含 <code>game.exe</code> 的那个），或扫描包含多个游戏的文件夹。启动器通过可执行文件识别受支持的游戏。",
     "alsoSupported": "其他支持的游戏"
   },
   "game": {

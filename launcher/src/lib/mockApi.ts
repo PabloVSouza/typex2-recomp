@@ -56,6 +56,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
     const g = state.games.find((x) => x.id === args?.id);
     if (g) g.settings = args?.settings as GameSettings;
   }
+  if (cmd === "scan_folder") return [{ id: "kof13", title: "The King of Fighters XIII", new: false }, { id: "bbct", title: "BlazBlue: Calamity Trigger", new: true }];
   if (cmd === "read_pad") return new Promise((done) => setTimeout(() => done("north"), 800)); // a button pressed
   return null;
 }

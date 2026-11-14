@@ -14,6 +14,8 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 export const api = {
   loadState: () => call<AppStateData>("load_state"),
   addGame: (path: string) => call<{ id: string; title: string }>("add_game", { path }),
+  /** Every supported game under a folder of game folders, added (or its folder updated). */
+  scanFolder: (path: string) => call<{ id: string; title: string; new: boolean }[]>("scan_folder", { path }),
   removeGame: (id: string, deleteBuilds: boolean) => call<void>("remove_game", { id, deleteBuilds }),
   saveGameSettings: (id: string, settings: GameSettings) => call<void>("save_game_settings", { id, settings }),
   saveBuildSettings: (ndk: string, jobs: number) => call<void>("save_build_settings", { ndk, jobs }),
