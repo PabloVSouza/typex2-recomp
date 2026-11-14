@@ -41,7 +41,14 @@ gets an entry per milestone. Update them with the README.
   committed. Only our own source and docs.
 * **Commit after each verified milestone and push right after** (origin on
   GitHub; the maintainer wants the remote current). End commit messages with
-  the co-author line the session gives you.
+  the co-author line the session gives you. CI (`.github/workflows/ci.yml`:
+  Linux, macOS, Windows builds) must stay green: check `gh run list` after
+  pushing.
+* **Versions and releases:** one version everywhere (`tools/version.sh`; CI
+  checks the files agree). User-visible changes go under a new top section of
+  `CHANGELOG.md` as they land; a release is `tools/version.sh set X.Y.Z`, the
+  section dated, a commit, then the tag `vX.Y.Z` pushed (the release workflow
+  checks tag = version and publishes). Tag only when the maintainer asks.
 * **Never write into the user's game folders** (debug dumps, logs, test
   files). Use `$TMPDIR` / `/tmp` or the session scratchpad. The games' own
   saves (`sv/`, `Ranking/`, ...) are the exception: the game writes them.

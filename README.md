@@ -56,6 +56,21 @@ runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,                 └
   `android/` (APK packaging, FFmpeg cross-build), `es-de/` (ES-DE system
   files), `libretro/` (core info file).
 
+## Download
+
+The launcher for macOS (Apple Silicon), Linux and Windows is on the
+[releases page](https://github.com/PabloVSouza/typex2-recomp/releases):
+`.dmg` for macOS, `.AppImage` / `.deb` for Linux, `.msi` / setup `.exe` for
+Windows. What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
+The apps are not signed with a developer certificate yet. macOS: open the app
+once, then allow it in System Settings → Privacy & Security ("Open Anyway").
+Windows: SmartScreen's "More info" → "Run anyway".
+
+Releases are cut by the maintainer: `tools/version.sh set X.Y.Z`, a
+`CHANGELOG.md` section for it, a commit, then `git tag vX.Y.Z` and push the
+tag; `.github/workflows/release.yml` builds the three systems and publishes.
+
 ## Launcher (the easy way)
 
 `launcher/` is a desktop app (Tauri: Rust + React) for macOS, Linux and Windows

@@ -81,6 +81,7 @@ add_library(x2rt_common OBJECT
 set_target_properties(x2rt_common PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(x2rt_common PUBLIC include)
 target_compile_options(x2rt_common PRIVATE -Wall -Wextra -Wno-unused-parameter)
+set_source_files_properties(src/boot.c PROPERTIES COMPILE_DEFINITIONS "X2_VERSION=\"${PROJECT_VERSION}\"")
 # X2_ASAN=ON: AddressSanitizer on the runtime only (the generated code stays uninstrumented)
 option(X2_ASAN "AddressSanitizer for the runtime" OFF)
 if(X2_ASAN)

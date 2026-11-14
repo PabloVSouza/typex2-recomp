@@ -131,6 +131,7 @@ X2Thread *x2_boot(const X2GameTables *game, const char *dir) {
     x2_game = game;
     x2_load_env_file(dir);
     if (getenv("X2_LOG")) x2_log_level = atoi(getenv("X2_LOG"));
+    x2_log("typex2-recomp %s", X2_VERSION);
 #ifdef _WIN32
     AddVectoredExceptionHandler(0, on_exception);
 #else

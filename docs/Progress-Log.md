@@ -2,6 +2,24 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-14: CI, Linux and Windows builds, versioned releases
+
+- **CI** (`.github/workflows/ci.yml`): the recompiler, tools, runtime and
+  x2-player build on Ubuntu 24.04, macOS and Windows (MSYS2 CLANG64) on every
+  push; the version must be the same in every file.
+- **Linux and Windows standalone:** Vulkan by default (glslang fetched as on
+  Android), GL as the fallback; SDL3 built from the pinned release where the
+  system has none.
+- **Windows port:** the guest space with VirtualAlloc, faults through a
+  vectored handler, game libraries with LoadLibrary against x2-player's import
+  library, GL 2+ through pointers (opengl32 has 1.1 only), POSIX stand-ins
+  (`compat_win`: pread/pwrite at an offset, time functions, fnmatch, disk
+  space), binary file mode by default. The launcher downloads llvm-mingw as
+  its compiler there. Built in CI; not yet run with a game.
+- **Releases:** `tools/version.sh` keeps the version in step; `CHANGELOG.md`
+  gives each release its notes; a `v*` tag builds the launcher with its kit for
+  the three systems (`.github/workflows/release.yml`) and publishes it.
+
 ## 2026-11-14: DXT on the GPU and lazy uploads (Vulkan)
 
 - **Cause of BlazBlue CT's fight-start pause:** the fight loads ~900 textures,
