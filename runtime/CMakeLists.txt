@@ -103,9 +103,16 @@ else()
   target_link_libraries(x2rt_common PUBLIC OpenGL::GL)
 endif()
 
-# ---- Vulkan (Android): shaders compiled to SPIR-V by glslang ----------------------
-# its library only: no SPIRV-Tools, no standalone tools (those need Python)
-if(ANDROID)
+# ---- Vulkan (Android, Linux, Windows): shaders compiled to SPIR-V by glslang -------
+# its library only: no SPIRV-Tools, no standalone tools (those need Python).
+# Apple uses Metal (no MoltenVK).
+option(X2_DESKTOP_VULKAN "Vulkan renderer in the standalone build on Linux and Windows" ON)
+set(X2_HAVE_VK OFF)
+if(ANDROID OR (X2_DESKTOP_VULKAN AND NOT APPLE))
+  set(X2_HAVE_VK ON)
+  if(NOT ANDROID)
+    find_package(Vulkan REQUIRED)
+  endif()
   include(FetchContent)
   set(ENABLE_OPT OFF CACHE BOOL "" FORCE)
   set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)
@@ -119,8 +126,13 @@ if(ANDROID)
     GIT_TAG 16.6.0
     GIT_SHALLOW TRUE)
   FetchContent_MakeAvailable(glslang)
-  set(X2_VK_LIBS glslang glslang-default-resource-limits vulkan)
+  if(ANDROID)
+    set(X2_VK_LIBS glslang glslang-default-resource-limits vulkan)
+  else()
+    set(X2_VK_LIBS glslang glslang-default-resource-limits Vulkan::Vulkan)
+  endif()
 endif()
+message(STATUS "x2: Vulkan renderer ${X2_HAVE_VK}")
 
 # ---- standalone runtime (SDL3) ------------------------------------------------
 option(X2_STANDALONE "Build the standalone executables / Android app (needs SDL3)" ON)
@@ -146,12 +158,26 @@ if(X2_STANDALONE)
       set(X2_SDL3_SOURCE_DIR ${sdl3_SOURCE_DIR} CACHE INTERNAL "")
     endif()
   else()
-    find_package(SDL3 REQUIRED CONFIG)
+    # a system SDL3 (brew, MSYS2, distributions that package it), otherwise the
+    # pinned release built statically (Ubuntu 24.04 has no SDL3 package)
+    find_package(SDL3 CONFIG QUIET)
+    if(NOT SDL3_FOUND)
+      message(STATUS "x2: SDL3 not installed: building release-3.4.20")
+      set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+      set(SDL_STATIC ON CACHE BOOL "" FORCE)
+      set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+      include(FetchContent)
+      FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.4.20
+        GIT_SHALLOW TRUE)
+      FetchContent_MakeAvailable(SDL3)
+    endif()
   endif()
   add_library(x2rt STATIC src/platform_sdl.c)
   target_compile_options(x2rt PRIVATE -Wall -Wextra -Wno-unused-parameter)
   target_link_libraries(x2rt PUBLIC x2rt_common SDL3::SDL3)
-  if(ANDROID) # the Vulkan backend (X2_RENDERER=vulkan) with its SDL window
+  if(X2_HAVE_VK) # the Vulkan backend (the default renderer there) with its SDL window
     target_sources(x2rt PRIVATE src/gfx/gfx_vk.c)
     target_compile_definitions(x2rt PRIVATE X2_VULKAN X2_VK_SDL)
     target_link_libraries(x2rt PUBLIC ${X2_VK_LIBS})

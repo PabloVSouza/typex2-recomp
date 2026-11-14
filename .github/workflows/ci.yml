@@ -1,0 +1,42 @@
+# Builds the recompiler, the tools, the runtime and x2-player on every push and pull
+# request. No game is built: games are recompiled on the user's machine from their own
+# files, and none are in this repository.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang pkg-config libvulkan-dev \
+            libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DX2_FETCH_CAPSTONE=ON
+      - name: Build
+        run: cmake --build build
+      - name: Smoke test
+        run: test -x build/x2-player && test -x build/recompiler/x2recomp
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages
+        run: brew install capstone sdl3 ffmpeg ninja pkg-config
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+      - name: Build
+        run: cmake --build build
+      - name: Smoke test
+        run: test -x build/x2-player && test -x build/recompiler/x2recomp
