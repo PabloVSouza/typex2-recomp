@@ -1,3 +1,4 @@
+#define _GNU_SOURCE /* dladdr, Dl_info (glibc) */
 /* Game startup shared by every front end (desktop/Android executable in
  * main.c, libretro core in platform_libretro.c). */
 #include <pthread.h>

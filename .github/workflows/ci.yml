@@ -60,6 +60,6 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -G Ninja
       - name: Build
-        run: cmake --build build -k 0
+        run: cmake --build build -- -k 0
       - name: Smoke test
         run: test -f build/x2-player.exe && test -f build/recompiler/x2recomp.exe

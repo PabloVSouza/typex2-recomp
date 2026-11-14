@@ -190,9 +190,22 @@ static inline void x2_memset32(u32 dst, u32 v, u32 n) { for (u32 i = 0; i < n; i
 /* loop back-edges: cooperative yield point (GIL) that also forces memory
  * re-reads in guest spin-wait loops */
 extern bool x2_gil_on;
-extern _Thread_local u32 x2_yield_ctr;
 void x2_gil_yield(void);
+#ifdef _WIN32
+/* Windows cannot import a thread-local from another module (a game library from
+ * x2-player): each file of generated code counts on its own and resets itself */
+static _Thread_local u32 x2_yield_tu __attribute__((unused)) = 4096;
+#define X2_YIELD()                                                                                                     \
+    do {                                                                                                               \
+        if (--x2_yield_tu == 0) {                                                                                      \
+            x2_yield_tu = 4096;                                                                                        \
+            x2_gil_yield();                                                                                            \
+        }                                                                                                              \
+    } while (0)
+#else
+extern _Thread_local u32 x2_yield_ctr;
 #define X2_YIELD() do { if (--x2_yield_ctr == 0) x2_gil_yield(); } while (0)
+#endif
 
 /* optional function-entry tracing (build generated code with -DX2_FN_TRACE) */
 #ifdef X2_FN_TRACE
