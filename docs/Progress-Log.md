@@ -2,6 +2,22 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-14: DXT on the GPU and lazy uploads (Vulkan)
+
+- **Cause of BlazBlue CT's fight-start pause:** the fight loads ~900 textures,
+  over 100 MB, in one frame. The tablet has no S3TC, so DXT was decoded on the
+  CPU, and the burst overflowed the upload ring, which then waited for the GPU.
+- **DXT decoded on the GPU:** the blocks go up as they are and one pass per
+  upload decodes them into the mip level with gfx_dxt_decode's integer maths:
+  BlazBlue CT and KOF XIII frames are pixel-identical to CPU decoding.
+- **Lazy uploads:** uploads to textures no draw has read yet wait in a queue;
+  a texture's own wait is cleared when a draw or blit reads it, and the rest
+  trickle up 4 MB a frame.
+- **Result:** the worst replay stall at fight start went from 0.5-0.6 s to
+  about 0.25 s. Still a pause, smaller.
+- **Open:** a floor platform blinks on some BlazBlue CT stages with Vulkan on
+  the tablet, independent of these changes (see the game's page).
+
 ## 2026-11-14: No more shader hitches on Vulkan
 
 - **Cause:** pipelines are made at the first draw that needs them. With warm

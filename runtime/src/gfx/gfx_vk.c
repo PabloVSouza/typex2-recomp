@@ -340,7 +340,11 @@ static void frame_end(void) {
 }
 
 /* a ring that is full: submit, wait, and continue the frame in an empty ring */
+static u32 st_flushes; /* ring flushes and the time they waited (X2_PACELOG's slow replays) */
+static u64 st_flush_ns;
 static void ring_flush(void) {
+    u64 t0 = x2_time_ns();
+    st_flushes++;
     submit();
     pass_valid[fs - slots] = false; /* its queries cannot be written again without a reset */
     VK_CHECK(vkWaitForFences(dev, 1, &fs->fence, VK_TRUE, UINT64_MAX));
@@ -350,11 +354,13 @@ static void ring_flush(void) {
     ring_start();
     collect();
     cmd_begin();
+    st_flush_ns += x2_time_ns() - t0;
 }
 /* room for `len` bytes now, so that the allocations of one draw never flush midway */
 static void ring_reserve(u64 len) {
     if ((u64)ring_pos + len > RING_SIZE && len <= RING_SIZE) ring_flush();
 }
+static u32 ssbo_align = 256;
 static u32 ring_alloc(u32 len, u32 align) {
     if (len > RING_SIZE) {
         x2_log("vulkan: %u bytes do not fit the frame ring", len);
@@ -387,6 +393,10 @@ typedef struct {
     bool rt, depth, cube, vol, dxt, expand16;
     bool rgb565;     /* opaque DXT1, stored as RGB565: half the size and bandwidth (as gfx_gl.c) */
     bool swap_rb;    /* a BGRA render target stored as RGBA8: uploads swap red and blue */
+    VkImageView *lv; /* per level and face, for dxt_decode (levels * faces) */
+    u32 gen;         /* creation number: lazy uploads queued for an older texture under its id are dropped */
+    u32 npend;       /* uploads waiting in the lazy queue */
+    bool sampled;    /* read by a draw or blit at least once (uploads to it are not held back) */
     bool uploaded;   /* any upload yet: a DXT1 texture picks its storage at the first */
     GfxId id;        /* the game's id (X2_GPUTIME=2 names passes by target) */
     bool vs_sampled; /* read by a vertex shader once: its barriers include the vertex stage */
@@ -533,7 +543,8 @@ static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 
     ci.tiling = VK_IMAGE_TILING_OPTIMAL;
     ci.usage =
         VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-        (rt ? (t->depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) : 0);
+        (rt ? (t->depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) : 0) |
+        (t->dxt && !vol ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : 0); /* dxt_decode renders into it */
     ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     VK_CHECK(vkCreateImage(dev, &ci, NULL, &t->img));
     VkMemoryRequirements req;
@@ -565,6 +576,13 @@ static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 
     return t;
 }
 static void tex_free(VTex *t) {
+    if (t->lv) {
+        u32 n = t->levels * (t->cube ? 6 : 1);
+        for (u32 i = 0; i + 1 < n; i += 2)
+            if (t->lv[i] || t->lv[i + 1]) trash((Garbage){0, VK_NULL_HANDLE, t->lv[i], t->lv[i + 1], 0, {0}, false});
+        if (n & 1 && t->lv[n - 1]) trash((Garbage){0, VK_NULL_HANDLE, t->lv[n - 1], VK_NULL_HANDLE, 0, {0}, false});
+        free(t->lv);
+    }
     trash((Garbage){0, t->img, t->view, t->att, VK_NULL_HANDLE, t->mem, true});
     free(t);
 }
@@ -575,6 +593,8 @@ static void do_tex_create(const TexCreate *k) {
     if (texs[k->id]) tex_free(texs[k->id]);
     texs[k->id] = tex_new(k->fmt, k->w, k->h, k->levels, k->rt != 0, k->cube != 0, k->scale, false, false);
     texs[k->id]->id = k->id;
+    static u32 tex_gen;
+    texs[k->id]->gen = ++tex_gen;
     static int ul = -1;
     if (ul < 0) ul = getenv("X2_UPLOADLOG") != NULL;
     if (ul)
@@ -592,7 +612,9 @@ static void do_tex_destroy(GfxId id) {
 
 /* uploads go through the ring and a copy in command order (D3D orders an upload
  * between the draws around it) */
+static bool dxt_decode(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, const u8 *blocks, u32 bw, u32 bh);
 static void upload(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, const u8 *data, u32 pitch) {
+    if (t->dxt && dxt_decode(t, level, face, x, y, w, h, data, (w + 3) / 4, (h + 3) / 4)) return;
     u32 bw, bpp = gfx_fmt_block_bytes(t->fmt, &bw);
     u8 *tmp = NULL;
     if (t->dxt) {
@@ -642,7 +664,7 @@ static void upload(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, con
     vkCmdCopyBufferToImage(cmd, fs->ring, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
     t->used = cur_serial;
 }
-static void do_tex_upload(const TexUpload *k) {
+static void tex_upload_now(const TexUpload *k) {
     VTex *t = tex_get(k->id);
     if (!t) return;
     {
@@ -658,6 +680,9 @@ static void do_tex_upload(const TexUpload *k) {
         if (on && !gfx_dxt1_has_alpha((const u8 *)(k + 1), k->bytes)) { /* never used yet: new storage */
             VTex *n = tex_new(t->fmt, t->w / t->scale, t->h / t->scale, t->levels, false, false, t->scale, false, true);
             tex_free(t);
+            n->id = t->id;
+            n->gen = t->gen;
+            n->npend = t->npend;
             texs[k->id] = t = n;
         }
     }
@@ -671,6 +696,8 @@ static void do_tex_upload(const TexUpload *k) {
         if (k->x + w > lw) w = lw - k->x;
         if (k->y + h > lh) h = lh - k->y;
         if (w != k->w || h != k->h) { /* partial blocks at the edge: decode all, copy the visible part */
+            if (dxt_decode(t, level, face, k->x, k->y, w, h, (const u8 *)(k + 1), (k->w + 3) / 4, (k->h + 3) / 4))
+                return;
             u8 *full = gfx_dxt_decode(t->fmt, (const u8 *)(k + 1), k->w, k->h);
             u32 px = 4;
             if (t->rgb565) {
@@ -695,6 +722,86 @@ static void do_tex_upload(const TexUpload *k) {
         }
     }
     upload(t, level, face, k->x, k->y, w, h, (const u8 *)(k + 1), k->pitch);
+}
+
+/* ---- lazy uploads --------------------------------------------------------------------
+ * A fight loads its whole texture set in one frame (BlazBlue: 900 textures, 100+ MB) while its
+ * first frames draw a fraction of them; uploading all of it at once stalled the game for half a
+ * second. Uploads to textures no draw has read yet wait in a queue: a texture's own wait is cleared
+ * when something first reads it, and the rest trickle up a few MB a frame. Textures in use upload
+ * at once, as before. X2_LAZY_UPLOAD=0 turns it off. */
+typedef struct PendUp {
+    struct PendUp *next;
+    GfxId id;
+    u32 gen, len;
+    u8 data[]; /* the TexUpload command */
+} PendUp;
+static PendUp *pend_head, *pend_tail;
+static u32 pend_count;
+static int lazy_up = -1;
+
+static void pend_apply(PendUp *e) {
+    VTex *t = tex_get(e->id);
+    if (t && t->gen == e->gen) {
+        t->npend--;
+        tex_upload_now((const TexUpload *)e->data);
+    }
+    free(e);
+    pend_count--;
+}
+/* everything queued for a texture about to be read; returns it (an upload may replace it) */
+static VTex *tex_ready(VTex *t) {
+    if (!t->npend) return t;
+    GfxId id = t->id;
+    u32 gen = t->gen;
+    PendUp **pp = &pend_head, *prev = NULL;
+    while (*pp) {
+        PendUp *e = *pp;
+        if (e->id == id && e->gen == gen) {
+            *pp = e->next;
+            if (pend_tail == e) pend_tail = prev;
+            pend_apply(e);
+        } else {
+            prev = e;
+            pp = &e->next;
+        }
+    }
+    VTex *n = tex_get(id);
+    return n ? n : t;
+}
+/* the oldest queued uploads, up to a budget a frame */
+static void pend_trickle(void) {
+    u32 bytes = 0, n = 0;
+    while (pend_head && bytes < (4u << 20) && n < 64) {
+        PendUp *e = pend_head;
+        pend_head = e->next;
+        if (!pend_head) pend_tail = NULL;
+        bytes += e->len;
+        n++;
+        pend_apply(e);
+    }
+}
+static void do_tex_upload(const TexUpload *k, u32 len) {
+    VTex *t = tex_get(k->id);
+    if (!t) return;
+    if (lazy_up < 0) lazy_up = !getenv("X2_LAZY_UPLOAD") || atoi(getenv("X2_LAZY_UPLOAD")) != 0;
+    if (!lazy_up || t->rt || (t->sampled && !t->npend)) {
+        tex_upload_now(k);
+        return;
+    }
+    PendUp *e = malloc(sizeof *e + len);
+    e->next = NULL;
+    e->id = k->id;
+    e->gen = t->gen;
+    e->len = len;
+    memcpy(e->data, k, len);
+    if (pend_tail)
+        pend_tail->next = e;
+    else
+        pend_head = e;
+    pend_tail = e;
+    pend_count++;
+    t->npend++;
 }
 
 /* ---- buffers ------------------------------------------------------------------- */
@@ -1010,6 +1117,187 @@ static VkShaderModule module_for(VShader *s, u32 key) {
     s->var = realloc(s->var, (s->nvar + 1) * sizeof *s->var);
     s->var[s->nvar++] = (Variant){key, m};
     return m;
+}
+
+/* ---- DXT decoding on the GPU ------------------------------------------------------------
+ * Mali has no S3TC: textures were decoded on the CPU in the replay thread, and a fight's
+ * character sheets (BlazBlue: 100+ Mpx of DXT at once) froze the game for half a second.
+ * The blocks now go up as they are (4-8x smaller) and a pass per upload decodes them into the
+ * texture's mip level, with the integer maths of gfx_dxt_decode (and gfx_rgba_to_565 for opaque
+ * DXT1 kept as RGB565), so the texels are the same. X2_DXT_GPU=0 decodes on the CPU again. */
+static VkPipeline dxt_pipe[2]; /* RGBA8, RGB565 */
+static VkPipelineLayout dxt_layout;
+static VkDescriptorSetLayout dxt_dsl;
+static int dxt_gpu = -1;
+
+static const char *dxt_fs =
+    "#version 450\n"
+    "layout(set=0, binding=0) readonly buffer B { uint w[]; } blk;\n"
+    "layout(push_constant) uniform P { uint base, bpr, fmt, r565; int ox, oy; } pc;\n"
+    "layout(location=0) out vec4 o;\n"
+    "uvec3 c565(uint c) { return uvec3((c >> 11 & 31u) * 255u / 31u, (c >> 5 & 63u) * 255u / 63u,\n"
+    "                                  (c & 31u) * 255u / 31u); }\n"
+    "void main() {\n"
+    "  ivec2 p = ivec2(gl_FragCoord.xy) - ivec2(pc.ox, pc.oy);\n"
+    "  uint ti = uint(p.y & 3) * 4u + uint(p.x & 3);\n"
+    "  uint b = pc.base + (uint(p.y >> 2) * pc.bpr + uint(p.x >> 2)) * (pc.fmt == 9u ? 2u : 4u);\n"
+    "  uint cb = pc.fmt == 9u ? b : b + 2u;\n"
+    "  uint c0 = blk.w[cb] & 0xffffu, c1 = blk.w[cb] >> 16, sel = blk.w[cb + 1u] >> (2u * ti) & 3u;\n"
+    "  uvec3 p0 = c565(c0), p1 = c565(c1), col;\n"
+    "  uint a = 255u;\n"
+    "  if (c0 > c1 || pc.fmt != 9u)\n"
+    "    col = sel == 0u ? p0 : sel == 1u ? p1 : sel == 2u ? (2u * p0 + p1) / 3u : (p0 + 2u * p1) / 3u;\n"
+    "  else {\n"
+    "    col = sel == 0u ? p0 : sel == 1u ? p1 : sel == 2u ? (p0 + p1) / 2u : uvec3(0u);\n"
+    "    if (sel == 3u) a = 0u;\n"
+    "  }\n"
+    "  if (pc.fmt == 10u) a = (blk.w[b + (ti >> 3)] >> (4u * (ti & 7u)) & 15u) * 17u;\n"
+    "  if (pc.fmt == 11u) {\n"
+    "    uint a0 = blk.w[b] & 255u, a1 = blk.w[b] >> 8 & 255u, bit = 16u + 3u * ti;\n"
+    "    uint v = blk.w[b + (bit >> 5)] >> (bit & 31u);\n"
+    "    if ((bit & 31u) > 29u) v |= blk.w[b + (bit >> 5) + 1u] << (32u - (bit & 31u));\n"
+    "    uint k = v & 7u;\n"
+    "    a = k == 0u ? a0 : k == 1u ? a1 : a0 > a1 ? ((8u - k) * a0 + (k - 1u) * a1) / 7u :\n"
+    "        k < 6u ? ((6u - k) * a0 + (k - 1u) * a1) / 5u : k == 6u ? 0u : 255u;\n"
+    "  }\n"
+    "  if (pc.r565 != 0u) {\n"
+    "    uvec3 q = (col * uvec3(31u, 63u, 31u) + 127u) / 255u;\n"
+    "    o = vec4(vec3(q) / vec3(31.0, 63.0, 31.0), 1.0);\n"
+    "  } else\n"
+    "    o = vec4(vec4(uvec4(col, a)) / 255.0);\n"
+    "}\n";
+
+static void dxt_init(void) {
+    VkDescriptorSetLayoutBinding lb = {0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
+    VkDescriptorSetLayoutCreateInfo dl = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, NULL,
+                                          VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR, 1, &lb};
+    VK_CHECK(vkCreateDescriptorSetLayout(dev, &dl, NULL, &dxt_dsl));
+    VkPushConstantRange pr = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 24};
+    VkPipelineLayoutCreateInfo pl = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, NULL, 0, 1, &dxt_dsl, 1, &pr};
+    VK_CHECK(vkCreatePipelineLayout(dev, &pl, NULL, &dxt_layout));
+    VShader vs = {.pixel = false,
+                  .ok = true,
+                  .src = "#version 450\n"
+                         "void main() {\n"
+                         "  vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n"
+                         "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+                         "}\n"};
+    VShader fsh = {.pixel = true, .ok = true, .src = (char *)dxt_fs};
+    VkShaderModule mv = compile(&vs, ""), mf = compile(&fsh, "");
+    if (!mv || !mf) {
+        x2_log("vulkan: DXT decode shaders failed; decoding on the CPU");
+        dxt_gpu = 0;
+        return;
+    }
+    static const VkFormat fmts[2] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R5G6B5_UNORM_PACK16};
+    for (int i = 0; i < 2; i++) {
+        VkPipelineShaderStageCreateInfo st[2] = {{VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0,
+                                                  VK_SHADER_STAGE_VERTEX_BIT, mv, "main", NULL},
+                                                 {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0,
+                                                  VK_SHADER_STAGE_FRAGMENT_BIT, mf, "main", NULL}};
+        VkPipelineVertexInputStateCreateInfo vin = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        VkPipelineInputAssemblyStateCreateInfo ia = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo vp = {VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        vp.viewportCount = vp.scissorCount = 1;
+        VkPipelineRasterizationStateCreateInfo rs = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        rs.polygonMode = VK_POLYGON_MODE_FILL;
+        rs.cullMode = VK_CULL_MODE_NONE;
+        rs.lineWidth = 1;
+        VkPipelineMultisampleStateCreateInfo ms = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineColorBlendAttachmentState ba = {0};
+        ba.colorWriteMask = 0xf;
+        VkPipelineColorBlendStateCreateInfo cb = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        cb.attachmentCount = 1;
+        cb.pAttachments = &ba;
+        VkDynamicState dyn[2] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo ds = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, NULL, 0, 2, dyn};
+        VkPipelineRenderingCreateInfo ri = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        ri.colorAttachmentCount = 1;
+        ri.pColorAttachmentFormats = &fmts[i];
+        VkGraphicsPipelineCreateInfo gi = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        gi.pNext = &ri;
+        gi.stageCount = 2;
+        gi.pStages = st;
+        gi.pVertexInputState = &vin;
+        gi.pInputAssemblyState = &ia;
+        gi.pViewportState = &vp;
+        gi.pRasterizationState = &rs;
+        gi.pMultisampleState = &ms;
+        gi.pColorBlendState = &cb;
+        gi.pDynamicState = &ds;
+        gi.layout = dxt_layout;
+        VK_CHECK(vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &gi, NULL, &dxt_pipe[i]));
+    }
+    vkDestroyShaderModule(dev, mv, NULL);
+    vkDestroyShaderModule(dev, mf, NULL);
+}
+
+/* decode a w x h region at x,y of one level and face from packed block rows (bw x bh blocks);
+ * false: not done (the caller decodes on the CPU) */
+static bool dxt_decode(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, const u8 *blocks, u32 bw, u32 bh) {
+    if (dxt_gpu < 0) {
+        dxt_gpu = !getenv("X2_DXT_GPU") || atoi(getenv("X2_DXT_GPU")) != 0;
+        if (dxt_gpu) dxt_init();
+    }
+    if (!dxt_gpu || t->vol || !w || !h) return false;
+    u32 bytes = bw * bh * (t->fmt == GFX_FMT_DXT1 ? 8 : 16);
+    u32 off = ring_alloc(bytes, ssbo_align > 16 ? ssbo_align : 16);
+    if (off == ~0u) return false;
+    memcpy(ring_ptr(off), blocks, bytes);
+    u32 faces = t->cube ? 6 : 1, li = level * faces + face;
+    if (!t->lv) t->lv = calloc((size_t)t->levels * faces, sizeof *t->lv);
+    if (!t->lv[li]) {
+        VkImageViewCreateInfo vi = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        vi.image = t->img;
+        vi.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        vi.format = t->vf;
+        vi.subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT, level, 1, face, 1};
+        VK_CHECK(vkCreateImageView(dev, &vi, NULL, &t->lv[li]));
+    }
+    end_rendering();
+    if (t->layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        /* the previous decode into it must have stored its tiles before this pass loads them
+         * (an animated logo updates many small rectangles a frame) */
+        VkImageMemoryBarrier2 b = layout_barrier(t, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        di.imageMemoryBarrierCount = 1;
+        di.pImageMemoryBarriers = &b;
+        pvkCmdPipelineBarrier2(cmd, &di);
+    }
+    transition(t, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo ca = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    ca.imageView = t->lv[li];
+    ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    u32 lw = t->w >> level ? t->w >> level : 1, lh = t->h >> level ? t->h >> level : 1;
+    ca.loadOp = x == 0 && y == 0 && w >= lw && h >= lh ? VK_ATTACHMENT_LOAD_OP_DONT_CARE : VK_ATTACHMENT_LOAD_OP_LOAD;
+    ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    VkRenderingInfo ri = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+    ri.renderArea = (VkRect2D){{(s32)x, (s32)y}, {w, h}};
+    ri.layerCount = 1;
+    ri.colorAttachmentCount = 1;
+    ri.pColorAttachments = &ca;
+    pvkCmdBeginRendering(cmd, &ri);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dxt_pipe[t->rgb565]);
+    VkDescriptorBufferInfo bi = {fs->ring, off, bytes};
+    VkWriteDescriptorSet wd = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    wd.descriptorCount = 1;
+    wd.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    wd.pBufferInfo = &bi;
+    pvkCmdPushDescriptorSetKHR(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, dxt_layout, 0, 1, &wd);
+    struct {
+        u32 base, bpr, fmt, r565;
+        s32 ox, oy;
+    } pc = {0, bw, t->fmt, t->rgb565, (s32)x, (s32)y};
+    vkCmdPushConstants(cmd, dxt_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
+    VkViewport v = {(float)x, (float)y, (float)w, (float)h, 0, 1};
+    vkCmdSetViewport(cmd, 0, 1, &v);
+    vkCmdSetScissor(cmd, 0, 1, &ri.renderArea);
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+    pvkCmdEndRendering(cmd);
+    t->used = cur_serial;
+    return true;
 }
 
 /* ---- vertex declarations ---------------------------------------------------------- */
@@ -1535,6 +1823,10 @@ static void do_clear(const Clear *k) {
 /* StretchRect */
 static void do_blit(const Blit *k) {
     VTex *s = tex_get(k->src), *d = tex_get(k->dst);
+    if (s) {
+        s = tex_ready(s);
+        s->sampled = true;
+    }
     if (!s && k->src == gfx_backbuffer) s = &fallback_bb;
     if (!d && k->dst == gfx_backbuffer) d = &fallback_bb;
     if (!s || !d || s == d || !d->rt) return;
@@ -1616,6 +1908,13 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         GfxId b = st->vb[dc->e[k2].stream];
         if (b < MAX_IDS && bufs[b] && bufs[b]->dynamic) any_stream = true;
     }
+    /* held-back uploads of the textures it reads go first: they use the ring too */
+    for (int pass_i = 0; pass_i < 2; pass_i++)
+        for (int i = 0; i < 16; i++)
+            if ((pass_i ? ps : vs)->info.samplers_used & (1u << i) && (pass_i || i < 4)) {
+                VTex *tx = tex_get(st->tex[i]);
+                if (tx && tx->npend) tex_ready(tx);
+            }
     /* everything this draw puts in the ring, reserved at once: no flush midway */
     u64 need = 4 * 256 + sizeof(VsU) + sizeof(PsU) + (u64)nidx * 4 + 64;
     if (up_verts)
@@ -1634,6 +1933,10 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             if (!(sh->info.samplers_used & (1u << i)) || (!pass_i && i >= 4)) continue;
             int ty = sh->info.samp_type[i];
             VTex *tx = tex_get(st->tex[i]);
+            if (tx) { /* uploads held back for it go up now */
+                tx = tex_ready(tx);
+                tx->sampled = true;
+            }
             /* a texture of another type than the sampler reads black, as in GL (no 3D textures exist) */
             VTex *use = tx && ty != 4 && tx->cube == (ty == 3) ? tx : black[ty == 3 ? 1 : ty == 4 ? 2 : 0];
             if (drawlog)
@@ -1864,12 +2167,21 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
 /* ---- replay -------------------------------------------------------------------- */
 static void run_frame(Frame *f) {
     frame_begin();
+    /* X2_PACELOG: where a replay over 100 ms went, by command type, plus ring flushes */
+    static int slowlog = -1;
+    if (slowlog < 0) slowlog = getenv("X2_PACELOG") != NULL;
+    u64 f0 = x2_time_ns(), by[32] = {0};
+    u32 cnt[32] = {0};
+    u64 up_bytes = 0, flush0 = st_flush_ns;
+    u32 nflush0 = st_flushes;
     for (size_t off = 0; off < f->len;) {
         u32 type = ((u32 *)(f->data + off))[0], size = ((u32 *)(f->data + off))[1];
         const void *p = f->data + off + 8;
+        u64 c0 = slowlog ? x2_time_ns() : 0;
+        if (type == C_TEX_UPLOAD) up_bytes += ((const TexUpload *)p)->bytes;
         switch (type) {
         case C_TEX_CREATE: do_tex_create(p); break;
-        case C_TEX_UPLOAD: do_tex_upload(p); break;
+        case C_TEX_UPLOAD: do_tex_upload(p, size - 8); break;
         case C_TEX_DESTROY: do_tex_destroy(*(const GfxId *)p); break;
         case C_BUF_CREATE: do_buf_create(p); break;
         case C_BUF_UPLOAD: do_buf_upload(p); break;
@@ -1937,9 +2249,29 @@ static void run_frame(Frame *f) {
             }
             break;
         }
+        if (slowlog && type < 32) {
+            by[type] += x2_time_ns() - c0;
+            cnt[type]++;
+        }
         off += size;
     }
+    pend_trickle();
     frame_end();
+    u64 total = x2_time_ns() - f0;
+    if (slowlog && total > 100000000) {
+        static const char *const nm[] = {"?",          "tex create",  "tex upload",    "tex destroy",    "buf create",
+                                         "buf upload", "buf destroy", "shader create", "shader destroy", "decl",
+                                         "consts",     "clear",       "draw",          "draw up",        "present",
+                                         "blit"};
+        char s[400];
+        int o = snprintf(s, sizeof s, "vulkan: slow replay %.0f ms:", total / 1e6);
+        for (u32 i = 1; i < 32 && o < (int)sizeof s - 40; i++)
+            if (by[i] > 5000000)
+                o += snprintf(s + o, sizeof s - (size_t)o, " %s %u (%.0f ms)", i < 16 ? nm[i] : "other", cnt[i],
+                              by[i] / 1e6);
+        x2_log("%s; uploads %.1f MB; %u ring flushes (%.0f ms)", s, up_bytes / 1048576.0, st_flushes - nflush0,
+               (st_flush_ns - flush0) / 1e6);
+    }
 }
 
 /* ---- presentation ---------------------------------------------------------------- */
@@ -2500,6 +2832,7 @@ static void setup(u32 w, u32 h) {
     if (!glslang_initialize_process()) x2_fatal("vulkan: glslang");
     VkPhysicalDeviceProperties pp;
     vkGetPhysicalDeviceProperties(phys, &pp);
+    ssbo_align = (u32)pp.limits.minStorageBufferOffsetAlignment;
     limits = pp.limits;
     vkGetPhysicalDeviceMemoryProperties(phys, &memprops);
 #define X(f)                                                                                                           \
@@ -2556,7 +2889,8 @@ static void setup(u32 w, u32 h) {
         VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bi.size = RING_SIZE;
         bi.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-                   VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+                   VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                   VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; /* storage: DXT blocks for dxt_decode */
         VK_CHECK(vkCreateBuffer(dev, &bi, NULL, &slots[i].ring));
         VkMemoryRequirements req;
         vkGetBufferMemoryRequirements(dev, slots[i].ring, &req);

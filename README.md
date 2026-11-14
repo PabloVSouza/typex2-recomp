@@ -14,7 +14,7 @@ Galaxy Tab A11 with Vulkan (OpenGL leaves a few stages at 50-55 fps). BlazBlue C
 Shift (`games/bbcs`) is playable on macOS and in RetroArch on Android (opening
 movie, title, character select, arcade and versus fights at 60 fps); BlazBlue
 Calamity Trigger (`games/bbct`) is playable on macOS and runs at 60 fps in
-RetroArch on Android (attract, select, fights; 0.3-0.5 s load pauses at fight
+RetroArch on Android (attract, select, fights; a short load pause at fight
 start). KOF '98 Ultimate Match (`games/kof98um`, a Type X game) is playable on
 macOS and in RetroArch on Android (60 fps on the test tablet); KOF Maximum
 Impact Regulation A (`games/kofmira`, Direct3D 8) is playable on macOS and runs its attract mode at 60 fps on Android. Rendering is
@@ -258,7 +258,8 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_SHADER_DUMP=<dir>` | save every shader the game creates (`<hash>.vs.tok` / `.ps.tok`) for `build/tools/shadertest <glsl\|essl\|msl> <dir> <out>`, which translates them all offline (msl: each checked by the Metal compiler). Game data: never commit them |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
-| `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames |
+| `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames; Vulkan also logs any replayed frame over 100 ms with its time by command type, upload MB and ring flushes |
+| `X2_DXT_GPU=0` / `X2_LAZY_UPLOAD=0` | Vulkan: decode DXT textures on the CPU again (default: on the GPU, for GPUs without S3TC) / upload every texture at once (default: uploads to textures no draw has read yet wait, a few MB a frame, until something reads them) |
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries; Metal: `=1` only, from command buffer times) |
 | `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |
 | `X2_PROF=<secs>` `X2_PROF_OUT=file` | sampling profiler of the runtime's threads (1 ms); offsets resolve against the unstripped `typex2_libretro_android.so.sym` |
@@ -307,7 +308,7 @@ Style is `.clang-format` (new and changed lines only: `tools/lint.sh format`,
   (packets to address 0, commands 0-8), answered by `jvs.c`. The build has
   MSVC run-time checks (`_RTC_CheckEsp` reads the caller's flags; see
   "flag importers" in `lift.cpp`); a failed check now stops with "the game
-  called DebugBreak". On the tablet: 60 fps, with 0.3-0.5 s load pauses.
+  called DebugBreak". On the tablet: 60 fps, with a short load pause at fight start (about 0.25 s).
 * KOF '98 UM (Type X): KOF's panel and pad layout (its INPUT TEST: A B C D on
   SHOT1, SHOT4, SHOT2, SHOT5). It draws with the fixed-function pipeline
   (generated shaders, `gfx/ffp.c`) and palettized L8 textures; its stages use
