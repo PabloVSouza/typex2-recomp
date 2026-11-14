@@ -54,6 +54,8 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
                     char *err, size_t errlen);
 /* the MSL prelude both translators start with: GLSL names for the shared body */
 extern const char *const sh_msl_prelude;
+/* removes the prelude's sampling overloads a finished MSL shader does not use (compile time) */
+void sh_msl_prune(char *msl);
 /* the body's texture(s, uv) in MSL. Undefined around the entry point's signature:
  * it would also rewrite the [[texture(n)]] binding attributes there */
 #define SH_MSL_TEXTURE_DEF "#define texture(s, ...) x2_tex(s##_t, s##_s, __VA_ARGS__)\n"

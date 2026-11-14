@@ -448,6 +448,7 @@ bool hlsl_translate(const char *src, const char *entry, bool pixel, ShTarget tar
     sf(&body, msl ? "  return out_;\n}\n" : "}\n");
     sf(&hdr, "%s", body.s);
     free(body.s);
+    if (msl) sh_msl_prune(hdr.s);
     *out = hdr.s;
     (void)type_n;
     return true;

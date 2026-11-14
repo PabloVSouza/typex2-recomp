@@ -87,7 +87,9 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
 | `X2_SHADER_DUMP=<dir>` | save every shader the game creates (`<hash>.vs.tok` / `.ps.tok`) for `build/tools/shadertest <glsl\|essl\|msl> <dir> <out>`, which translates them all offline (msl: each checked by the Metal compiler). Game data: never commit them |
 | `X2_GLPROF=1` / `X2_UPLOADLOG=1` | replay time per command type / texture+buffer upload log |
-| `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames; Vulkan also logs any replayed frame over 100 ms with its time by command type, upload MB and ring flushes |
+| `X2_PACELOG=1` | frame pacing (wake intervals, guest work per frame) every 120 frames; Vulkan also logs any replayed frame over 100 ms with its time by command type, upload MB and ring flushes; Metal logs every pipeline that took over 2 ms, with the shader compile or wait inside it (Vulkan logs those always) |
+| `X2_MTL_EARLY=0` | Metal: compile each shader at the first draw that needs it, one at a time, instead of in background batches as the game creates them (the default since shader compile stalls of up to 2 s were measured on first plays) |
+| `X2_MTL_COLD=1` | Metal: give every run's shader entry points their own name, so macOS's shader cache misses as on a first play; with `X2_PACELOG=1` (each pipeline over 2 ms with its shader time, and a per-120-frame total) it measures what a new player sees |
 | `X2_DXT_GPU=0` / `X2_LAZY_UPLOAD=0` | Vulkan: decode DXT textures on the CPU again (default: on the GPU, for GPUs without S3TC) / upload every texture at once (default: uploads to textures no draw has read yet wait, a few MB a frame, until something reads them) |
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries; Metal: `=1` only, from command buffer times) |
 | `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |

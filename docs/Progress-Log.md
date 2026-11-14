@@ -2,6 +2,34 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-14: Metal shaders compiled in batches, ahead of the draws
+
+First plays on the Mac stalled for up to 2 s at a time: Metal compiled each
+shader at the first draw that used it, and Apple's compiler takes 100-450 ms
+per shader (macOS caches compiled libraries by their exact source, so a first
+play compiles every one). Measured over 75 s of SSF4's attract mode with an empty cache
+(`X2_MTL_COLD=1`, `X2_PACELOG=1`):
+
+| | stall time | stalls ≥ 200 ms |
+|---|---|---|
+| before | 39.7 s | 60 |
+| unused texture overloads dropped | 19.3 s | 72 (shorter) |
+| batches at creation | 9.2 s, 8.4 s of it in the first 10 s | 7, all at boot |
+
+- **Smaller shaders:** the MSL prelude carried sampling overloads for every
+  texture type; instantiating them was 300 ms of a 450 ms compile.
+  `sh_msl_prune` keeps those a shader can call (GLSL / Vulkan output
+  unchanged; all 709 shaders of the eight games pass the Metal compiler).
+- **Batches:** shaders are compiled as the game creates them, on its loading
+  screens, 64 to a library (each in its own namespace, pixel shaders also
+  with the alpha test), on two background queues. 100 shaders compile in
+  0.8 s instead of 24. Games create shaders in the same bursts every run, so
+  later runs hit macOS's cache: SSF4's boot stalls went from 8.3 s to 0.1 s
+  on the second run. A draw needing a shader of an open batch compiles it at
+  once.
+- **Left:** new pipelines still cost 5-45 ms each (about 20 when a fight
+  scene first appears, 250 ms in all, even with macOS's cache).
+
 ## 2026-11-14: CI, Linux and Windows builds, versioned releases
 
 - **CI** (`.github/workflows/ci.yml`): the recompiler, tools, runtime and

@@ -173,6 +173,10 @@ gets an entry per milestone. Update them with the README.
   translates the whole set offline: GLSL output must stay byte-identical
   (`diff -r` against a run of the old translator), MSL must pass the Metal
   compiler. Faster and stricter than screenshots.
+* First-play shader stalls: macOS caches Metal libraries by exact source, so
+  measure with `X2_MTL_COLD=1 X2_PACELOG=1` (empty-cache behaviour). Compile
+  time is mostly fixed cost per library (stdlib, sample() templates): keep the
+  MSL prelude pruned and shaders batched (`gfx_metal.m`).
 * Compiled D3DX effects: `build/tools/fxdump [-v] game.exe` lists every
   embedded effect (parameters, passes, states, shader constant tables,
   preshaders). Shader bytecode may contain comments with their own END token

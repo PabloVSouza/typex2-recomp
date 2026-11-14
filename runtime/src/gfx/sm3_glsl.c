@@ -589,6 +589,36 @@ const char *const sh_msl_prelude =
     "#ifndef X2_VT15\n#define X2_VT15 float4\n#endif\n"
     "#define X2_HP\n";
 
+/* Drops the prelude's sampling overloads the shader cannot call: those of texture types it does not
+ * declare, and textureLod / textureGrad when the body has none. Apple's compiler instantiates every
+ * overload's sample() template, about 300 ms of a 450 ms compile when all nine are present. */
+void sh_msl_prune(char *msl) {
+    const char *end = strstr(msl, "#define X2_HP\n");
+    if (!end) return;
+    const char *body = end;
+    bool lod = strstr(body, "textureLod(") != NULL, grad = strstr(body, "textureGrad(") != NULL;
+    static const char *const types[] = {"texture2d<float>", "texturecube<float>", "texture3d<float>"};
+    bool has[3];
+    for (int i = 0; i < 3; i++) has[i] = strstr(body, types[i]) != NULL;
+    char *p = msl;
+    while ((p = strstr(p, "inline float4 x2_tex")) && p < body) {
+        char *nl = strstr(p, "}\n");
+        if (!nl) return;
+        nl += 2;
+        bool keep = !(strncmp(p, "inline float4 x2_texl(", 22) == 0 && !lod) &&
+                    !(strncmp(p, "inline float4 x2_texg(", 22) == 0 && !grad);
+        for (int i = 0; i < 3 && keep; i++)
+            if (!has[i] && strstr(p, types[i]) && strstr(p, types[i]) < nl) keep = false;
+        if (keep) {
+            p = nl;
+            continue;
+        }
+        size_t gone = (size_t)(nl - p);
+        memmove(p, nl, strlen(nl) + 1);
+        body -= gone;
+    }
+}
+
 static const char *msl_tex_type(int samp_type) {
     return samp_type == 3 ? "texturecube<float>" : samp_type == 4 ? "texture3d<float>" : "texture2d<float>";
 }
@@ -1066,6 +1096,7 @@ done:
     info->major = c->major;
     for (int i = 0; i < 16; i++) info->samp_type[i] = c->samp_type[i];
     free(c);
+    if (target == SH_MSL) sh_msl_prune(s.s);
     *out = s.s;
     return ok;
 }

@@ -18,6 +18,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 #include <dispatch/dispatch.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -85,6 +86,7 @@ typedef struct {
     bool pixel, ok;
     u32 serial;
     id<MTLFunction> fn[4]; /* pixel: [atest]; vertex: compiled per vertex-type key below */
+    u32 cstate; /* batch compile state (CS_*), under batch_mu */
     struct VsVar {
         u32 key;
         id<MTLFunction> fn;
@@ -413,6 +415,9 @@ static void do_buf_destroy(GfxId id) {
 }
 
 /* ---- shaders --------------------------------------------------------------------- */
+static void do_shader_destroy(GfxId id);
+static void compile_early(MShader *s);
+static void compile_forget(MShader *s);
 static void do_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
     if (id >= MAX_IDS) return;
     MShader *s = calloc(1, sizeof *s);
@@ -429,15 +434,14 @@ static void do_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
     if (s->msl && getenv("X2_SHADERLOG") && (u32)atoi(getenv("X2_SHADERLOG")) == id)
         x2_log("metal: shader %u:\n%s", id, s->msl);
     s->ok = s->msl != NULL;
-    if (shaders[id]) {
-        free(shaders[id]->msl);
-        free(shaders[id]);
-    }
+    do_shader_destroy(id); /* a re-created id: the old one's functions and compiles */
     shaders[id] = s;
+    compile_early(s);
 }
 static void do_shader_destroy(GfxId id) {
     MShader *s = id < MAX_IDS ? shaders[id] : NULL;
     if (!s) return;
+    compile_forget(s);
     for (int i = 0; i < 4; i++) [s->fn[i] release];
     for (u32 i = 0; i < s->nvvar; i++) [s->vvar[i].fn release];
     free(s->vvar);
@@ -445,37 +449,213 @@ static void do_shader_destroy(GfxId id) {
     free(s);
     shaders[id] = NULL;
 }
-static id<MTLFunction> compile_fn(MShader *s, NSDictionary *macros) {
+/* Shader functions. Apple's compiler takes 100-450 ms per shader: the MSL front end runs for every
+ * library (macOS caches by source), and most of it is fixed cost (metal_stdlib, the sample()
+ * templates). Compiled at the first draw that needs them, they stalled the game for seconds on a
+ * first play. So the shaders the game creates (on its loading screens) are compiled in batches on
+ * background queues: one library per batch, each shader in its own namespace, pixel shaders twice
+ * (with and without the alpha test). 100 shaders compile in about 0.8 s, not 24. A batch closes at
+ * BATCH_MAX shaders or after a short pause in creation; games create their shaders in the same
+ * bursts every run, so the same batches recur and later runs hit macOS's cache (under 1 ms). A draw
+ * needing a shader whose batch is still open compiles that batch at once; one already compiling, it
+ * waits for. X2_MTL_EARLY=0: one shader at a time, at the first draw. X2_MTL_COLD=1: entry points
+ * get a per-run name, so the cache misses as on a first play (measuring). */
+#define BATCH_MAX 64
+#define BATCH_QUEUES 2
+enum { CS_NONE, CS_QUEUED, CS_COMPILING, CS_DONE }; /* MShader.cstate */
+static char entry_name[32];
+static int early = -1;
+static dispatch_queue_t batch_q[BATCH_QUEUES];
+static u32 batch_next;
+static pthread_mutex_t batch_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t batch_cv = PTHREAD_COND_INITIALIZER;
+static MShader *open_batch[BATCH_MAX]; /* the batch being filled */
+static u32 open_n, open_gen;
+static u64 st_compile_ns; /* time the replay thread waited for or compiled functions, X2_PACELOG */
+static u32 st_pipes, st_batches;
+static u64 st_pipe_ns;
+static void compile_init(void) {
+    if (early >= 0) return;
+    snprintf(entry_name, sizeof entry_name, getenv("X2_MTL_COLD") ? "x2_main_%llx" : "x2_main",
+             (unsigned long long)x2_time_ns());
+    early = !getenv("X2_MTL_EARLY") || atoi(getenv("X2_MTL_EARLY")) != 0;
+    dispatch_queue_attr_t a = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0);
+    for (int i = 0; i < BATCH_QUEUES; i++) batch_q[i] = dispatch_queue_create("x2.metal.compile", a);
+}
+static MTLCompileOptions *compile_options(NSDictionary *macros) {
+    NSMutableDictionary *m = macros ? [macros mutableCopy] : [NSMutableDictionary new];
+    if (strcmp(entry_name, "x2_main")) m[@"x2_main"] = @(entry_name);
     MTLCompileOptions *o = [[MTLCompileOptions alloc] init];
-    o.preprocessorMacros = macros;
-    NSError *e = nil;
-    id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:s->msl] options:o error:&e];
-    [o release];
-    if (!lib) {
-        x2_log("metal: shader failed to compile: %s\n--- source ---\n%s", e.localizedDescription.UTF8String, s->msl);
-        s->ok = false;
-        return nil;
+    o.preprocessorMacros = m;
+    [m release];
+    return o;
+}
+/* one shader on its own (variants the batches do not cover, or a batch that failed) */
+static id<MTLFunction> compile_fn(MShader *s, NSDictionary *macros) {
+    @autoreleasepool {
+        MTLCompileOptions *o = compile_options(macros);
+        NSError *e = nil;
+        id<MTLLibrary> lib = [dev newLibraryWithSource:[NSString stringWithUTF8String:s->msl] options:o error:&e];
+        [o release];
+        if (!lib) {
+            x2_log("metal: shader failed to compile: %s\n--- source ---\n%s", e.localizedDescription.UTF8String,
+                   s->msl);
+            s->ok = false;
+            return nil;
+        }
+        id<MTLFunction> f = [lib newFunctionWithName:@(entry_name)];
+        [lib release];
+        return f;
     }
-    id<MTLFunction> f = [lib newFunctionWithName:@"x2_main"];
-    [lib release];
-    return f;
 }
-static id<MTLFunction> ps_function(MShader *s, bool atest) {
-    if (!s->fn[atest]) s->fn[atest] = compile_fn(s, atest ? @{@"X2_ATEST" : @1} : nil);
-    return s->fn[atest];
+/* the shader's text after the shared prelude, in namespace `ns`, then its own macros undefined so
+ * the next shader of the batch starts clean */
+static void batch_append(NSMutableString *src, const char *msl, const char *ns) {
+    const char *body = strstr(msl, "#define X2_HP\n");
+    body = body ? body + 14 : msl;
+    [src appendFormat:@"namespace %s {\n%s\n}\n", ns, body];
+    for (const char *p = body; (p = strstr(p, "#define ")); p += 8) {
+        if (p != body && p[-1] != '\n') continue;
+        const char *n = p + 8, *e = n;
+        while (*e && *e != ' ' && *e != '(' && *e != '\n') e++;
+        [src appendFormat:@"#undef %.*s\n", (int)(e - n), n];
+    }
 }
-/* vtkey: 2 bits per input register, 1 = int4, 2 = uint4 (integer vertex formats) */
-static id<MTLFunction> vs_function(MShader *s, u32 vtkey) {
-    for (u32 i = 0; i < s->nvvar; i++)
-        if (s->vvar[i].key == vtkey) return s->vvar[i].fn;
+/* any thread: compiles a closed batch, then marks its shaders done */
+static void compile_batch(MShader **b, u32 n) {
+    @autoreleasepool {
+        NSMutableString *src = [NSMutableString stringWithUTF8String:sh_msl_prelude];
+        char ns[32];
+        for (u32 i = 0; i < n; i++) {
+            snprintf(ns, sizeof ns, "b%u", i);
+            batch_append(src, b[i]->msl, ns);
+            if (!b[i]->pixel) continue;
+            [src appendString:@"#define X2_ATEST 1\n"];
+            snprintf(ns, sizeof ns, "b%ua", i);
+            batch_append(src, b[i]->msl, ns);
+            [src appendString:@"#undef X2_ATEST\n"];
+        }
+        MTLCompileOptions *o = compile_options(nil);
+        NSError *e = nil;
+        id<MTLLibrary> lib = [dev newLibraryWithSource:src options:o error:&e];
+        [o release];
+        if (!lib) x2_log("metal: a batch of %u shaders failed to compile, compiling them one by one: %s", n,
+                         e.localizedDescription.UTF8String);
+        for (u32 i = 0; i < n; i++)
+            for (int v = 0; v < (b[i]->pixel ? 2 : 1); v++) {
+                if (lib) {
+                    NSString *name = [NSString stringWithFormat:@"b%u%s::%s", i, v ? "a" : "", entry_name];
+                    b[i]->fn[v] = [lib newFunctionWithName:name];
+                } else
+                    b[i]->fn[v] = compile_fn(b[i], v ? @{@"X2_ATEST" : @1} : nil);
+            }
+        [lib release];
+        pthread_mutex_lock(&batch_mu);
+        for (u32 i = 0; i < n; i++) b[i]->cstate = CS_DONE;
+        st_batches++;
+        pthread_cond_broadcast(&batch_cv);
+        pthread_mutex_unlock(&batch_mu);
+        free(b);
+    }
+}
+/* batch_mu held: the open batch, closed (its shaders marked compiling) */
+static MShader **close_batch(u32 *n) {
+    *n = open_n;
+    if (!open_n) return NULL;
+    MShader **b = malloc(open_n * sizeof *b);
+    memcpy(b, open_batch, open_n * sizeof *b);
+    for (u32 i = 0; i < open_n; i++) b[i]->cstate = CS_COMPILING;
+    open_n = 0;
+    open_gen++;
+    return b;
+}
+static void dispatch_batch(MShader **b, u32 n) {
+    if (b) dispatch_async(batch_q[batch_next++ % BATCH_QUEUES], ^{
+      compile_batch(b, n);
+    });
+}
+/* replay thread, at creation: s joins the open batch */
+static void compile_early(MShader *s) {
+    compile_init();
+    if (!early || !s->msl) return;
+    pthread_mutex_lock(&batch_mu);
+    s->cstate = CS_QUEUED;
+    open_batch[open_n++] = s;
+    u32 n = 0, gen = open_gen;
+    MShader **b = open_n == BATCH_MAX ? close_batch(&n) : NULL;
+    pthread_mutex_unlock(&batch_mu);
+    dispatch_batch(b, n);
+    if (!b) /* closed after a pause in creation, if nothing else closed it */
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * 1000000), batch_q[0], ^{
+          pthread_mutex_lock(&batch_mu);
+          u32 m = 0;
+          MShader **c = open_gen == gen && open_n && open_batch[open_n - 1] == s ? close_batch(&m) : NULL;
+          pthread_mutex_unlock(&batch_mu);
+          if (c) compile_batch(c, m);
+        });
+}
+/* replay thread: s's batch compiled (here and now if it was still open) */
+static void compile_need(MShader *s) {
+    pthread_mutex_lock(&batch_mu);
+    if (s->cstate == CS_QUEUED) {
+        u32 n;
+        MShader **b = close_batch(&n);
+        pthread_mutex_unlock(&batch_mu);
+        compile_batch(b, n);
+        return;
+    }
+    while (s->cstate == CS_COMPILING) pthread_cond_wait(&batch_cv, &batch_mu);
+    pthread_mutex_unlock(&batch_mu);
+}
+/* replay thread, before freeing s: out of the open batch, or its batch finished */
+static void compile_forget(MShader *s) {
+    pthread_mutex_lock(&batch_mu);
+    if (s->cstate == CS_QUEUED)
+        for (u32 i = 0; i < open_n; i++)
+            if (open_batch[i] == s) {
+                memmove(&open_batch[i], &open_batch[i + 1], (open_n - i - 1) * sizeof *open_batch);
+                open_n--;
+                break;
+            }
+    while (s->cstate == CS_COMPILING) pthread_cond_wait(&batch_cv, &batch_mu);
+    s->cstate = CS_NONE;
+    pthread_mutex_unlock(&batch_mu);
+}
+static NSDictionary *vt_macros(u32 vtkey) {
     NSMutableDictionary *m = [NSMutableDictionary dictionary];
     for (int r = 0; r < 16; r++) {
         u32 t = vtkey >> (2 * r) & 3;
         if (t) m[[NSString stringWithFormat:@"X2_VT%d", r]] = t == 1 ? @"int4" : @"uint4";
     }
-    id<MTLFunction> f = compile_fn(s, m.count ? m : nil);
+    return m.count ? m : nil;
+}
+static id<MTLFunction> ps_function(MShader *s, bool atest) {
+    u64 t0 = x2_time_ns();
+    compile_init();
+    compile_need(s);
+    if (!s->fn[atest]) s->fn[atest] = compile_fn(s, atest ? @{@"X2_ATEST" : @1} : nil);
+    st_compile_ns += x2_time_ns() - t0;
+    return s->fn[atest];
+}
+/* vtkey: 2 bits per input register, 1 = int4, 2 = uint4 (integer vertex formats) */
+static id<MTLFunction> vs_function(MShader *s, u32 vtkey) {
+    u64 t0 = x2_time_ns();
+    compile_init();
+    compile_need(s);
+    if (s->fn[0] && !s->nvvar) { /* the batch's float-input variant */
+        s->vvar = malloc(sizeof *s->vvar);
+        s->vvar[s->nvvar++] = (struct VsVar){0, s->fn[0]};
+        s->fn[0] = nil;
+    }
+    for (u32 i = 0; i < s->nvvar; i++)
+        if (s->vvar[i].key == vtkey) {
+            st_compile_ns += x2_time_ns() - t0;
+            return s->vvar[i].fn;
+        }
+    id<MTLFunction> f = compile_fn(s, vt_macros(vtkey));
     s->vvar = realloc(s->vvar, (s->nvvar + 1) * sizeof *s->vvar);
     s->vvar[s->nvvar++] = (struct VsVar){vtkey, f};
+    st_compile_ns += x2_time_ns() - t0;
     return f;
 }
 
@@ -579,6 +759,7 @@ static id<MTLRenderPipelineState> get_pipeline(const PipeKey *k, MShader *vs, MS
     e->k = *k;
     e->next = pipes[h];
     pipes[h] = e;
+    u64 t0 = x2_time_ns(), c0 = st_compile_ns;
     id<MTLFunction> vf = vs_function(vs, k->vtkey), pf = ps_function(ps, k->atest);
     if (!vf || !pf) return nil;
     MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor alloc] init];
@@ -620,6 +801,13 @@ static id<MTLRenderPipelineState> get_pipeline(const PipeKey *k, MShader *vs, MS
     e->p = [dev newRenderPipelineStateWithDescriptor:d error:&err];
     [d release];
     if (!e->p) x2_log("metal: pipeline failed: %s", err.localizedDescription.UTF8String);
+    u64 dt = x2_time_ns() - t0;
+    st_pipes++;
+    st_pipe_ns += dt;
+    if (dt > 2000000 && getenv("X2_PACELOG"))
+        x2_log("metal: pipeline (vs %u ps %u, %zu + %zu bytes of MSL) took %.1f ms (shaders %.1f)", k->vs, k->ps,
+               strlen(vs->msl), strlen(ps->msl), dt / 1e6,
+               (st_compile_ns - c0) / 1e6);
     return e->p;
 }
 
@@ -1216,6 +1404,9 @@ static void run_frame(Frame *f) {
                 x2_log("gfx: frame %u: %u draws, %u clears in the last 120 frames (metal)", st_frames, st_draws,
                        st_clears);
                 st_draws = st_clears = 0;
+                if (st_pipes) x2_log("metal: %u new pipelines, %.1f ms", st_pipes, st_pipe_ns / 1e6);
+                st_pipes = 0;
+                st_pipe_ns = 0;
                 u64 n = __atomic_exchange_n(&gpu_n, 0, __ATOMIC_RELAXED);
                 u64 sum = __atomic_exchange_n(&gpu_us_sum, 0, __ATOMIC_RELAXED);
                 u64 mx = __atomic_exchange_n(&gpu_us_max, 0, __ATOMIC_RELAXED);

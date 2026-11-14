@@ -23,6 +23,8 @@ The first release.
 **Platforms:**
 
 - macOS (Apple Silicon): games play in the launcher, rendered with Metal.
+  Shaders are compiled in batches while a game loads, so a first play does
+  not stall on them mid-game.
 - Android: a RetroArch core holding the chosen games, or a standalone app
   that ES-DE can launch, rendered with Vulkan (OpenGL ES as a fallback).
   Built by the launcher from your games.
