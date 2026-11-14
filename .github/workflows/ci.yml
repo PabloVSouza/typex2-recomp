@@ -10,7 +10,10 @@ on:
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix: # 22.04: the Linux release's base (FFmpeg 4); 24.04: current
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Version is the same in every file
@@ -22,13 +25,15 @@ jobs:
             libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev \
             libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev \
-            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev patchelf
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DX2_FETCH_CAPSTONE=ON
       - name: Build
         run: cmake --build build
       - name: Smoke test
         run: test -x build/x2-player && test -x build/recompiler/x2recomp
+      - name: Stage the launcher kit (as a release does)
+        run: launcher/scripts/stage-kit.sh build
 
   macos:
     runs-on: macos-latest
@@ -42,6 +47,8 @@ jobs:
         run: cmake --build build
       - name: Smoke test
         run: test -x build/x2-player && test -x build/recompiler/x2recomp
+      - name: Stage the launcher kit (as a release does)
+        run: launcher/scripts/stage-kit.sh build
 
   windows:
     runs-on: windows-latest
@@ -65,3 +72,5 @@ jobs:
         run: cmake --build build -- -k 0
       - name: Smoke test
         run: test -f build/x2-player.exe && test -f build/recompiler/x2recomp.exe
+      - name: Stage the launcher kit (as a release does)
+        run: launcher/scripts/stage-kit.sh build

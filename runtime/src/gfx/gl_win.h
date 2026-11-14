@@ -1,6 +1,6 @@
 /* GL entry points through pointers on Windows, where opengl32.dll exports GL 1.1 only.
  * The list: every gl* call in runtime/src, regenerated with
- *   grep -ohwE "gl[A-Z][A-Za-z0-9]*" (calls followed by a parenthesis) in *.c gfx/*.c, sorted, unique
+ *   every gl... name called with a parenthesis in the .c files of runtime/src and runtime/src/gfx, sorted, unique
  * (plus glClearDepth, used through glClearDepthf). Filled by x2_gl_load once a context exists. */
 #pragma once
 #define X2_GL_FUNCS(X) \

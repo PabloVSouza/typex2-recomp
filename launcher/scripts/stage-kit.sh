@@ -62,7 +62,9 @@ Linux)
 MINGW*|MSYS*)
     # MSYS2 CLANG64: the import library game DLLs link against, and the DLLs the binaries
     # load that are not Windows' own, beside them (where Windows looks first)
-    cp "$BUILD/libx2-player.dll.a" "$KIT/bin/"
+    implib=$(find "$BUILD" -maxdepth 3 -name 'libx2-player*.a' | head -1)
+    [ -n "$implib" ] || { echo "no import library for x2-player under $BUILD" >&2; exit 1; }
+    cp "$implib" "$KIT/bin/libx2-player.dll.a"
     queue=$(ls "$KIT"/bin/*.exe)
     while [ -n "$queue" ]; do
         next=
