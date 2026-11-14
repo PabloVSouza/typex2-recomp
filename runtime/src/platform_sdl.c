@@ -556,6 +556,17 @@ SDL_Gamepad *x2_pad0(void) { return pads[0]; }
  * controller button; prints "pad <name>" with the name X2_PAD uses (south ... r3) for the first one
  * pressed, nothing when cancelled (Esc, the window closed, 15 s). Start, Back and the d-pad keep
  * their fixed roles and are not offered. */
+/* where compiled shaders and pipelines are kept (main.c): Android's app files folder, which is
+ * fast internal storage; NULL elsewhere (XDG_CACHE_HOME / ~/.cache). Without it the Android app
+ * kept no Vulkan cache and every run compiled as a first play. */
+const char *x2_platform_cache_base(void) {
+#ifdef __ANDROID__
+    return SDL_GetAndroidInternalStoragePath();
+#else
+    return NULL;
+#endif
+}
+
 int x2_read_pad_input(void) {
     /* the launcher keeps focus (macOS does not give it to a process started in the background) */
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");

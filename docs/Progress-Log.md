@@ -2,7 +2,7 @@
 
 Milestones, newest first. `git log` has the details.
 
-## 2026-11-14: Metal shaders compiled in batches, ahead of the draws
+## 2026-11-14: First-play shader stalls: Metal batches, Android app cache
 
 First plays on the Mac stalled for up to 2 s at a time: Metal compiled each
 shader at the first draw that used it, and Apple's compiler takes 100-450 ms
@@ -29,6 +29,17 @@ play compiles every one). Measured over 75 s of SSF4's attract mode with an empt
   once.
 - **Left:** new pipelines still cost 5-45 ms each (about 20 when a fight
   scene first appears, 250 ms in all, even with macOS's cache).
+
+**Android (Vulkan):** the standalone app kept no shader or pipeline cache:
+its cache folder came from `HOME`, which Android does not set. It now uses
+the app's files folder: SSF4's second run went from 2.1 s of pipeline
+stalls in 80 s to 0.1 s (the RetroArch core had its cache already). On a
+first play, a draw missing its pipeline now has the rest of its frame
+scanned and every missing pipeline built together (keys predicted from the
+recorded draws: all 65 of the first scenes' were used). The Mali-G57
+driver compiles them one at a time even on four threads with caches of
+their own, so a first play still costs about 1.2 s at boot and 0.5 s when
+a new scene first appears.
 
 ## 2026-11-14: CI, Linux and Windows builds, versioned releases
 

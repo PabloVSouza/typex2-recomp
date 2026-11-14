@@ -26,7 +26,8 @@ The first release.
   Shaders are compiled in batches while a game loads, so a first play does
   not stall on them mid-game.
 - Android: a RetroArch core holding the chosen games, or a standalone app
-  that ES-DE can launch, rendered with Vulkan (OpenGL ES as a fallback).
+  that ES-DE can launch, rendered with Vulkan (OpenGL ES as a fallback);
+  both keep compiled shaders and pipelines, so only a first play compiles.
   Built by the launcher from your games.
 - Linux and Windows: the launcher runs and builds the Android exports; playing
   games on these systems is new in this release and not yet tested with games

@@ -99,8 +99,11 @@ int main(int argc, char **argv) {
         const char *game = strrchr(d, '\\');
         if (!game || (strrchr(d, '/') && strrchr(d, '/') > game)) game = strrchr(d, '/');
 #else
-        const char *h = getenv("XDG_CACHE_HOME");
+        extern const char *x2_platform_cache_base(void);
+        const char *h = x2_platform_cache_base(); /* Android: the app's files folder (no HOME there) */
         if (h && *h) snprintf(base, sizeof base, "%s", h);
+        else if ((h = getenv("XDG_CACHE_HOME")) && *h)
+            snprintf(base, sizeof base, "%s", h);
         else if ((h = getenv("HOME")) && *h) snprintf(base, sizeof base, "%s/.cache", h);
         char full[PATH_MAX];
         const char *d = realpath(dir, full) ? full : dir; /* "." -> the folder's name */

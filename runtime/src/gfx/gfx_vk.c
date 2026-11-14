@@ -22,6 +22,7 @@
 #include <dirent.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <glslang/Public/resource_limits_c.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
@@ -1379,6 +1380,7 @@ typedef struct {
 typedef struct PipeEnt {
     PipeKey k;
     VkPipeline p;
+    bool ahead; /* built by build_ahead for a later draw, not used yet */
     struct PipeEnt *next;
 } PipeEnt;
 #define PIPE_BUCKETS 4096
@@ -1434,18 +1436,9 @@ static void pcache_save(void) {
     }
     free(d);
 }
-static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
-    u32 h = fnv(k, sizeof *k) % PIPE_BUCKETS;
-    for (PipeEnt *e = pipes[h]; e; e = e->next)
-        if (!memcmp(&e->k, k, sizeof *k)) return e->p;
-    PipeEnt *e = calloc(1, sizeof *e);
-    e->k = *k;
-    e->next = pipes[h];
-    pipes[h] = e;
-    u64 t0 = x2_time_ns();
-    VkShaderModule vm = module_for(vs, k->vtkey), fm = module_for(ps, k->atest);
-    if (!vm || !fm) return VK_NULL_HANDLE;
-    u64 t_mod = x2_time_ns() - t0; /* shader modules: translation, SPIR-V (glslang or the disk cache) */
+/* the pipeline for a key, from its shader modules. Any thread: the pipeline cache locks itself
+ * (it is not created externally synchronized), the rest is read-only. */
+static VkPipeline pipe_create(const PipeKey *k, VkShaderModule vm, VkShaderModule fm, VkPipelineCache cache) {
     VkPipelineShaderStageCreateInfo st[2] = {
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT, vm, "main", NULL},
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fm, "main", NULL}};
@@ -1530,18 +1523,50 @@ static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
     gi.pColorBlendState = &cb;
     gi.pDynamicState = &dy;
     gi.layout = playout;
-    if (vkCreateGraphicsPipelines(dev, pcache, 1, &gi, NULL, &e->p) != VK_SUCCESS) {
+    VkPipeline p = VK_NULL_HANDLE;
+    if (vkCreateGraphicsPipelines(dev, cache, 1, &gi, NULL, &p) != VK_SUCCESS) {
         x2_log("vulkan: pipeline creation failed");
-        e->p = VK_NULL_HANDLE;
+        p = VK_NULL_HANDLE;
     }
-    pcache_dirty = true;
+    return p;
+}
+static u32 st_ahead_used;     /* pipelines built ahead (build_ahead) that a draw then used */
+static const Frame *replay_f; /* the frame being replayed and the next command: build_ahead's look-ahead */
+static size_t replay_next;
+static VkPipeline build_ahead(const PipeKey *k, VkShaderModule vm, VkShaderModule fm);
+static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
+    u32 h = fnv(k, sizeof *k) % PIPE_BUCKETS;
+    for (PipeEnt *e = pipes[h]; e; e = e->next)
+        if (!memcmp(&e->k, k, sizeof *k)) {
+            if (e->ahead) {
+                e->ahead = false;
+                st_ahead_used++;
+            }
+            return e->p;
+        }
+    static int together = -1;
+    if (together < 0) together = !getenv("X2_PREBUILD") || atoi(getenv("X2_PREBUILD")) != 0;
+    u64 t0 = x2_time_ns();
+    VkShaderModule vm = module_for(vs, k->vtkey), fm = module_for(ps, k->atest);
+    u64 t_mod = x2_time_ns() - t0; /* shader modules: translation, SPIR-V (glslang or the disk cache) */
+    VkPipeline p;
+    if (vm && fm && together && replay_f)
+        p = build_ahead(k, vm, fm); /* enters k's and the others it built */
+    else {
+        PipeEnt *e = calloc(1, sizeof *e);
+        e->k = *k;
+        e->next = pipes[h];
+        pipes[h] = e;
+        e->p = p = vm && fm ? pipe_create(k, vm, fm, pcache) : VK_NULL_HANDLE;
+        pcache_dirty = true;
+    }
     u64 dt = x2_time_ns() - t0;
     st_pipes++;
     st_pipe_ns += dt;
     if (dt > 2000000)
         x2_log("vulkan: pipeline (vs %u ps %u) took %.1f ms (shaders %.1f)", vs->serial, ps->serial, dt / 1e6,
                t_mod / 1e6);
-    return e->p;
+    return p;
 }
 
 typedef struct SampEnt {
@@ -2192,6 +2217,191 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     if (drawlog) x2_log("  -> drawn (%u verts, target %u)", use_idx ? nidx : n, st->rt[0]);
 }
 
+/* ---- pipelines built together -------------------------------------------------------
+ * The first time a scene appears it needs a burst of new pipelines, about 20 at 10-40 ms each on
+ * a Mali-G57, and its draws asked for them one at a time: 400-600 ms of stall where a fight starts.
+ * When a draw misses its pipeline, the rest of the frame is scanned: the keys of the later draws are
+ * predicted from their recorded state (mirroring draw() and select_target()), and the missing
+ * pipelines are built on worker threads together with the draw's own. A wrong prediction costs only
+ * that build: its draw creates what it needs as before. The Mali-G57 driver still compiles one at a
+ * time (61 pipelines: 0.95 s instead of 1.2 s, own caches per thread no better); the gain is that a
+ * scene's stalls become one, and drivers that compile in parallel. X2_PREBUILD=0: one at a time. */
+#define AHEAD_MAX     64
+#define AHEAD_THREADS 4
+typedef struct {
+    PipeKey k;
+    VkShaderModule vm, fm;
+    VkPipeline p;
+} AheadJob;
+static AheadJob ahead[AHEAD_MAX];
+static u32 ahead_n, ahead_next;
+static u32 st_ahead, st_ahead_frames;
+static u64 st_ahead_ns;
+
+static void *ahead_worker(void *arg) {
+    (void)arg;
+    for (;;) {
+        u32 i = __atomic_fetch_add(&ahead_next, 1, __ATOMIC_RELAXED);
+        if (i >= ahead_n) return NULL;
+        ahead[i].p = pipe_create(&ahead[i].k, ahead[i].vm, ahead[i].fm, pcache);
+    }
+}
+static PipeEnt *pipe_find(const PipeKey *k) {
+    for (PipeEnt *e = pipes[fnv(k, sizeof *k) % PIPE_BUCKETS]; e; e = e->next)
+        if (!memcmp(&e->k, k, sizeof *k)) return e;
+    return NULL;
+}
+/* the key a draw will use, from its recorded state and the predicted pass (*open, color, depth:
+ * select_target's view of the pass so far); false when it cannot be known yet */
+static bool predict_key(const GfxState *st, u32 prim, bool up, u32 up_stride, bool *open, VTex *color[4], VTex **depth,
+                        PipeKey *pk) {
+    VShader *vs = st->vs < MAX_IDS ? shaders[st->vs] : NULL, *ps = st->ps < MAX_IDS ? shaders[st->ps] : NULL;
+    Decl *dc = st->decl < MAX_IDS ? decls[st->decl] : NULL;
+    if (!vs || !ps || !vs->ok || !ps->ok || !dc || !prim_count_to_verts(prim, 1)) return false;
+    const u32 *rs = st->rs;
+    memset(pk, 0, sizeof *pk);
+    pk->vs = vs->serial;
+    pk->ps = ps->serial;
+    pk->atest = rs[15] && rs[25] != 8 ? 1 : 0;
+    pk->topo = prim == 1   ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST
+               : prim == 2 ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
+               : prim == 3 ? VK_PRIMITIVE_TOPOLOGY_LINE_STRIP
+               : prim == 5 ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP
+                           : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    for (int loc = 0; loc < 16; loc++) {
+        if (!(vs->info.vs_in_mask & (1u << loc))) continue;
+        int usage = vs->info.vs_in_usage[loc], index = vs->info.vs_in_index[loc];
+        const Elem *e = NULL;
+        for (u32 k2 = 0; k2 < dc->n; k2++)
+            if (dc->e[k2].usage == usage && dc->e[k2].index == index) {
+                e = &dc->e[k2];
+                break;
+            }
+        u32 vt = 0;
+        bool bgra = false;
+        VkFormat vf = e ? vertex_format(e->type, &vt, &bgra) : VK_FORMAT_UNDEFINED;
+        if (vf && !up && !(st->vb[e->stream] < MAX_IDS && bufs[st->vb[e->stream]])) vf = VK_FORMAT_UNDEFINED;
+        if (!vf) {
+            pk->afmt[loc] = 1;
+            pk->abuf[loc] = 9;
+            pk->stride[9] = 16;
+            continue;
+        }
+        pk->vtkey |= vt << (2 * loc);
+        pk->afmt[loc] = (u8)(e->type + 1);
+        pk->aoff[loc] = e->offset;
+        pk->abuf[loc] = (u8)(1 + e->stream);
+        pk->stride[1 + e->stream] = up ? up_stride : st->vb_stride[e->stream];
+    }
+    /* the pass, as select_target will choose it */
+    bool need_depth = rs[7] || rs[52];
+    VTex *t = target_of(st);
+    if (!t) return false;
+    VTex *c[4] = {t};
+    for (int i = 1; i < 4; i++) {
+        VTex *x = tex_get(st->rt[i]);
+        if (x && x->rt && !x->depth && x->w == t->w && x->h == t->h) c[i] = x;
+    }
+    VTex *d = tex_get(st->ds);
+    if (!(d && d->depth && d->w >= t->w && d->h >= t->h)) d = NULL;
+    bool same =
+        *open && !memcmp(color, c, sizeof c) && (*depth == (need_depth ? d : NULL) || (*depth == d && !need_depth));
+    if (!need_depth) d = same ? *depth : NULL;
+    memcpy(color, c, sizeof c);
+    *depth = d;
+    *open = true;
+    for (u32 i = 0; i < 4; i++)
+        if (c[i]) {
+            pk->cfmt[i] = (u32)c[i]->vf;
+            pk->ncolor = i + 1;
+        }
+    pk->dfmt = d ? (u32)d->vf : 0;
+    if (rs[27]) {
+        pk->blend = 1;
+        pk->src = (u8)rs[19];
+        pk->dst = (u8)rs[20];
+        pk->op = (u8)rs[171];
+        pk->srca = (u8)(rs[206] ? rs[207] : rs[19]);
+        pk->dsta = (u8)(rs[206] ? rs[208] : rs[20]);
+        pk->opa = (u8)(rs[206] ? rs[209] : rs[171]);
+    }
+    pk->wmask = (u8)(rs[168] & 0xF);
+    return true;
+}
+static bool id_in(const GfxId *ids, u32 n, GfxId id) {
+    for (u32 i = 0; i < n; i++)
+        if (ids[i] == id) return true;
+    return false;
+}
+/* a draw missed its pipeline (key k): the rest of the frame is scanned for other draws whose
+ * pipelines are missing too, and all of them are built at once on worker threads. Draws using a
+ * texture, shader or declaration the frame creates later are skipped (unknown yet). Returns k's. */
+static VkPipeline build_ahead(const PipeKey *k, VkShaderModule vm, VkShaderModule fm) {
+    ahead[0] = (AheadJob){*k, vm, fm, VK_NULL_HANDLE};
+    ahead_n = 1;
+    bool open = true; /* the draw's own pass, just selected */
+    VTex *color[4], *depth = cur_depth;
+    memcpy(color, cur_color, sizeof color);
+    GfxId later[256];
+    u32 nlater = 0;
+    for (size_t off = replay_next; off < replay_f->len && ahead_n < AHEAD_MAX;) {
+        u32 type = ((const u32 *)(replay_f->data + off))[0], size = ((const u32 *)(replay_f->data + off))[1];
+        const void *p = replay_f->data + off + 8;
+        off += size;
+        if (type == C_TEX_CREATE || type == C_TEX_DESTROY || type == C_SHADER_CREATE || type == C_SHADER_DESTROY ||
+            type == C_DECL_CREATE) {
+            if (nlater == 256) break;
+            later[nlater++] = *(const GfxId *)p; /* every one of these starts with its id */
+            continue;
+        }
+        if (type != C_DRAW && type != C_DRAW_UP) {
+            if (type != C_CONSTS) open = false; /* clears, blits, uploads, presents may end the pass */
+            continue;
+        }
+        const GfxState *st = &((const Draw *)p)->st; /* both draw commands start with the state */
+        bool unknown = id_in(later, nlater, st->vs) || id_in(later, nlater, st->ps) || id_in(later, nlater, st->decl) ||
+                       id_in(later, nlater, st->ds);
+        for (int i = 0; i < 4; i++) unknown |= id_in(later, nlater, st->rt[i]);
+        PipeKey nk;
+        bool got = type == C_DRAW ? predict_key(st, ((const Draw *)p)->prim, false, 0, &open, color, &depth, &nk)
+                                  : predict_key(st, ((const DrawUp *)p)->prim, true, ((const DrawUp *)p)->stride, &open,
+                                                color, &depth, &nk);
+        if (!got || unknown || pipe_find(&nk)) continue;
+        bool dup = false;
+        for (u32 i = 0; i < ahead_n && !dup; i++) dup = !memcmp(&ahead[i].k, &nk, sizeof nk);
+        if (dup) continue;
+        VkShaderModule v2 = module_for(shaders[st->vs], nk.vtkey), f2 = module_for(shaders[st->ps], nk.atest);
+        if (v2 && f2) ahead[ahead_n++] = (AheadJob){nk, v2, f2, VK_NULL_HANDLE};
+    }
+    u64 t0 = x2_time_ns();
+    ahead_next = 0;
+    pthread_t th[AHEAD_THREADS];
+    u32 nth = 0;
+    for (; nth < AHEAD_THREADS && nth + 1 < ahead_n; nth++)
+        if (pthread_create(&th[nth], NULL, ahead_worker, NULL)) break;
+    ahead_worker(NULL);
+    for (u32 i = 0; i < nth; i++) pthread_join(th[i], NULL);
+    for (u32 i = 0; i < ahead_n; i++) {
+        u32 h = fnv(&ahead[i].k, sizeof ahead[i].k) % PIPE_BUCKETS;
+        PipeEnt *e = calloc(1, sizeof *e);
+        e->k = ahead[i].k;
+        e->p = ahead[i].p;
+        e->ahead = i > 0;
+        e->next = pipes[h];
+        pipes[h] = e;
+    }
+    pcache_dirty = true;
+    if (ahead_n > 1) {
+        u64 dt = x2_time_ns() - t0;
+        st_ahead += ahead_n - 1;
+        st_ahead_ns += dt;
+        st_ahead_frames++;
+        if (dt > 2000000)
+            x2_log("vulkan: %u pipelines built together in %.1f ms (%u threads)", ahead_n, dt / 1e6, nth + 1);
+    }
+    return ahead[0].p;
+}
+
 /* ---- replay -------------------------------------------------------------------- */
 static void run_frame(Frame *f) {
     frame_begin();
@@ -2205,6 +2415,8 @@ static void run_frame(Frame *f) {
     for (size_t off = 0; off < f->len;) {
         u32 type = ((u32 *)(f->data + off))[0], size = ((u32 *)(f->data + off))[1];
         const void *p = f->data + off + 8;
+        replay_f = f; /* build_ahead looks ahead from here */
+        replay_next = off + size;
         u64 c0 = slowlog ? x2_time_ns() : 0;
         if (type == C_TEX_UPLOAD) up_bytes += ((const TexUpload *)p)->bytes;
         switch (type) {
@@ -2268,6 +2480,11 @@ static void run_frame(Frame *f) {
                        st_draws, st_clears, st_passes);
                 st_passes = 0;
                 if (st_pipes) x2_log("vulkan: %u new pipelines, %.1f ms", st_pipes, st_pipe_ns / 1e6);
+                if (st_ahead)
+                    x2_log("vulkan: %u pipelines built ahead in %u frames, %.1f ms; %u used by draws", st_ahead,
+                           st_ahead_frames, st_ahead_ns / 1e6, st_ahead_used);
+                st_ahead = st_ahead_frames = st_ahead_used = 0;
+                st_ahead_ns = 0;
                 st_pipes = 0;
                 st_pipe_ns = 0;
                 if (gpu_n) x2_log("gputime: %.2f ms avg, %.2f max", gpu_ms_sum / gpu_n, gpu_ms_max);
@@ -2283,6 +2500,7 @@ static void run_frame(Frame *f) {
         }
         off += size;
     }
+    replay_f = NULL;
     pend_trickle();
     frame_end();
     u64 total = x2_time_ns() - f0;
