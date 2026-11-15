@@ -4,6 +4,7 @@
 - [Game status](Game-Status.md)
 - [Known issues](Known-Issues.md)
 - [Progress log](Progress-Log.md)
+- [Proposal: on-device builds](On-Device-Builds.md)
 
 **Games**
 - [KOF XII](Game-KOF-XII.md)

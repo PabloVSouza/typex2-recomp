@@ -26,6 +26,7 @@ Each game then runs in one of two ways:
 | [Android and RetroArch](Android-and-RetroArch.md) | Building, installing, ES-DE, performance work |
 | [Debugging](Debugging.md) | Methods that found past bugs, and the debugging switches |
 | [Progress log](Progress-Log.md) | What changed, milestone by milestone |
+| [Proposal: building on the device](On-Device-Builds.md) | An open question: a self-contained Android app that recompiles games itself |
 
 Game pages:
 - [KOF XII](Game-KOF-XII.md)
