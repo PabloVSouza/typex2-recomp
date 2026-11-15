@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X (2008, SNK Playmore): the first Type X game in the project |
 | `games/` id | `kof98um` |
-| Status | **Playable** on macOS and in RetroArch on Android: attract mode, coin / start, team select and fights with full stages and sound; 60 fps on the test tablet (worst pause about 120 ms over a 5-minute run). The Android app is not tested. |
+| Status | **Playable** on macOS and in RetroArch on Android: attract mode, coin / start, team select and fights with full stages and sound; 60 fps on the test tablet (worst pause about 120 ms over a 5-minute run). The Android app runs a scripted fight at 60 fps. |
 | Executable | `launcher.exe`. The runtime looks for `game.exe`, then `launcher.exe`. |
 
 ## Controls
@@ -41,7 +41,6 @@ opens with the test button (F2, or hold Select).
 
 ## Known issues
 
-- The Android app (standalone) is not tested; RetroArch is.
 - The game re-uploads its palette, all nine mip levels, every frame. That's
   harmless so far: the tablet holds 60 fps with about 3 ms of game work per
   frame.
