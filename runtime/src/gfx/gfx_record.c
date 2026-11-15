@@ -33,11 +33,11 @@ static pthread_mutex_t spare_lock = PTHREAD_MUTEX_INITIALIZER;
 static void frame_free(Frame *f) {
     pthread_mutex_lock(&spare_lock);
     bool keep = nspare < SPARE_MAX && f->data;
-#ifndef MADV_FREE
+#if !defined(MADV_FREE) || defined(_WIN32)
     keep = keep && f->cap <= (64u << 20);
 #endif
     if (keep) {
-#ifdef MADV_FREE
+#if defined(MADV_FREE) && !defined(_WIN32)
         /* A loading frame's buffer (BlazBlue CT's fight start: 100+ MB) is kept too, so the next load
          * doesn't fault in fresh pages while the game waits; past 64 MB the kernel may take the pages
          * back when memory runs short (they then come back zeroed). */
