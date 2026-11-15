@@ -187,7 +187,10 @@ static void tex_created(const TexCreate *k) {
 }
 /* after each replay: the free space in texture blocks, which needs no new block */
 static void tex_room_update(void) {
-    if (tex_mem_type == ~0u) return;
+    pthread_mutex_lock(&spare_mu);
+    bool waiting = announced > 0; /* nothing announced: nothing to allocate ahead, no need to count */
+    pthread_mutex_unlock(&spare_mu);
+    if (tex_mem_type == ~0u || !waiting) return;
     int64_t free_bytes = 0;
     for (u32 i = 0; i < nblocks; i++)
         if (blocks[i].type == tex_mem_type && !blocks[i].map)

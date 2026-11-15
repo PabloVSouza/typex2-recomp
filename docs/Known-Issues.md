@@ -29,8 +29,9 @@ that isn't here? Report it in
 - **The King of Fighters '98 Ultimate Match:** the standalone Android app is
   untested (RetroArch is tested)
   ([details](Game-KOF-98-UM.md#known-issues)).
-- **The King of Fighters: Maximum Impact Regulation A:** on Android only the
-  opening movie and attract mode are tested, not fights. Some test-menu sound
+- **The King of Fighters: Maximum Impact Regulation A:** on Android, fights
+  run at 57-60 fps with uneven frame pacing and a ~1.2 s load at the start;
+  not played by hand yet. Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
 - **Super Street Fighter IV Arcade Edition:** with OpenGL

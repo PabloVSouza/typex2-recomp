@@ -4,6 +4,7 @@
  * mmioAdvance / mmioSetInfo. Writing covers mmioCreateChunk + mmioWrite +
  * mmioAscend (the chunk size is patched on the way out). */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../core.h"
@@ -41,13 +42,57 @@ static u32 rd(Mmio *m, void *dst, u32 n) {
     return got;
 }
 
+
+/* Read-only opens come from memory, each file read once: KOF Maximum Impact opens a WAV for
+ * every sound it plays, and on Android's shared storage each open is a FUSE round trip
+ * (a few ms, at times many more: the fights' frame pacing showed it). Up to 4 MB a file and
+ * 64 MB in all; the rest is opened as before. */
+#ifndef _WIN32
+typedef struct Cached {
+    struct Cached *next;
+    char *path;
+    u8 *data;
+    size_t size;
+} Cached;
+static Cached *cache;
+static size_t cache_bytes;
+static FILE *open_read(const char *hp) {
+    pthread_mutex_lock(&mmio_lock);
+    Cached *e = cache;
+    while (e && strcmp(e->path, hp)) e = e->next;
+    if (!e) {
+        FILE *f = fopen(hp, "rb");
+        long size = -1;
+        if (f && !fseek(f, 0, SEEK_END)) size = ftell(f);
+        if (!f || size <= 0 || size > (4l << 20) || cache_bytes + (size_t)size > (64u << 20)) {
+            if (f) rewind(f);
+            pthread_mutex_unlock(&mmio_lock);
+            return f;
+        }
+        rewind(f);
+        e = calloc(1, sizeof *e);
+        e->data = malloc((size_t)size);
+        e->size = fread(e->data, 1, (size_t)size, f);
+        fclose(f);
+        e->path = strdup(hp);
+        e->next = cache;
+        cache = e;
+        cache_bytes += e->size;
+    }
+    FILE *m = e->size ? fmemopen(e->data, e->size, "rb") : NULL;
+    pthread_mutex_unlock(&mmio_lock);
+    return m ? m : fopen(hp, "rb");
+}
+#else
+static FILE *open_read(const char *hp) { return fopen(hp, "rb"); }
+#endif
 /* mmioOpenA(path, info, flags) */
 static void mmioOpenA(X2Cpu *c) {
     u32 flags = ARG(2);
     char hp[1100];
     x2_host_path(GSTR(ARG(0)), hp, sizeof hp);
     const char *mode = flags & 0x1000 /* MMIO_CREATE */ ? "w+b" : (flags & 3) ? "r+b" : "rb";
-    FILE *f = fopen(hp, mode);
+    FILE *f = mode[1] == 'b' ? open_read(hp) : fopen(hp, mode); /* "rb": read only */
     if (!f) {
         if (ARG(1)) WR16(ARG(1) + 12, MMIOERR_CANNOTOPEN);
         X2_TRACE("mmioOpenA(\"%s\") failed", GSTR(ARG(0)));
