@@ -26,8 +26,8 @@ that isn't here? Report it in
 - **The King of Fighters XIII:** starts in Japanese; switch the language in
   the test menu
   ([details](Game-KOF-XIII.md#known-issues)).
-- **The King of Fighters: Maximum Impact Regulation A:** on Android, fights
-  run at 57-60 fps with uneven frame pacing and a ~1.2 s load at the start;
+- **The King of Fighters: Maximum Impact Regulation A:** on Android, a fight
+  loads in one ~1.2 s frame at its start (the game's own loading);
   not played by hand yet. Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
