@@ -50,7 +50,10 @@ Type X / X2 game, including the ones not supported yet:
 - **macOS** on Apple Silicon: games play right in the launcher, rendered with
   Metal.
 - **Linux and Windows:** the launcher runs there and builds the Android
-  exports. Playing games on them is in progress.
+  exports. Playing games on them is in progress, and **untested**: development
+  happens on a Mac. If you try them, please report how it went, working or
+  not, in [GitHub issues](https://github.com/PabloVSouza/typex2-recomp/issues)
+  or on [Discord](https://discord.gg/bEQYMsEe9A).
 
 ## Getting started
 

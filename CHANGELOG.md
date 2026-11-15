@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## 0.1.0 - 2026-11-14
+## 0.1.0 - 2026-11-15
 
 The first release.
 
@@ -32,7 +32,8 @@ The first release.
   Built by the launcher from your games.
 - Linux and Windows: the launcher runs and builds the Android exports; playing
   games on these systems is new in this release and not yet tested with games
-  (Vulkan, with OpenGL as a fallback).
+  (Vulkan, with OpenGL as a fallback). Reports welcome, working or not:
+  GitHub issues or Discord.
 
 **Launcher:** add the folders of the games you own (or scan a folder holding
 them all), recompile them, play them
