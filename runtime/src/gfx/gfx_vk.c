@@ -126,6 +126,87 @@ static bool block_take(Block *b, VkDeviceSize size, VkDeviceSize align, VkDevice
     }
     return false;
 }
+/* ---- texture memory allocated ahead ------------------------------------------------------
+ * vkAllocateMemory takes ~25 ms per 64 MB block on a Mali-G57 (the driver commits and clears the
+ * pages), and BlazBlue CT's fight start needed five blocks in one replay. The recording side
+ * announces each texture as the game creates it (gfx_tex_create_hook), usually hundreds of ms
+ * before the replay creates it: a thread allocates the blocks they will need meanwhile, and
+ * mem_alloc takes those first. */
+#define SPARE_BLOCKS 8
+static pthread_mutex_t spare_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t spare_cv = PTHREAD_COND_INITIALIZER;
+static VkDeviceMemory spare_mem[SPARE_BLOCKS];
+static u32 nspare_mem;
+static u32 tex_mem_type = ~0u;  /* the memory type of texture blocks, once one was allocated */
+static int64_t announced, room; /* bytes of textures announced and not created yet; free in texture blocks */
+
+static int64_t tex_estimate(const TexCreate *k) {
+    int64_t s = k->scale ? k->scale : 1, b = (int64_t)k->w * k->h * s * s * 4; /* DXT is decoded to RGBA8 */
+    if (k->levels != 1) b = b * 4 / 3;
+    return k->cube ? b * 6 : b;
+}
+static void *spare_main(void *arg) {
+    (void)arg;
+    pthread_mutex_lock(&spare_mu);
+    for (;;) {
+        while (tex_mem_type == ~0u || nspare_mem == SPARE_BLOCKS ||
+               announced <= room + (int64_t)nspare_mem * (int64_t)BLOCK_SIZE)
+            pthread_cond_wait(&spare_cv, &spare_mu);
+        VkMemoryAllocateInfo ai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, NULL, BLOCK_SIZE, tex_mem_type};
+        pthread_mutex_unlock(&spare_mu);
+        VkDeviceMemory m;
+        VkResult r = vkAllocateMemory(dev, &ai, NULL, &m);
+        pthread_mutex_lock(&spare_mu);
+        if (r != VK_SUCCESS) { /* out of memory: mem_alloc will try (and report) itself */
+            announced = 0;
+            continue;
+        }
+        spare_mem[nspare_mem++] = m;
+    }
+    return NULL;
+}
+static void tex_announce(const TexCreate *k) {
+    static bool started;
+    pthread_mutex_lock(&spare_mu);
+    announced += tex_estimate(k);
+    if (announced > (int64_t)SPARE_BLOCKS * (int64_t)BLOCK_SIZE) announced = (int64_t)SPARE_BLOCKS * BLOCK_SIZE;
+    if (!started) {
+        pthread_t t;
+        started = x2_spawn(&t, NULL, spare_main, NULL) == 0;
+        if (started) pthread_detach(t);
+    }
+    pthread_cond_signal(&spare_cv);
+    pthread_mutex_unlock(&spare_mu);
+}
+/* a texture created (replay side): no longer ahead */
+static void tex_created(const TexCreate *k) {
+    pthread_mutex_lock(&spare_mu);
+    announced -= tex_estimate(k);
+    if (announced < 0) announced = 0;
+    pthread_mutex_unlock(&spare_mu);
+}
+/* after each replay: the free space in texture blocks, which needs no new block */
+static void tex_room_update(void) {
+    if (tex_mem_type == ~0u) return;
+    int64_t free_bytes = 0;
+    for (u32 i = 0; i < nblocks; i++)
+        if (blocks[i].type == tex_mem_type && !blocks[i].map)
+            for (u32 j = 0; j < blocks[i].nfree; j++) free_bytes += (int64_t)blocks[i].free[j].size;
+    pthread_mutex_lock(&spare_mu);
+    room = free_bytes;
+    pthread_cond_signal(&spare_cv);
+    pthread_mutex_unlock(&spare_mu);
+}
+static VkDeviceMemory spare_take(u32 type, VkDeviceSize size) {
+    VkDeviceMemory m = VK_NULL_HANDLE;
+    if (type != tex_mem_type || size != BLOCK_SIZE) return m;
+    pthread_mutex_lock(&spare_mu);
+    if (nspare_mem) m = spare_mem[--nspare_mem];
+    pthread_cond_signal(&spare_cv);
+    pthread_mutex_unlock(&spare_mu);
+    return m;
+}
+
 static Alloc mem_alloc(VkMemoryRequirements req, VkMemoryPropertyFlags want) {
     u32 type = mem_type(req.memoryTypeBits, want);
     if (type == ~0u) type = mem_type(req.memoryTypeBits, want & ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -141,7 +222,8 @@ static Alloc mem_alloc(VkMemoryRequirements req, VkMemoryPropertyFlags want) {
     blocks = realloc(blocks, (nblocks + 1) * sizeof *blocks);
     Block *b = &blocks[nblocks];
     memset(b, 0, sizeof *b);
-    VK_CHECK(vkAllocateMemory(dev, &ai, NULL, &b->mem));
+    b->mem = spare_take(type, bs);
+    if (!b->mem) VK_CHECK(vkAllocateMemory(dev, &ai, NULL, &b->mem));
     b->type = type;
     b->size = bs;
     if (memprops.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
@@ -553,6 +635,11 @@ static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 
     VkMemoryRequirements req;
     vkGetImageMemoryRequirements(dev, t->img, &req);
     t->mem = mem_alloc(req, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (tex_mem_type == ~0u && !rt) { /* the type tex_announce's blocks are allocated in */
+        pthread_mutex_lock(&spare_mu);
+        tex_mem_type = blocks[t->mem.block].type;
+        pthread_mutex_unlock(&spare_mu);
+    }
     VK_CHECK(vkBindImageMemory(dev, t->img, blocks[t->mem.block].mem, t->mem.off));
     t->layout = VK_IMAGE_LAYOUT_UNDEFINED;
     /* D3D samples A8 as (0,0,0,a), L8 as (l,l,l,1), A8L8 as (l,l,l,a), X8R8G8B8 with alpha 1 */
@@ -595,6 +682,7 @@ static void do_tex_create(const TexCreate *k) {
     if (!k->id || k->id >= MAX_IDS) return;
     if (texs[k->id]) tex_free(texs[k->id]);
     texs[k->id] = tex_new(k->fmt, k->w, k->h, k->levels, k->rt != 0, k->cube != 0, k->scale, false, false);
+    tex_created(k);
     texs[k->id]->id = k->id;
     static u32 tex_gen;
     texs[k->id]->gen = ++tex_gen;
@@ -737,17 +825,23 @@ typedef struct PendUp {
     struct PendUp *next;
     GfxId id;
     u32 gen, len;
-    u8 data[]; /* the TexUpload command */
+    const TexUpload *k; /* the command, in its frame's data: no copy (BlazBlue's fight is 100+ MB) */
+    Frame *f;           /* kept until its last queued upload is applied */
 } PendUp;
 static PendUp *pend_head, *pend_tail;
 static int lazy_up = -1;
+static Frame *cur_frame; /* being replayed */
 
+static void frame_unref(Frame *f) {
+    if (--f->refs == 0 && f != cur_frame) gfx_frame_free(f);
+}
 static void pend_apply(PendUp *e) {
     VTex *t = tex_get(e->id);
     if (t && t->gen == e->gen) {
         t->npend--;
-        tex_upload_now((const TexUpload *)e->data);
+        tex_upload_now(e->k);
     }
+    frame_unref(e->f);
     free(e);
 }
 /* everything queued for a texture about to be read; returns it (an upload may replace it) */
@@ -790,12 +884,14 @@ static void do_tex_upload(const TexUpload *k, u32 len) {
         tex_upload_now(k);
         return;
     }
-    PendUp *e = malloc(sizeof *e + len);
+    PendUp *e = malloc(sizeof *e);
     e->next = NULL;
     e->id = k->id;
     e->gen = t->gen;
     e->len = len;
-    memcpy(e->data, k, len);
+    e->k = k;
+    e->f = cur_frame;
+    cur_frame->refs++;
     if (pend_tail)
         pend_tail->next = e;
     else
@@ -2408,6 +2504,7 @@ static void run_frame(Frame *f) {
     /* X2_PACELOG: where a replay over 100 ms went, by command type, plus ring flushes */
     static int slowlog = -1;
     if (slowlog < 0) slowlog = getenv("X2_PACELOG") != NULL;
+    gfx_tex_create_hook = tex_announce; /* textures announced from now on get their memory ahead */
     u64 f0 = x2_time_ns(), by[32] = {0};
     u32 cnt[32] = {0};
     u64 up_bytes = 0, flush0 = st_flush_ns;
@@ -2503,6 +2600,7 @@ static void run_frame(Frame *f) {
     replay_f = NULL;
     pend_trickle();
     frame_end();
+    tex_room_update();
     u64 total = x2_time_ns() - f0;
     if (slowlog && total > 100000000) {
         static const char *const nm[] = {"?",          "tex create",  "tex upload",    "tex destroy",    "buf create",
@@ -3008,8 +3106,10 @@ bool gfx_vk_run_frames(u32 timeout_ms) {
     u64 t0 = x2_time_ns();
     while (list) {
         Frame *n = list->next;
+        cur_frame = list;
         run_frame(list);
-        gfx_frame_free(list);
+        cur_frame = NULL;
+        if (!list->refs) gfx_frame_free(list); /* else freed with its last queued upload */
         list = n;
     }
     if (any) gfx_replay_time(x2_time_ns() - t0);

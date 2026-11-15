@@ -2,6 +2,35 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-15: Known issues: fonts and BlazBlue CT's fight start
+
+- **KOF XII's credit counter (macOS):** the counters are laid out for
+  FOT-Matisse's digits; Hiragino Sans W8's (0.77 em) pushed the left
+  counter's second digit out. Ultra-bold faces now map to W7 (0.74 em).
+- **Bold text on Android:** bold faces were only emboldened as bitmaps, and
+  KOF XII asks for outlines (`GGO_NATIVE`), so its heavy text came out in the
+  regular weight. Outlines now grow as FreeType's `FT_Outline_Embolden`
+  does. Checked on macOS with the stb backend and Hiragino W3, then on the
+  tablet. (The note blamed KOF XIII, which draws no GDI text.)
+- **BlazBlue CT's fight start, measured on the tablet** with `X2_PACELOG`'s
+  slow-replay breakdown and `X2_PROF`:
+  - `vkAllocateMemory` took ~25 ms per 64 MB block, five blocks in one replay
+    (128 of 140 ms of texture creation). The recorder now announces textures
+    as the game creates them (`gfx_tex_create_hook`), and a thread allocates
+    their blocks while the game is still loading.
+  - Queued (lazy) uploads copied their data, 100+ MB, into fresh allocations;
+    they now point into their frame, kept alive by `Frame.refs` as in GL.
+  - On the game's side, ~230 ms went to growing the frame's command buffer:
+    with the instance heap a large `realloc` copied. It now uses `mremap`, and
+    large command buffers are kept for the next load (`MADV_FREE` past
+    64 MB). File opens no longer `access()` first (a FUSE round trip on
+    Android's shared storage).
+  - Result: the renderer's worst frame at fight start went from 226-252 ms
+    to 31-92 ms. The game's loading frame takes 0.3-0.6 s depending on the
+    stage, now mostly the game's own work.
+- **Left:** a full upload ring waits for the GPU (76-88 ms once, around
+  character select); spilling into a second staging buffer would avoid it.
+
 ## 2026-11-15: RetroArch switches games without a restart
 
 Closing a game in RetroArch and loading another used to be refused ("restart

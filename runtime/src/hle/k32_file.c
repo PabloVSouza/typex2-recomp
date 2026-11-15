@@ -148,7 +148,9 @@ static u32 create_file(const char *name, u32 acc, u32 disp) {
         case 5: fl |= O_TRUNC; break;            /* TRUNCATE_EXISTING */
     }
     if (fl & O_CREAT) mkdirs_for(hp);
-    bool existed = access(hp, F_OK) == 0;
+    /* only CREATE_ALWAYS / OPEN_ALWAYS report an existing file; each check is a FUSE round trip on
+     * Android's shared storage */
+    bool existed = (disp == 2 || disp == 4) && access(hp, F_OK) == 0;
     int fd = open(hp, fl, 0644);
     X2_TRACE("CreateFile %s -> %s fd=%d", name, hp, fd);
     if (fd < 0) {

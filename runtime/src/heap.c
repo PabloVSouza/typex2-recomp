@@ -15,6 +15,7 @@
  * Every block has a 16-byte trailer just before the pointer; strdup, strndup
  * and vasprintf are wrapped too, so whatever this library frees came from
  * here. */
+#define _GNU_SOURCE /* mremap */
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -153,6 +154,35 @@ void *__wrap_realloc(void *p, size_t n) {
         t->size = n;
         return p;
     }
+#ifdef __linux__
+    if (t->magic == BIG && n >= BIG_MIN) {
+        /* growing: the kernel moves the pages (a growing command buffer was copied each time it
+         * doubled, ~230 ms of BlazBlue CT's fight-start frame on the tablet) */
+        Big *b = (Big *)t - 1;
+        size_t head = (size_t)((uint8_t *)p - (uint8_t *)b->base);
+        size_t map = (head + n + page() - 1) / page() * page();
+        pthread_mutex_lock(&big_mu);
+        size_t old = b->map;
+        uint8_t *base = mremap(b->base, old, map, MREMAP_MAYMOVE);
+        if (base != MAP_FAILED) {
+            uint8_t *q = base + head;
+            b = (Big *)(q - sizeof(Tail)) - 1; /* the header moved with the pages: relink it */
+            if (b->prev)
+                b->prev->next = b;
+            else
+                bigs = b;
+            if (b->next) b->next->prev = b;
+            b->base = base;
+            b->map = map;
+            tail_of(q)->size = n;
+            big_live += map - old;
+            pthread_mutex_unlock(&big_mu);
+            return q;
+        }
+        pthread_mutex_unlock(&big_mu);
+    }
+#endif
+
     void *q = alloc(n, t->align);
     if (!q) return NULL;
     memcpy(q, p, t->size < n ? t->size : n);

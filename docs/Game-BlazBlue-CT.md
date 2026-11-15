@@ -37,7 +37,9 @@ input test confirms SHOT1-4 = A B C D.
 
 ## Known issues
 
-- On the tablet the fight start still pauses, about 0.25 s at worst on the
-  renderer (it was 0.5-0.6 s). The fight loads ~900 textures (over 100 MB) in
-  one frame: with Vulkan their DXT blocks are now decoded on the GPU and uploads
-  to textures not yet drawn are spread over the following frames.
+- On the tablet the fight start still pauses for 0.3-0.6 s, depending on the
+  stage: the game loads the fight (~900 textures, over 100 MB) in one frame.
+  Most of it is now the game's own work; the renderer adds under 0.1 s (it
+  added 0.25 s, on top of a longer loading frame): texture memory is allocated
+  while the game loads, queued uploads no longer copy their data, and the
+  command buffer grows without copies.

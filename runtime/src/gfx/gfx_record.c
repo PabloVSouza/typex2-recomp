@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifndef _WIN32
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 #include "gfx_cmd.h"
 
@@ -28,7 +32,22 @@ static u32 nspare;
 static pthread_mutex_t spare_lock = PTHREAD_MUTEX_INITIALIZER;
 static void frame_free(Frame *f) {
     pthread_mutex_lock(&spare_lock);
-    if (nspare < SPARE_MAX && f->cap <= (64u << 20)) {
+    bool keep = nspare < SPARE_MAX && f->data;
+#ifndef MADV_FREE
+    keep = keep && f->cap <= (64u << 20);
+#endif
+    if (keep) {
+#ifdef MADV_FREE
+        /* A loading frame's buffer (BlazBlue CT's fight start: 100+ MB) is kept too, so the next load
+         * doesn't fault in fresh pages while the game waits; past 64 MB the kernel may take the pages
+         * back when memory runs short (they then come back zeroed). */
+        if (f->cap > (64u << 20)) {
+            uintptr_t ps = (uintptr_t)sysconf(_SC_PAGESIZE),
+                      a = ((uintptr_t)f->data + (64u << 20) + ps - 1) & ~(ps - 1);
+            uintptr_t e = ((uintptr_t)f->data + f->cap) & ~(ps - 1);
+            if (e > a) madvise((void *)a, e - a, MADV_FREE);
+        }
+#endif
         spare[nspare].data = f->data;
         spare[nspare++].cap = f->cap;
         f->data = NULL;
@@ -76,18 +95,23 @@ u32 gfx_fmt_block_bytes(u32 f, u32 *bw) {
 }
 
 static u32 tex_fmt[1 << 20]; /* id -> format, for upload sizing (recording side) */
+void (*gfx_tex_create_hook)(const TexCreate *k);
 
 void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt, uint32_t scale) {
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
-    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1, 0};
+    TexCreate *k = emit(C_TEX_CREATE, sizeof(TexCreate));
+    *k = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1, 0};
+    if (gfx_tex_create_hook) gfx_tex_create_hook(k);
     pthread_mutex_unlock(&rec_lock);
 }
 /* cube map: uploads address face f, level l as level (f << 4 | l) */
 void gfx_texture_create_cube(GfxId id, enum GfxFormat fmt, uint32_t size, uint32_t levels) {
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
-    *(TexCreate *)emit(C_TEX_CREATE, sizeof(TexCreate)) = (TexCreate){id, fmt, size, size, levels, 0, 1, 1};
+    TexCreate *k = emit(C_TEX_CREATE, sizeof(TexCreate));
+    *k = (TexCreate){id, fmt, size, size, levels, 0, 1, 1};
+    if (gfx_tex_create_hook) gfx_tex_create_hook(k);
     pthread_mutex_unlock(&rec_lock);
 }
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {

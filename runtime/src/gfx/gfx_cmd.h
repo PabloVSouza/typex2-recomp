@@ -55,6 +55,9 @@ u32 gfx_fmt_block_bytes(u32 f, u32 *bw);
  * resource commands must never be dropped. */
 Frame *gfx_take_frames(u32 timeout_ms);
 void gfx_frame_free(Frame *f);
+/* called on the recording thread for every texture created, ahead of its replay (the Vulkan
+ * backend allocates memory for them meanwhile); NULL when unused */
+extern void (*gfx_tex_create_hook)(const TexCreate *k);
 /* a frame's C_PRESENT was replayed (the external clock counts them) */
 void gfx_frame_replayed(void);
 /* how long replaying the frames of one gfx_take_frames took (X2_PACELOG) */

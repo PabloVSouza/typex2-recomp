@@ -14,6 +14,9 @@ games are recompiled on your computer from your own files.
   release notes and a link to the downloads.
 - **KOF XII:** both credit counters show "00" on macOS (the left one showed
   "0"), and bold text is bold on Android (it came out in the regular weight).
+- **BlazBlue Calamity Trigger, Android:** a shorter pause at fight start (the
+  renderer's part went from 0.25 s to under 0.1 s, and the game's loading
+  frame is faster); loading screens elsewhere benefit too.
 
 ## 0.1.0 - 2026-11-15
 

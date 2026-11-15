@@ -17,7 +17,8 @@ that isn't here? Report it in
 ## Games
 
 - **BlazBlue: Calamity Trigger:** on slower Android devices the fight start
-  pauses for about 0.25 s ([details](Game-BlazBlue-CT.md#known-issues)).
+  pauses for 0.3-0.6 s while the game loads it, mostly the game's own work
+  ([details](Game-BlazBlue-CT.md#known-issues)).
 - **BlazBlue: Continuum Shift:** loading pauses of up to about 230 ms on
   slower Android devices, outside fights
   ([details](Game-BlazBlue-CS.md#known-issues)).
