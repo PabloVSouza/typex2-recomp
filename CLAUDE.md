@@ -23,7 +23,7 @@ Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Fr
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
-| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode at 60 fps, fights not tested yet |
+| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
 
 Every game in the maintainer's collection is now playable.
 
@@ -207,6 +207,13 @@ gets an entry per milestone. Update them with the README.
   `settings system screen_off_timeout` for long runs (restore it after).
 * `X2_INPUT` drives player 2 with upper-case keys (C S U D L R A B X Y), e.g.
   to test versus mode.
+* A scripted run only proves what it reached: check with screenshots along
+  the way (`X2_SHOT=<f1>,<f2>,...`) that it gets to a real fight (round
+  timer, health bars) before measuring "fights". KOF MI needs three
+  characters, each with A then a colour (A), moving right between them, then
+  the order screen with A, B, C: `1500:c 1700:s 2100:a 2250:a 2400:r 2450:a
+  2600:a 2750:r 2800:a 2950:a 3300:a 3450:b 3600:c` (each released 6 frames
+  later); the fight starts near frame 4400.
 
 ## Android test device
 

@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |
 | `games/` id | `kofmira` |
-| Status | **Playable** on macOS: opening movie, attract demo, test menu, character select and fights. Android: attract mode at 60 fps (RetroArch and the app); fights not tested yet. |
+| Status | **Playable** on macOS: opening movie, attract demo, test menu, character select and fights. Android: attract mode at 60 fps (RetroArch and the app); in RetroArch, fights (scripted: three characters, colours and order) at 60 fps. |
 | Executable | `game.exe` (PE32, 28 MB image; RenderWare engine; data in `data/`, `diskimg/`) |
 
 ## Controls
@@ -49,7 +49,7 @@ TEST confirms A B C D on cabinet SHOT1, SHOT4, SHOT2 and SHOT5.
 
 ## Known issues
 
-- Android: the opening movie and attract mode run at 60 fps on the test tablet (RetroArch and the app, Vulkan and GL). Fights not tested yet: a scripted run reached the pre-fight scene (loaded in one frame of about 1.2 s), not a fight.
+- Android: the opening movie and attract mode run at 60 fps on the test tablet (RetroArch and the app, Vulkan and GL). Scripted fights in RetroArch (`X2_INPUT`: coin, start, three characters with their colours, the order with A B C) run at 59.5-60.5 fps with 13-17 late frames per 120; the game thread's frames reach 15-23 ms, close to the budget. The fight start loads in one frame of about 1 s, and each next team member in 0.3-0.5 s: mostly the game's own loading. Not played by hand yet.
 - Some test-menu sound effects are missing from the dump (`mmioOpen` fails,
   harmlessly).
 - In the C runtime, `longjmp` and C++ / SEH exception dispatch are not

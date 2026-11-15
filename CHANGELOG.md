@@ -21,7 +21,7 @@ games are recompiled on your computer from your own files.
   renderer's part went from 0.25 s to under 0.1 s, and the game's loading
   frame is faster); loading screens elsewhere benefit too.
 - **RetroArch:** Reset restarts the game (with Vulkan, the default renderer).
-- **KOF Maximum Impact, Android:** steadier frame pacing (the game's own
+- **KOF Maximum Impact, Android:** fights tested; steadier frame pacing (the game's own
   frame timer no longer fights the display's).
 
 ## 0.1.0 - 2026-11-15
