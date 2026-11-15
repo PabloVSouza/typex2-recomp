@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { PageHeader, Row, Section } from "@/components/common";
 import { useAppState } from "@/hooks";
 import { LanguageRow } from "@/pages/about/LanguageRow";
+import { UpdatesSection } from "@/pages/about/UpdatesSection";
 
 export function AboutPage() {
   const { t } = useTranslation();
@@ -14,6 +15,7 @@ export function AboutPage() {
       <Section title={t("about.settings")}>
         <LanguageRow language={data.language} />
       </Section>
+      <UpdatesSection version={data.version} automatic={data.check_updates} />
       <Section title={t("about.noFiles")}>
         <Row title={t("about.yours")} description={t("about.yoursText")} />
       </Section>

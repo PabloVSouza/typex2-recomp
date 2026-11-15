@@ -1,4 +1,4 @@
-import type { AppStateData, GameSettings } from "@/lib/types";
+import type { AppStateData, GameSettings, ReleaseInfo } from "@/lib/types";
 import { mockInvoke } from "@/lib/mockApi";
 
 /** In the app: the Rust commands (src-tauri/src/lib.rs). In a plain browser (npm run dev):
@@ -30,6 +30,10 @@ export const api = {
   /** The next controller button pressed (X2_PAD name), or null when cancelled. */
   readPad: () => call<string | null>("read_pad"),
   saveLanguage: (language: string) => call<void>("save_language", { language }),
+  saveUpdateCheck: (enabled: boolean) => call<void>("save_update_check", { enabled }),
+  /** The newest launcher release on GitHub, or null when there is none. */
+  checkRelease: () => call<ReleaseInfo | null>("check_release"),
+  openRelease: (tag: string) => call<void>("open_release", { tag }),
 };
 
 export async function pickFolder(title: string): Promise<string | null> {

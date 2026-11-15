@@ -238,5 +238,25 @@
     "kitCheckout": "Repository-Checkout",
     "kitMissing": "Fehlt",
     "data": "Datenordner"
+  },
+  "updates": {
+    "title": "Updates",
+    "automatic": "Nach neuen Versionen suchen",
+    "automaticText": "Fragt GitHub beim Start und alle sechs Stunden. Downloads installierst du selbst.",
+    "installed": "Installiert: {{version}}",
+    "checkNow": "Jetzt prüfen",
+    "checking": "Wird geprüft…",
+    "unavailable": "Updates konnten nicht geprüft werden. Versuche es später erneut.",
+    "notChecked": "Noch nicht geprüft.",
+    "noRelease": "Es gibt noch keine Version.",
+    "current": "Du bist auf dem neuesten Stand.",
+    "available": "Version {{version}} ist erschienen.",
+    "downloadHint": "Lies die Neuerungen und lade sie dann von der Release-Seite herunter.",
+    "notes": "Neuerungen",
+    "dismiss": "Ausblenden",
+    "close": "Schließen",
+    "viewRelease": "Release-Seite",
+    "noNotes": "Diese Version hat keine Notizen.",
+    "openFailed": "Die Release-Seite konnte nicht geöffnet werden."
   }
 }

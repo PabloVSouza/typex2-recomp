@@ -4555,6 +4555,7 @@ name = "typex2-launcher"
 version = "0.1.0"
 dependencies = [
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "sha1",

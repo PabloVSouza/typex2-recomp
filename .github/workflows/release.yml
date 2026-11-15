@@ -48,6 +48,8 @@ jobs:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the launcher
+        env:
+          X2_RELEASE_TAG: ${{ github.ref_name }} # the version the update check compares (updates.rs)
         working-directory: launcher
         run: |
           npm ci
@@ -82,6 +84,8 @@ jobs:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the launcher
+        env:
+          X2_RELEASE_TAG: ${{ github.ref_name }} # the version the update check compares (updates.rs)
         working-directory: launcher
         run: |
           npm ci
@@ -118,6 +122,8 @@ jobs:
           node-version: 22
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the launcher
+        env:
+          X2_RELEASE_TAG: ${{ github.ref_name }} # the version the update check compares (updates.rs)
         working-directory: launcher
         run: |
           npm ci

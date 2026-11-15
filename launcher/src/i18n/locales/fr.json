@@ -240,5 +240,25 @@
     "kitCheckout": "Copie du dépôt",
     "kitMissing": "Introuvable",
     "data": "Dossier des données"
+  },
+  "updates": {
+    "title": "Mises à jour",
+    "automatic": "Rechercher les nouvelles versions",
+    "automaticText": "Interroge GitHub au lancement puis toutes les six heures. Vous installez vous-même les téléchargements.",
+    "installed": "Installée : {{version}}",
+    "checkNow": "Vérifier maintenant",
+    "checking": "Vérification…",
+    "unavailable": "Impossible de vérifier les mises à jour. Réessayez plus tard.",
+    "notChecked": "Pas encore vérifié.",
+    "noRelease": "Aucune version publiée pour l'instant.",
+    "current": "Vous êtes à jour.",
+    "available": "La version {{version}} est sortie.",
+    "downloadHint": "Lisez les nouveautés, puis téléchargez-la depuis la page de la version.",
+    "notes": "Nouveautés",
+    "dismiss": "Ignorer",
+    "close": "Fermer",
+    "viewRelease": "Page de la version",
+    "noNotes": "Cette version n'a pas de notes.",
+    "openFailed": "Impossible d'ouvrir la page de la version."
   }
 }

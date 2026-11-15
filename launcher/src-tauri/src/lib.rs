@@ -5,6 +5,7 @@ pub mod games;
 pub mod kit;
 pub mod recomp;
 pub mod toolchain;
+pub mod updates;
 
 use config::{Config, GameEntry, GameSettings};
 use serde_json::{json, Value};
@@ -68,7 +69,7 @@ fn load_state(state: State<AppState>) -> Result<Value> {
         })
         .collect();
     Ok(json!({
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": updates::installed_version(),
         "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH,
         "data": state.data,
@@ -79,6 +80,7 @@ fn load_state(state: State<AppState>) -> Result<Value> {
         "ndk": config.ndk,
         "jobs": config.jobs,
         "language": config.language,
+        "check_updates": !config.no_update_check,
         "job": state.jobs.running(),
         "running": running,
         "targets": recomp::TARGETS,
@@ -163,6 +165,14 @@ fn save_build_settings(state: State<AppState>, ndk: String, jobs: u32) -> Result
 fn save_language(state: State<AppState>, language: String) -> Result<()> {
     state.update(|c| {
         c.language = language;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+fn save_update_check(state: State<AppState>, enabled: bool) -> Result<()> {
+    state.update(|c| {
+        c.no_update_check = !enabled;
         Ok(())
     })
 }
@@ -340,7 +350,10 @@ pub fn run() {
             launch,
             stop,
             read_pad,
-            save_language
+            save_language,
+            save_update_check,
+            updates::check_release,
+            updates::open_release
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

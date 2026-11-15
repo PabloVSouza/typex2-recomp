@@ -18,7 +18,9 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 | Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. |
 | Log | The game's output and the build tools' output. |
-| About | The launcher's language, the installation (version, kit, data folder). |
+| About | The launcher's language, updates (below), the installation (version, kit, data folder). |
+
+**Updates.** The launcher asks GitHub for the latest release at start and every six hours (About → Updates turns that off; Check now works either way). A newer one shows a banner with its notes (Markdown without HTML or images) and a button to its release page; nothing is downloaded or installed by the launcher. A release-candidate build (its tag baked in as `X2_RELEASE_TAG` by `release.yml`) also learns of newer candidates. `updates.rs`.
 
 ## How a game is built
 

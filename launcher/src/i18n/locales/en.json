@@ -238,5 +238,25 @@
     "kitCheckout": "Repository checkout",
     "kitMissing": "Missing",
     "data": "Data folder"
+  },
+  "updates": {
+    "title": "Updates",
+    "automatic": "Check for new versions",
+    "automaticText": "Asks GitHub when the launcher starts and every six hours. Downloads are yours to install.",
+    "installed": "Installed: {{version}}",
+    "checkNow": "Check now",
+    "checking": "Checking…",
+    "unavailable": "Couldn't check for updates. Try again later.",
+    "notChecked": "Not checked yet.",
+    "noRelease": "No release is out yet.",
+    "current": "You're up to date.",
+    "available": "Version {{version}} is out.",
+    "downloadHint": "Read what's new, then download it from the release page.",
+    "notes": "What's new",
+    "dismiss": "Dismiss",
+    "close": "Close",
+    "viewRelease": "Release page",
+    "noNotes": "This release has no notes.",
+    "openFailed": "Couldn't open the release page."
   }
 }

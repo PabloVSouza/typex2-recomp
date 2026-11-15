@@ -11,7 +11,7 @@ export interface Package { id: string; name: string; version: string; size: numb
 export interface Kit { source: string; x2recomp: string | null; player: string | null; kind: "checkout" | "bundled" }
 export interface AppStateData {
   version: string; os: string; arch: string; data: string; kit: Kit | null; can_play: boolean;
-  catalog: GameInfo[]; games: GameEntry[]; ndk: string; jobs: number; language: string; job: string | null; running: string | null;
+  catalog: GameInfo[]; games: GameEntry[]; ndk: string; jobs: number; language: string; check_updates: boolean; job: string | null; running: string | null;
   targets: Target[]; exports: ExportRecord[]; tools: Tool[]; packages: Package[]; tools_size: number;
 }
 /** A "job" event: one step of a build, download or export. */
@@ -20,3 +20,5 @@ export interface JobEvent {
   step: "hash" | "generate" | "compile" | "link" | "configure" | "build" | "download" | "unpack" | "done" | "error" | "cancelled";
   game?: string; tool?: string; done?: number; total?: number; message?: string; result?: unknown;
 }
+/** A launcher release on GitHub (updates.rs). */
+export interface ReleaseInfo { version: string; tag: string; newer: boolean; notes: string }

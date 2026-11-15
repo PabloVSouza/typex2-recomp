@@ -25,7 +25,7 @@ const state: AppStateData = {
   version: "0.1.0", os: "macos", arch: "aarch64", data: "~/Library/Application Support/io.github.typex2-recomp.launcher",
   kit: { source: "~/typex2-recomp", x2recomp: "build/recompiler/x2recomp", player: "build/x2-player", kind: "checkout" },
   can_play: true, catalog, games: [entry("kof13", "ready"), entry("ssf4ae", "none"), entry("bbcs", "stale"), entry("kof98um", "ready")],
-  ndk: "", jobs: 0, language: "", job: null, running: null,
+  ndk: "", jobs: 0, language: "", check_updates: true, job: null, running: null,
   targets: [
     { id: "android-retroarch", name: "RetroArch core for Android", description: "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
     { id: "android-app", name: "Android app", description: "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
@@ -52,6 +52,12 @@ const state: AppStateData = {
 export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === "load_state") return structuredClone(state);
   if (cmd === "save_language") state.language = args?.language as string;
+  if (cmd === "save_update_check") state.check_updates = args?.enabled as boolean;
+  // ?update in the preview: a newer release, with notes that must not render HTML or images
+  if (cmd === "check_release")
+    return new URLSearchParams(window.location.search).has("update")
+      ? { version: "0.2.0", tag: "v0.2.0", newer: true, notes: "## What's new\n\n- Switch games in RetroArch without restarting it.\n- **Linux** reports welcome.\n\n<script>window.untrusted = true</script>\n![remote](https://example.com/x.png)" }
+      : { version: "0.1.0", tag: "v0.1.0", newer: false, notes: "" };
   if (cmd === "save_game_settings") {
     const g = state.games.find((x) => x.id === args?.id);
     if (g) g.settings = args?.settings as GameSettings;

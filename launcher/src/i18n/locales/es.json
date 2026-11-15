@@ -240,5 +240,25 @@
     "kitCheckout": "Copia del repositorio",
     "kitMissing": "No encontrado",
     "data": "Carpeta de datos"
+  },
+  "updates": {
+    "title": "Actualizaciones",
+    "automatic": "Buscar versiones nuevas",
+    "automaticText": "Consulta GitHub al abrir el lanzador y cada seis horas. Tú instalas las descargas.",
+    "installed": "Instalada: {{version}}",
+    "checkNow": "Buscar ahora",
+    "checking": "Buscando…",
+    "unavailable": "No se pudo buscar actualizaciones. Inténtalo más tarde.",
+    "notChecked": "Aún no se ha buscado.",
+    "noRelease": "Todavía no hay ninguna versión publicada.",
+    "current": "Tienes la última versión.",
+    "available": "Ya salió la versión {{version}}.",
+    "downloadHint": "Lee las novedades y descárgala desde la página de la versión.",
+    "notes": "Novedades",
+    "dismiss": "Descartar",
+    "close": "Cerrar",
+    "viewRelease": "Página de la versión",
+    "noNotes": "Esta versión no tiene notas.",
+    "openFailed": "No se pudo abrir la página de la versión."
   }
 }

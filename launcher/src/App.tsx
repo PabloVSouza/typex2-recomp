@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Sidebar } from "@/components/sidebar";
+import { UpdateNotice } from "@/components/updates";
 import { useAppState, useEvents, useLanguageSync } from "@/hooks";
 import { errorText } from "@/lib";
 import { AboutPage, ExportPage, GamePage, LibraryPage, LogPage, ToolsPage } from "@/pages";
@@ -22,6 +23,7 @@ export function App() {
       <main className="relative flex flex-1 flex-col overflow-y-auto">
         <div className="drag sticky top-0 z-10 h-9 shrink-0" data-tauri-drag-region />
         <div className="mx-auto w-full max-w-4xl px-10 pb-12">
+          <UpdateNotice />
           {state.error ? <div className="text-destructive">{t("app.stateError", { error: errorText(state.error) })}</div> : <Page />}
         </div>
       </main>
