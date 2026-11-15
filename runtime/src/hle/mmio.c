@@ -42,7 +42,6 @@ static u32 rd(Mmio *m, void *dst, u32 n) {
     return got;
 }
 
-
 /* Read-only opens come from memory, each file read once: KOF Maximum Impact opens a WAV for
  * every sound it plays, and on Android's shared storage each open is a FUSE round trip
  * (a few ms, at times many more: the fights' frame pacing showed it). Up to 4 MB a file and
