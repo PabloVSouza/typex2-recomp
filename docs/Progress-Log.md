@@ -35,7 +35,8 @@ Milestones, newest first. `git log` has the details.
   forwards RetroArch's context callbacks to it. Tested on the tablet: KOF XII
   reset twice, then SSF4 reset once; memory stays level and closing gives it
   back. OpenGL still says Reset isn't supported.
-- **KOF MI on Android:** scripted fights (`X2_INPUT`) ran at 57-60 fps with
+- **KOF MI on Android:** a scripted run (`X2_INPUT`, as far as the pre-fight
+  scene: it doesn't pick three characters and their order) ran at 57-60 fps with
   a third of the frames late: the main loop paced itself by `timeGetTime`
   against the display's clock. A byte patch runs one frame per pass; late
   frames went from 25-51 to 12-17 per 120. `mmioOpenA` now reads from

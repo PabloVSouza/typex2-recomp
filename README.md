@@ -35,7 +35,7 @@ happens on your computer.
 | BlazBlue: Continuum Shift | ✅ | ✅ | [page](docs/Game-BlazBlue-CS.md) |
 | BlazBlue: Calamity Trigger | ✅ | ✅ | [page](docs/Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | ✅ | ✅ | [page](docs/Game-KOF-98-UM.md) |
-| The King of Fighters Maximum Impact Regulation A | fights tested (scripted) | ✅ | [page](docs/Game-KOF-MI-Regulation-A.md) |
+| The King of Fighters Maximum Impact Regulation A | attract mode tested | ✅ | [page](docs/Game-KOF-MI-Regulation-A.md) |
 
 ✅ playable start to finish. Android is tested on a Samsung Galaxy Tab A11
 (Helio G99, Mali-G57), where these games run at 60 fps. The status of every

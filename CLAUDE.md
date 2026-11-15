@@ -23,7 +23,7 @@ Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Fr
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
-| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
+| The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode at 60 fps, fights not tested yet |
 
 Every game in the maintainer's collection is now playable.
 
