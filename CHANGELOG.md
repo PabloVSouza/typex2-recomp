@@ -12,6 +12,10 @@ games are recompiled on your computer from your own files.
 - **Android requires Vulkan 1.3** (most devices from 2022 on, with Android 13
   or later). OpenGL ES stays only as a development reference and will be
   removed; it is no longer a supported fallback.
+- **Steadier frame pacing in every game:** the games' own 60 Hz frame
+  limiters no longer beat against the runtime's pacing. Measured on Android in
+  real fights: late frames went from 21-41 to 13-18 per 120 (BlazBlue), the
+  level of RetroArch's own timing jitter.
 - **Launcher:** tells you when a new version is out (checks GitHub's
   releases at start and every six hours; off in About → Updates), with the
   release notes and a link to the downloads.

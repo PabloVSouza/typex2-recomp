@@ -313,7 +313,7 @@ static void HeapReAlloc(X2Cpu *c) {
 /* ---- time ----------------------------------------------------------------- */
 static u64 start_ns;
 static u64 since_start_ns(void) {
-    u64 t = x2_time_ns();
+    u64 t = x2_guest_ns();
     if (!start_ns) start_ns = t;
     return t - start_ns;
 }
@@ -324,7 +324,7 @@ static void QueryPerformanceFrequency(X2Cpu *c) {
     RET(1);
 }
 static void QueryPerformanceCounter(X2Cpu *c) {
-    WR64(ARG(0), x2_time_ns() / 100ull);
+    WR64(ARG(0), x2_guest_ns() / 100ull);
     RET(1);
 }
 

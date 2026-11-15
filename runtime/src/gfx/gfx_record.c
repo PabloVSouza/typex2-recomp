@@ -310,6 +310,7 @@ void gfx_present(void) {
         while (frames_presented >= ext_allowed) pthread_cond_wait(&ext_cond, &ext_lock);
         pthread_mutex_unlock(&ext_lock);
         guest_wake_ns = x2_time_ns();
+        x2_guest_clock_frame();
         return;
     }
     const u64 period = 16666667ull;
@@ -326,6 +327,7 @@ void gfx_present(void) {
     }
     while (x2_time_ns() < next_vsync) sched_yield();
     guest_wake_ns = x2_time_ns();
+    x2_guest_clock_frame();
     {
         static int wl = -1;
         static u64 lw, mn = ~0ull, mx, n, late, wsum, wmax;

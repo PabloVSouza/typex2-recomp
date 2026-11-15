@@ -1,8 +1,9 @@
 /* Indirect control flow: guest address -> recompiled function or host thunk,
  * plus the small CPU services generated code calls into. */
+#include <sched.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sched.h>
 #include <time.h>
 
 #include "core.h"
@@ -49,6 +50,28 @@ u64 x2_time_ns(void) {
     return (u64)ts.tv_sec * 1000000000ull + (u64)ts.tv_nsec;
 }
 
+/* The guest's clocks (QueryPerformanceCounter, timeGetTime, GetTickCount): real time,
+ * except that they advance at least one frame (1/60 s) between two presents. The runtime
+ * already paces Present (its own 60 Hz, or the libretro frontend's clock); the games pace
+ * themselves too, spinning until 1/60 s has passed since their last frame (BlazBlue,
+ * SSF4, KOF MI). Two clocks beat against each other: whenever the spin ended just after a
+ * tick, the frame missed it (a third of BlazBlue's fight frames on the tablet). With a
+ * frame's worth already elapsed when Present returns, the spin ends at once and the
+ * runtime alone sets the pace. X2_FRAME_CLOCK=0: plain real time. */
+static _Atomic int64_t guest_offset;
+static int64_t last_present_guest;
+u64 x2_guest_ns(void) { return x2_time_ns() + (u64)guest_offset; }
+void x2_guest_clock_frame(void) {
+    static int on = -1;
+    if (on < 0) on = !getenv("X2_FRAME_CLOCK") || atoi(getenv("X2_FRAME_CLOCK")) != 0;
+    if (!on) return;
+    int64_t now = (int64_t)x2_guest_ns(), want = last_present_guest + 16666667;
+    if (last_present_guest && now < want) {
+        guest_offset += want - now;
+        now = want;
+    }
+    last_present_guest = now;
+}
 /* ---- function lookup ----------------------------------------------------- */
 static X2Func *direct;  /* indexed by addr - text_start */
 static u32 text_start, text_end;

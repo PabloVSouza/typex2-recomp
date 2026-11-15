@@ -199,3 +199,6 @@ void x2_host_path(const char *guest, char *out, size_t n);
 
 /* platform */
 u64 x2_time_ns(void);
+/* the guest's clock: real time, advancing at least 1/60 s from one Present to the next */
+u64 x2_guest_ns(void);
+void x2_guest_clock_frame(void); /* called as Present returns */

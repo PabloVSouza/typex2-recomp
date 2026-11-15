@@ -2,6 +2,30 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-15: The guest's clock advances a frame per Present
+
+- **Found in real fights on the tablet** (scripted to the fight and checked
+  with screenshots): BlazBlue CS had 21-41 late frames per 120, CT 31-40,
+  though output averaged 60 fps. The game thread's frames sat at 16.7-17.9 ms
+  even on menus: like SSF4 and KOF MI, the BlazBlues spin on their own timer
+  until 1/60 s has passed since their last frame, and that limiter beat
+  against the runtime's pacing (the libretro frontend's clock, or the
+  player's own 60 Hz): whenever the spin ended just after a tick, the frame
+  missed it.
+- **Fix, for every game:** the guest's clocks (QueryPerformanceCounter,
+  timeGetTime, GetTickCount) advance at least 1/60 s from one Present to the
+  next. When Present returns, a frame's worth has already passed for the
+  game, its spin ends at once, and the runtime alone sets the pace. Over time
+  the clock stays at real speed (SSF4's round timer drops 5 s per 300 frames).
+  `X2_FRAME_CLOCK=0` turns it off.
+- **Measured in fights after it:** BlazBlue CS 13-18 late frames per 120, CT
+  15, KOF MI 14.6, KOF '98 UM 13-23, SSF4 14-16, the level of RetroArch's own
+  jitter; the BlazBlues' game-thread frames went from 16.7-17.9 ms (spinning)
+  to 10-14 ms (work).
+- **Scripts:** KOF MI needs three characters with their colours and the order
+  (A, B, C) to reach a fight; BlazBlue CS's presses land on its button
+  configuration panel, and the select timer picks for it.
+
 ## 2026-11-15: Known issues: fonts and BlazBlue CT's fight start
 
 - **KOF XII's credit counter (macOS):** the counters are laid out for
