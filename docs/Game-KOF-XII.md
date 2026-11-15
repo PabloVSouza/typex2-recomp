@@ -27,6 +27,4 @@ The first game of the project, so most of the runtime started here:
 
 ## Known issues
 
-- On macOS, the left credit counter shows "0" where the right one shows
-  "00". With the stb_truetype font backend both show "00", so the
-  difference comes from CoreText's metrics.
+None open.

@@ -23,5 +23,3 @@ SHOT2 and SHOT5 (checked in XIII's order select).
 
 - The game starts in Japanese. Switch the language in the test menu: F2,
   hold Select / Back on a pad, or TEST on the touch pad.
-- With stb_truetype (Android), heavy font weights are emboldened by one
-  pixel only, so text looks lighter than on macOS.

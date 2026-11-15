@@ -12,6 +12,8 @@ games are recompiled on your computer from your own files.
 - **Launcher:** tells you when a new version is out (checks GitHub's
   releases at start and every six hours; off in About → Updates), with the
   release notes and a link to the downloads.
+- **KOF XII:** both credit counters show "00" on macOS (the left one showed
+  "0"), and bold text is bold on Android (it came out in the regular weight).
 
 ## 0.1.0 - 2026-11-15
 

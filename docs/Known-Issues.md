@@ -21,11 +21,8 @@ that isn't here? Report it in
 - **BlazBlue: Continuum Shift:** loading pauses of up to about 230 ms on
   slower Android devices, outside fights
   ([details](Game-BlazBlue-CS.md#known-issues)).
-- **The King of Fighters XII:** on macOS the left credit counter shows "0"
-  where the right one shows "00"
-  ([details](Game-KOF-XII.md#known-issues)).
 - **The King of Fighters XIII:** starts in Japanese; switch the language in
-  the test menu. On Android, heavy font weights look lighter than on macOS
+  the test menu
   ([details](Game-KOF-XIII.md#known-issues)).
 - **The King of Fighters '98 Ultimate Match:** the standalone Android app is
   untested (RetroArch is tested)

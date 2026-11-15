@@ -15,7 +15,9 @@ struct X2Font {
 static const char *pick_postscript_name(const char *face, int weight) {
     /* heavy faces: "UB" (ultra bold), "EB", "B"; light: "L", "M" */
     bool ub = face && (strstr(face, "UB") || strstr(face, "EB"));
-    if (ub || weight >= 800) return "HiraginoSans-W8";
+    /* W7, not W8: KOF XII lays its credit counters out in boxes sized for FOT-Matisse's digits;
+     * W8's (0.77 em) push the second digit out of the left one, W7's (0.74 em) fit */
+    if (ub || weight >= 800) return "HiraginoSans-W7";
     if (weight >= 700 || (face && strstr(face, " B"))) return "HiraginoSans-W6";
     if (face && strstr(face, " M")) return "HiraginoSans-W4";
     return "HiraginoSans-W4";

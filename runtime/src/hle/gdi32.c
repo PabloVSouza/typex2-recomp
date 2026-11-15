@@ -252,6 +252,8 @@ static void GetGlyphOutlineW(X2Cpu *c) {
     pthread_mutex_unlock(&gdi_lock);
     close_contour(&o);
     if (!ok) { free(o.buf); RET(GDI_ERROR); return; }
+    X2_TRACE("GetGlyphOutlineW(U+%04X, fmt %u, font %08x): advance %.2f, box %.2f %.2f %.2f %.2f, %zu bytes", ch, fmt,
+             selected, gm.advance, gm.bbox_x, gm.bbox_y, gm.bbox_w, gm.bbox_h, o.len);
     if (gmp) {
         WR32(gmp, (u32)(s32)ceilf(gm.bbox_w > 0 ? gm.bbox_w : 1));
         WR32(gmp + 4, (u32)(s32)ceilf(gm.bbox_h > 0 ? gm.bbox_h : 1));
