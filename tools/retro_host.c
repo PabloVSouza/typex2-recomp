@@ -1,9 +1,12 @@
 /* retro_host: a minimal libretro frontend (SDL3 + OpenGL 3.3 core) for testing
  * the Type X2 core without RetroArch.
  *
- *   retro_host <core.dylib|.so> <content> [--frames N] [--shot out.png] [--hidden]
+ *   retro_host <core.dylib|.so> <content> [--next <content>]... [--frames N] [--shot out.png] [--hidden]
  *
- * --frames N    exit after N retro_run calls (with --shot: save the last frame)
+ * --next C      then close the core as RetroArch does (unload, deinit, dlclose) and
+ *               load content C with it opened again (repeatable; 600 frames each by default)
+ * --frames N    exit after N retro_run calls (with --shot: save the last frame; -1, -2, ...
+ *               appended to the name with --next)
  * --hidden      no visible window (automated runs)
  * --exit        end like RetroArch: retro_deinit, then exit() with its cleanup
  *               (default: _Exit, since guest threads cannot be joined)
@@ -15,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <zlib.h>
 
 #define GL_GLEXT_PROTOTYPES 1
@@ -160,58 +164,82 @@ static void save_png(const char *path, unsigned w, unsigned h) {
     free(z);
 }
 
-#define SYM(name)                                                                                                      \
-    do {                                                                                                               \
-        name##_fn = (typeof(name##_fn))dlsym(core, #name);                                                             \
-        if (!name##_fn) {                                                                                              \
-            fprintf(stderr, "missing %s\n", #name);                                                                    \
-            return 1;                                                                                                  \
-        }                                                                                                              \
-    } while (0)
+/* the core's entry points */
+#define CORE_FNS(X)                                                                                                    \
+    X(void, set_environment, (retro_environment_t))                                                                    \
+    X(void, set_video_refresh, (retro_video_refresh_t))                                                                \
+    X(void, set_audio_sample, (retro_audio_sample_t))                                                                  \
+    X(void, set_audio_sample_batch, (retro_audio_sample_batch_t))                                                      \
+    X(void, set_input_poll, (retro_input_poll_t))                                                                      \
+    X(void, set_input_state, (retro_input_state_t))                                                                    \
+    X(void, init, (void))                                                                                              \
+    X(void, get_system_info, (struct retro_system_info *))                                                             \
+    X(void, get_system_av_info, (struct retro_system_av_info *))                                                       \
+    X(bool, load_game, (const struct retro_game_info *))                                                               \
+    X(void, run, (void))                                                                                               \
+    X(void, unload_game, (void))                                                                                       \
+    X(void, deinit, (void))
+#define CORE_FIELD(ret, name, args) ret(*name) args;
+static struct {
+    CORE_FNS(CORE_FIELD)
+} core;
+
+/* load the core as RetroArch does for each content: dlopen, callbacks, retro_init */
+static void *open_core(const char *path) {
+    void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!h) {
+        fprintf(stderr, "dlopen: %s\n", dlerror());
+        return NULL;
+    }
+#define CORE_SYM(ret, name, args)                                                                                      \
+    if (!(core.name = (ret(*) args)dlsym(h, "retro_" #name))) {                                                        \
+        fprintf(stderr, "missing retro_%s\n", #name);                                                                  \
+        return NULL;                                                                                                   \
+    }
+    CORE_FNS(CORE_SYM)
+    core.set_environment(environment);
+    core.set_video_refresh(video);
+    core.set_audio_sample(audio_sample);
+    core.set_audio_sample_batch(audio_batch);
+    core.set_input_poll(input_poll);
+    core.set_input_state(input_state);
+    core.init();
+    return h;
+}
+
+static size_t rss_mb(void) {
+    char cmd[64];
+    snprintf(cmd, sizeof cmd, "ps -o rss= -p %d", (int)getpid());
+    FILE *p = popen(cmd, "r");
+    long kb = 0;
+    if (p) {
+        if (fscanf(p, "%ld", &kb) != 1) kb = 0;
+        pclose(p);
+    }
+    return (size_t)kb / 1024;
+}
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "usage: %s <core> <content> [--frames N] [--shot out.png] [--hidden]\n", argv[0]);
+        fprintf(stderr, "usage: %s <core> <content> [--next <content>]... [--frames N] [--shot out.png] [--hidden]\n",
+                argv[0]);
         return 2;
     }
     long max_frames = 0;
     const char *shot = NULL;
     bool hidden = false, full_exit = false;
+    const char *contents[16] = {argv[2]};
+    int ncontents = 1;
     for (int i = 3; i < argc; i++) {
         if (!strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = atol(argv[++i]);
         else if (!strcmp(argv[i], "--shot") && i + 1 < argc) shot = argv[++i];
+        else if (!strcmp(argv[i], "--next") && i + 1 < argc && ncontents < 16)
+            contents[ncontents++] = argv[++i];
         else if (!strcmp(argv[i], "--hidden")) hidden = true;
         else if (!strcmp(argv[i], "--exit"))
             full_exit = true;
     }
-    void *core = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
-    if (!core) { fprintf(stderr, "dlopen: %s\n", dlerror()); return 1; }
-    void (*retro_set_environment_fn)(retro_environment_t);
-    void (*retro_set_video_refresh_fn)(retro_video_refresh_t);
-    void (*retro_set_audio_sample_fn)(retro_audio_sample_t);
-    void (*retro_set_audio_sample_batch_fn)(retro_audio_sample_batch_t);
-    void (*retro_set_input_poll_fn)(retro_input_poll_t);
-    void (*retro_set_input_state_fn)(retro_input_state_t);
-    void (*retro_init_fn)(void);
-    void (*retro_get_system_info_fn)(struct retro_system_info *);
-    void (*retro_get_system_av_info_fn)(struct retro_system_av_info *);
-    bool (*retro_load_game_fn)(const struct retro_game_info *);
-    void (*retro_run_fn)(void);
-    void (*retro_unload_game_fn)(void);
-    void (*retro_deinit_fn)(void);
-    SYM(retro_set_environment);
-    SYM(retro_set_video_refresh);
-    SYM(retro_set_audio_sample);
-    SYM(retro_set_audio_sample_batch);
-    SYM(retro_set_input_poll);
-    SYM(retro_set_input_state);
-    SYM(retro_init);
-    SYM(retro_get_system_info);
-    SYM(retro_get_system_av_info);
-    SYM(retro_load_game);
-    SYM(retro_run);
-    SYM(retro_unload_game);
-    SYM(retro_deinit);
+    if (ncontents > 1 && !max_frames) max_frames = 600;
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -229,25 +257,6 @@ int main(int argc, char **argv) {
     SDL_AudioSpec spec = {SDL_AUDIO_S16, 2, 48000};
     audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (audio) SDL_ResumeAudioStreamDevice(audio);
-
-    retro_set_environment_fn(environment);
-    retro_set_video_refresh_fn(video);
-    retro_set_audio_sample_fn(audio_sample);
-    retro_set_audio_sample_batch_fn(audio_batch);
-    retro_set_input_poll_fn(input_poll);
-    retro_set_input_state_fn(input_state);
-    retro_init_fn();
-    struct retro_system_info si;
-    retro_get_system_info_fn(&si);
-    fprintf(stderr, "[host] core: %s %s (%s)\n", si.library_name, si.library_version, si.valid_extensions);
-    struct retro_game_info gi = {argv[2], NULL, 0, NULL};
-    if (!retro_load_game_fn(&gi)) { fprintf(stderr, "[host] load failed\n"); return 1; }
-    if (!have_hw) { fprintf(stderr, "[host] core did not request GL\n"); return 1; }
-    struct retro_system_av_info av;
-    retro_get_system_av_info_fn(&av);
-    fprintf(stderr, "[host] av: %ux%u %.2f fps %.0f Hz\n", av.geometry.base_width, av.geometry.base_height,
-            av.timing.fps, av.timing.sample_rate);
-
     glGenTextures(1, &fbo_tex);
     glBindTexture(GL_TEXTURE_2D, fbo_tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, FBO_W, FBO_H, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
@@ -255,38 +264,79 @@ int main(int argc, char **argv) {
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, fbo_tex, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    hw.context_reset();
 
-    uint64_t t0 = SDL_GetTicksNS();
-    for (long n = 1; !quit; n++) {
-        SDL_Event e;
-        while (SDL_PollEvent(&e))
-            if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE)) quit = true;
-        update_keys();
-        retro_run_fn();
-        if (!hidden) {
-            int ww, wh;
-            SDL_GetWindowSizeInPixels(win, &ww, &wh);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-            glClearColor(0, 0, 0, 1);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glBlitFramebuffer(0, 0, (GLint)frame_w, (GLint)frame_h, 0, 0, ww, wh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-            SDL_GL_SwapWindow(win);
-        } else {
-            /* pace hidden runs at 60 Hz */
-            uint64_t due = t0 + (uint64_t)n * 16666667ull, now = SDL_GetTicksNS();
-            if (due > now) SDL_DelayNS(due - now);
+    /* each content in turn, the core closed and opened again in between (--next) */
+    void *h = NULL;
+    for (int ci = 0; ci < ncontents && !quit; ci++) {
+        if (!(h = open_core(argv[1]))) return 1;
+        if (ci == 0) {
+            struct retro_system_info si;
+            core.get_system_info(&si);
+            fprintf(stderr, "[host] core: %s %s (%s)\n", si.library_name, si.library_version, si.valid_extensions);
         }
-        if (n % 600 == 0) fprintf(stderr, "[host] %ld frames, %.1f fps\n", n, n / ((SDL_GetTicksNS() - t0) / 1e9));
-        if (max_frames && n >= max_frames) {
-            if (shot) save_png(shot, frame_w, frame_h);
-            break;
+        have_hw = false;
+        struct retro_game_info gi = {contents[ci], NULL, 0, NULL};
+        if (!core.load_game(&gi)) {
+            fprintf(stderr, "[host] load failed: %s\n", contents[ci]);
+            return 1;
+        }
+        if (!have_hw) {
+            fprintf(stderr, "[host] core did not request GL\n");
+            return 1;
+        }
+        struct retro_system_av_info av;
+        core.get_system_av_info(&av);
+        fprintf(stderr, "[host] av: %ux%u %.2f fps %.0f Hz\n", av.geometry.base_width, av.geometry.base_height,
+                av.timing.fps, av.timing.sample_rate);
+        hw.context_reset();
+
+        uint64_t t0 = SDL_GetTicksNS();
+        for (long n = 1; !quit; n++) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e))
+                if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE))
+                    quit = true;
+            update_keys();
+            core.run();
+            if (!hidden) {
+                int ww, wh;
+                SDL_GetWindowSizeInPixels(win, &ww, &wh);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+                glClearColor(0, 0, 0, 1);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glBlitFramebuffer(0, 0, (GLint)frame_w, (GLint)frame_h, 0, 0, ww, wh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+                SDL_GL_SwapWindow(win);
+            } else {
+                /* pace hidden runs at 60 Hz */
+                uint64_t due = t0 + (uint64_t)n * 16666667ull, now = SDL_GetTicksNS();
+                if (due > now) SDL_DelayNS(due - now);
+            }
+            if (n % 600 == 0) fprintf(stderr, "[host] %ld frames, %.1f fps\n", n, n / ((SDL_GetTicksNS() - t0) / 1e9));
+            if (max_frames && n >= max_frames) {
+                if (shot) {
+                    char p[1024];
+                    const char *dot = strrchr(shot, '.');
+                    if (ncontents > 1 && dot)
+                        snprintf(p, sizeof p, "%.*s-%d%s", (int)(dot - shot), shot, ci + 1, dot);
+                    else
+                        snprintf(p, sizeof p, "%s", shot);
+                    save_png(p, frame_w, frame_h);
+                }
+                break;
+            }
+        }
+        fprintf(stderr, "[host] content %d: resident %zu MB before closing\n", ci + 1, rss_mb());
+        core.unload_game();
+        if (hw.context_destroy) hw.context_destroy();
+        if (ci + 1 < ncontents) { /* RetroArch closes the core between contents */
+            core.deinit();
+            dlclose(h);
+            fprintf(stderr, "[host] content %d closed: resident %zu MB\n", ci + 1, rss_mb());
         }
     }
-    retro_unload_game_fn();
     if (full_exit) {
-        retro_deinit_fn();
+        core.deinit();
         exit(0);
     }
     fflush(NULL);

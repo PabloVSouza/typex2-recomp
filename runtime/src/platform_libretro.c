@@ -10,19 +10,25 @@
  * is clocked by retro_run (gfx_clock_release), so frontend pause, fast-forward and
  * slow-motion drive the game directly.
  *
- * Limits: no save states, no reset, and one game per process (the guest cannot
- * be torn down): after closing content, restart the frontend to load another.
+ * Switching games: a guest cannot be torn down (its threads cannot be stopped)
+ * and the runtime's state is global, so each game after the first runs in a
+ * fresh instance of this library (see "one instance per game" below). A closed
+ * game's threads stay parked; its guest memory is freed.
+ *
+ * Limits: no save states, no reset.
  *
  * RetroPad (per player): D-pad / left stick = joystick, Y B X A = A B C D
  * (KOF layout: bottom row A B, top row C D), L = button 5, R = button 6,
  * Start = start, Select = coin, L3 = test (service menu), R3 = service. */
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #ifdef __ANDROID__
+#include <android/dlext.h>
 #include <android/log.h>
 #include <pthread.h>
 #endif
@@ -45,6 +51,7 @@
 
 static retro_environment_t environ_cb;
 static retro_video_refresh_t video_cb;
+static retro_audio_sample_t audio_sample_cb;
 static retro_audio_sample_batch_t audio_batch_cb;
 static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
@@ -398,6 +405,118 @@ static void on_guest_exit(u32 code) {
     shutdown_requested = true;
 }
 
+/* ---- one instance per game ---------------------------------------------------------
+ * The instance the frontend loaded (pinned, so it survives the frontend's dlclose
+ * between contents) runs the first game itself. Each later game gets a fresh instance
+ * of this same file, with its own globals: Android's linker loads the file again with
+ * ANDROID_DLEXT_FORCE_LOAD; elsewhere a temporary copy is loaded. The retro_* entry
+ * points forward to it while it runs. Instances are never unloaded (parked threads
+ * live in them); at unload a closed game's guest memory (x2_mem_release) and, on ELF
+ * platforms, its large heap blocks (heap.c) go back to the system. */
+EXPORT void retro_x2_instance(void);
+// clang-format off
+#define INSTANCE_FNS(X)                                                                                  \
+    X(set_environment) X(set_video_refresh) X(set_audio_sample) X(set_audio_sample_batch)               \
+    X(set_input_poll) X(set_input_state) X(init) X(deinit) X(load_game) X(unload_game) X(run)            \
+    X(get_system_av_info) X(set_controller_port_device) X(reset) X(x2_instance)
+// clang-format on
+#define INSTANCE_FIELD(n) __typeof__(&retro_##n) n;
+static struct {
+    INSTANCE_FNS(INSTANCE_FIELD)
+} inst;                           /* the instance running the current game */
+static bool inst_on, is_instance; /* is_instance: this is such an instance, loaded by another */
+static char **env0;               /* the environment before any game's x2.env */
+
+/* called on a fresh instance before retro_init: the logging and pinning are its loader's */
+EXPORT void retro_x2_instance(void) { is_instance = true; }
+
+static void *open_instance(void) {
+    Dl_info di;
+    if (!dladdr((void *)retro_init, &di) || !di.dli_fname) return NULL;
+#ifdef __ANDROID__
+    android_dlextinfo ext = {.flags = ANDROID_DLEXT_FORCE_LOAD};
+    void *h = android_dlopen_ext(di.dli_fname, RTLD_NOW | RTLD_LOCAL, &ext);
+#else
+    /* the loader returns the loaded instance for the same file: load a copy (removed
+     * again once loaded) */
+    static unsigned serial;
+    const char *tmp = getenv("TMPDIR");
+    if (!tmp || !*tmp) tmp = "/tmp";
+    const char *dot = strrchr(di.dli_fname, '.');
+    char path[1100];
+    snprintf(path, sizeof path, "%s/typex2_libretro-%d-%u%s", tmp, (int)getpid(), ++serial, dot ? dot : "");
+    int in = open(di.dli_fname, O_RDONLY), out = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0700);
+    bool ok = in >= 0 && out >= 0;
+    char buf[1 << 16];
+    for (ssize_t n; ok && (n = read(in, buf, sizeof buf)) != 0;) ok = n > 0 && write(out, buf, (size_t)n) == n;
+    if (in >= 0) close(in);
+    if (out >= 0) close(out);
+    void *h =
+        ok ? dlopen(path, RTLD_NOW | RTLD_LOCAL) : NULL; // NOLINT(clang-analyzer-optin.taint.GenericTaint): our copy
+    unlink(path);
+#endif
+    if (!h) x2_log("libretro: cannot load another instance of %s: %s", di.dli_fname, dlerror());
+    return h;
+}
+
+/* The environment as it was before the first game, so one game's x2.env does not
+ * carry over to the next */
+static void env_snapshot(void) {
+    extern char **environ;
+    size_t n = 0;
+    while (environ[n]) n++;
+    env0 = calloc(n + 1, sizeof *env0);
+    for (size_t i = 0; i < n; i++) env0[i] = strdup(environ[i]);
+}
+static void env_restore(void) {
+    extern char **environ;
+    size_t n = 0;
+    while (environ[n]) n++;
+    char **names = calloc(n + 1, sizeof *names);
+    for (size_t i = 0; i < n; i++) names[i] = strndup(environ[i], strcspn(environ[i], "="));
+    for (size_t i = 0; i < n; i++) {
+        unsetenv(names[i]);
+        free(names[i]);
+    }
+    free(names);
+    for (size_t i = 0; env0[i]; i++) {
+        char *eq = strchr(env0[i], '=');
+        if (!eq) continue;
+        *eq = 0;
+        setenv(env0[i], eq + 1, 1);
+        *eq = '=';
+    }
+}
+
+static bool load_instance(const struct retro_game_info *gi) {
+    env_restore();
+    void *h = open_instance();
+    if (!h) return false;
+#define INSTANCE_SYM(n) inst.n = (__typeof__(inst.n))dlsym(h, "retro_" #n);
+    INSTANCE_FNS(INSTANCE_SYM)
+#define INSTANCE_CHECK(n) || !inst.n
+    if (0 INSTANCE_FNS(INSTANCE_CHECK)) {
+        x2_log("libretro: the new instance lacks an entry point");
+        dlclose(h);
+        return false;
+    }
+    inst.x2_instance();
+    inst.set_environment(environ_cb);
+    inst.set_video_refresh(video_cb);
+    inst.set_audio_sample(audio_sample_cb);
+    inst.set_audio_sample_batch(audio_batch_cb);
+    inst.set_input_poll(input_poll_cb);
+    inst.set_input_state(input_state_cb);
+    inst.init();
+    if (!inst.load_game(gi)) { /* nothing was started: it can go */
+        inst.deinit();
+        dlclose(h);
+        return false;
+    }
+    inst_on = true;
+    return true;
+}
+
 /* ---- libretro API -------------------------------------------------------------------- */
 EXPORT unsigned retro_api_version(void) { return RETRO_API_VERSION; }
 
@@ -405,14 +524,31 @@ EXPORT void retro_set_environment(retro_environment_t cb) {
     environ_cb = cb;
     bool no_game = false;
     cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+    if (inst_on) inst.set_environment(cb);
 }
-EXPORT void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
-EXPORT void retro_set_audio_sample(retro_audio_sample_t cb) { (void)cb; }
-EXPORT void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) { audio_batch_cb = cb; }
-EXPORT void retro_set_input_poll(retro_input_poll_t cb) { input_poll_cb = cb; }
-EXPORT void retro_set_input_state(retro_input_state_t cb) { input_state_cb = cb; }
+EXPORT void retro_set_video_refresh(retro_video_refresh_t cb) {
+    video_cb = cb;
+    if (inst_on) inst.set_video_refresh(cb);
+}
+EXPORT void retro_set_audio_sample(retro_audio_sample_t cb) {
+    audio_sample_cb = cb;
+    if (inst_on) inst.set_audio_sample(cb);
+}
+EXPORT void retro_set_audio_sample_batch(retro_audio_sample_batch_t cb) {
+    audio_batch_cb = cb;
+    if (inst_on) inst.set_audio_sample_batch(cb);
+}
+EXPORT void retro_set_input_poll(retro_input_poll_t cb) {
+    input_poll_cb = cb;
+    if (inst_on) inst.set_input_poll(cb);
+}
+EXPORT void retro_set_input_state(retro_input_state_t cb) {
+    input_state_cb = cb;
+    if (inst_on) inst.set_input_state(cb);
+}
 
 EXPORT void retro_init(void) {
+    if (is_instance) return;
 #ifdef __ANDROID__
     stderr_to_logcat();
 #endif
@@ -428,7 +564,9 @@ EXPORT void retro_init(void) {
     }
 }
 
-EXPORT void retro_deinit(void) {}
+EXPORT void retro_deinit(void) {
+    if (inst_on) inst.deinit();
+}
 
 EXPORT void retro_get_system_info(struct retro_system_info *info) {
     memset(info, 0, sizeof *info);
@@ -440,6 +578,10 @@ EXPORT void retro_get_system_info(struct retro_system_info *info) {
 }
 
 EXPORT void retro_get_system_av_info(struct retro_system_av_info *info) {
+    if (inst_on) {
+        inst.get_system_av_info(info);
+        return;
+    }
     memset(info, 0, sizeof *info);
     info->geometry.base_width = out_w;
     info->geometry.base_height = out_h;
@@ -450,16 +592,20 @@ EXPORT void retro_get_system_av_info(struct retro_system_av_info *info) {
     info->timing.sample_rate = 48000.0;
 }
 
-EXPORT void retro_set_controller_port_device(unsigned port, unsigned device) { (void)port; (void)device; }
+EXPORT void retro_set_controller_port_device(unsigned port, unsigned device) {
+    if (inst_on) inst.set_controller_port_device(port, device);
+}
 
 EXPORT bool retro_load_game(const struct retro_game_info *gi) {
     /* Failures here are only logged: RetroArch reports a failed load itself, and
      * SET_MESSAGE from inside retro_load_game deadlocks RetroArch 1.22 (Android). */
-    if (loaded_once) {
-        x2_log("libretro: restart RetroArch before loading another game (one game per session)");
-        return false;
-    }
     if (!gi || !gi->path) return false;
+    if (inst_on) { /* the frontend skipped retro_unload_game */
+        inst.unload_game();
+        inst_on = false;
+    }
+    if (!env0) env_snapshot();
+    if (loaded_once) return load_instance(gi); /* this instance ran a game already */
 
     /* the game folder: the content itself, or the folder holding it */
     static char dir[1024];
@@ -556,16 +702,38 @@ EXPORT bool retro_load_game_special(unsigned type, const struct retro_game_info 
 }
 
 EXPORT void retro_unload_game(void) {
+    if (inst_on) {
+        inst.unload_game();
+        inst_on = false;
+        return;
+    }
+    if (!running) return;
     /* The guest stays parked in Present (no more clock ticks); see header. */
     running = false;
     x2_park_all();
+    x2_mem_release();
+#ifdef X2_INSTANCE_HEAP
+    void x2_heap_release(void);
+    x2_heap_release();
+#endif
+    x2_log("libretro: %s closed", game ? game->name : "game");
 }
 
-EXPORT void retro_reset(void) { msg("Type X2: reset is not supported", 180); }
+EXPORT void retro_reset(void) {
+    if (inst_on) {
+        inst.reset();
+        return;
+    }
+    msg("Type X2: reset is not supported", 180);
+}
 
 static int pace_ab;     /* X2_AB half of this call */
 static u64 repeats;     /* calls that showed the previous image again (X2_PACELOG) */
 EXPORT void retro_run(void) {
+    if (inst_on) {
+        inst.run();
+        return;
+    }
     if (!running) return;
     u64 run_t0 = x2_time_ns();
     if (pending_msg) {

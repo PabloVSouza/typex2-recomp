@@ -31,6 +31,9 @@ static inline char *GSTR(u32 a) { return a ? (char *)X2P(a) : NULL; }
 static inline u16 *GWSTR(u32 a) { return a ? (u16 *)X2P(a) : NULL; }
 
 void x2_mem_init(void);
+/* session over (libretro unload): guest memory is freed and left inaccessible, so a guest
+ * thread still running faults and is parked (see x2_park_all) */
+void x2_mem_release(void);
 u32 x2_vm_alloc(u32 addr, u32 size, const char *tag);  /* 0 on failure */
 bool x2_vm_free(u32 addr);
 bool x2_vm_query(u32 addr, u32 *base, u32 *size);  /* region containing addr */
@@ -141,11 +144,17 @@ void x2_exit_process(u32 code) __attribute__((noreturn));
  * ExitProcess instead of _exit; the calling guest thread is parked afterwards */
 extern void (*x2_exit_hook)(u32 code);
 /* Session over (libretro unload): guest threads block at their next import
- * call, since they cannot be stopped, and later host faults end the process
- * quietly instead of crashing during the frontend's exit. */
+ * call, since they cannot be stopped. Later faults and fatal errors on the
+ * runtime's own threads park them (another game may be running in a newer
+ * instance of the core); on the frontend's threads (e.g. during its exit) they
+ * end the process quietly instead. */
 extern bool x2_parked;
 void x2_park_all(void);
-void x2_park_forever(void);
+void x2_park_forever(void) __attribute__((noreturn));
+bool x2_park_here(void); /* parked, and this is one of the runtime's threads */
+/* pthread_create for the runtime's own threads (guest and helpers), so a finished
+ * session can tell them from the frontend's */
+int x2_spawn(pthread_t *t, const pthread_attr_t *a, void *(*fn)(void *), void *arg);
 /* boot.c: load <dir>/game.exe for `game` and start its main thread */
 X2Thread *x2_boot(const X2GameTables *game, const char *dir);
 void x2_load_env_file(const char *dir);

@@ -397,7 +397,7 @@ u32 x2_dsound_create(void) {
         };
         vt_notify = x2_com_vtable("IDirectSoundNotify", nt, 4);
         pthread_t t;
-        pthread_create(&t, NULL, ticker, NULL);
+        x2_spawn(&t, NULL, ticker, NULL);
         pthread_detach(t);
     }
     DSound *d = calloc(1, sizeof *d);

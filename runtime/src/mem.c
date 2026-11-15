@@ -44,6 +44,20 @@ void x2_mem_init(void) {
 #endif
 }
 
+/* The pages go back to the system; the range stays reserved and inaccessible, so a guest
+ * thread of the finished session faults (and is parked) instead of writing into memory
+ * something else was given. */
+void x2_mem_release(void) {
+    if (!x2_mem) return;
+#ifdef _WIN32
+    VirtualFree(x2_mem, (SIZE_T)X2_GUEST_SPACE + X2_GUEST_SLACK, MEM_DECOMMIT);
+#else
+    if (mmap(x2_mem, X2_GUEST_SPACE + X2_GUEST_SLACK, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE | MAP_FIXED, -1,
+             0) == MAP_FAILED)
+        x2_log("guest memory not released: %s", strerror(errno));
+#endif
+}
+
 static bool range_free(u32 g, u32 n) {
     if (g == 0 || (u64)g + n > X2_VM_HIGH / X2_GRANULE) return false;
     for (u32 i = 0; i < n; i++)

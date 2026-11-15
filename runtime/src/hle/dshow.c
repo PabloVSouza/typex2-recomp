@@ -928,7 +928,7 @@ u32 x2_dshow_create_graph(void) {
     if (!monitor_started) {
         monitor_started = true;
         pthread_t t;
-        pthread_create(&t, NULL, monitor, NULL);
+        x2_spawn(&t, NULL, monitor, NULL);
         pthread_detach(t);
     }
     pthread_mutex_unlock(&graphs_lock);

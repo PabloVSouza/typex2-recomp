@@ -39,6 +39,7 @@ void x2_fatal(const char *fmt, ...) {
         for (int i = 0; i < 12; i++) fprintf(stderr, " %08x", RD32(c->esp + 4 * i));
         fputc('\n', stderr);
     }
+    if (x2_park_here()) x2_park_forever(); /* a finished session's thread running on freed memory */
     abort();
 }
 
@@ -239,7 +240,28 @@ void x2_gil_yield(void) {
 }
 
 bool x2_parked;
+static _Thread_local bool own_thread; /* started by x2_spawn */
 void x2_park_all(void) { __atomic_store_n(&x2_parked, true, __ATOMIC_RELEASE); }
+bool x2_park_here(void) { return own_thread && __atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE); }
+
+typedef struct {
+    void *(*fn)(void *);
+    void *arg;
+} Spawn;
+static void *spawn_main(void *p) {
+    Spawn s = *(Spawn *)p;
+    free(p);
+    own_thread = true;
+    return s.fn(s.arg);
+}
+int x2_spawn(pthread_t *t, const pthread_attr_t *a, void *(*fn)(void *), void *arg) {
+    Spawn *s = malloc(sizeof *s);
+    if (!s) return -1;
+    *s = (Spawn){fn, arg};
+    int r = pthread_create(t, a, spawn_main, s);
+    if (r) free(s);
+    return r;
+}
 void x2_park_forever(void) {
     for (;;) {
         struct timespec ts = {3600, 0};

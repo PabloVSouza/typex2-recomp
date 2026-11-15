@@ -224,7 +224,7 @@ void x2_prof_register(const char *name) {
                 sigemptyset(&sa.sa_mask);
                 sigaction(SIGPROF, &sa, NULL);
                 pthread_t t;
-                pthread_create(&t, NULL, sampler, NULL);
+                x2_spawn(&t, NULL, sampler, NULL);
                 x2_log("prof: sampling every 1 ms, report every %d s (module %lx-%lx)", s, (unsigned long)mod_lo,
                        (unsigned long)mod_hi);
             }

@@ -69,7 +69,9 @@ build-tools, no Gradle; one APK for every game, plus the RetroArch core.
 - `fxdump`: list the compiled D3DX effects in a file (e.g. a `game.exe`).
 - `shadertest`: translate a folder of dumped shaders offline
   ([Debugging](Debugging.md#switches), `X2_SHADER_DUMP`).
-- `retro_host`: a minimal libretro frontend for testing the core.
+- `retro_host`: a minimal libretro frontend for testing the core; `--next
+  <game folder>` (repeatable) closes and reopens the core between games as
+  RetroArch does, to test switching games.
 - `android/` (APK packaging, FFmpeg cross-build), `es-de/` (ES-DE system
   files), `libretro/` (the core's info file), `version.sh`, `lint.sh`,
   `wiki_sync.sh`.

@@ -71,7 +71,14 @@ HLE functions follow one pattern:
   replays and clocks the guest, with one frame in flight: the guest computes
   frame N+1 while RetroArch shows frame N.
 - **Ending a session.** Guest threads can't be torn down. On libretro unload
-  they park at their next import call, so one RetroArch session runs one game.
+  they park at their next import call; the guest space is remapped
+  inaccessible (pages freed), and so are the large heap blocks on ELF
+  platforms (`heap.c`, the core linked with `--wrap=malloc,...`). A parked
+  thread that touches them faults and stays parked.
+- **Switching games.** The runtime's state is global, so each game after the
+  first runs in a fresh instance of the core's library (Android:
+  `ANDROID_DLEXT_FORCE_LOAD`; elsewhere a temporary copy), and the `retro_*`
+  entry points of the instance RetroArch loaded forward to it.
 
 ## The libretro core
 

@@ -28,6 +28,7 @@ The first release.
 - Android: a RetroArch core holding the chosen games, or a standalone app
   that ES-DE can launch, rendered with Vulkan (OpenGL ES as a fallback);
   both keep compiled shaders and pipelines, so only a first play compiles.
+  In RetroArch, close a game and load another without restarting it.
   Built by the launcher from your games.
 - Linux and Windows: the launcher runs and builds the Android exports; playing
   games on these systems is new in this release and not yet tested with games
@@ -44,5 +45,5 @@ Japanese, Korean and Simplified Chinese.
 on-screen touch controls on Android with each game's buttons.
 
 **Known issues:** BlazBlue Calamity Trigger pauses for about 0.25 s at fight
-start on slower Android devices. RetroArch must be restarted to switch games.
+start on slower Android devices.
 No save states.

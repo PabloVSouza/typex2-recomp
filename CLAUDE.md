@@ -73,7 +73,9 @@ gets an entry per milestone. Update them with the README.
   conversions, `sm3_glsl.c` bytecode → GLSL / MSL / Vulkan GLSL, `hlsl_glsl.c`
   HLSL → GLSL, `d3dasm.c` shader assembly, `ffp.c` fixed-function pipeline as
   generated shaders), `jvs.c` + `padmap.c` (inputs),
-  `platform_sdl.c` / `platform_libretro.c` (front ends), `prof.c` (profiler).
+  `platform_sdl.c` / `platform_libretro.c` (front ends; the core runs each
+  game after the first in a fresh instance of its library), `heap.c` (the
+  core's heap on ELF, releasable at unload), `prof.c` (profiler).
 * `runtime/CMakeLists.txt`: one target per `games/*/gen`; the game's label
   is set in the `if(game STREQUAL ...)` chain.
 * `tools/`: `arc`, `kofarc`, `lifttest` (Unicorn differential tests of the
@@ -220,7 +222,16 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
   Load Core → Install or Restore a Core → the file (taps work, key events
   don't). Force-stop RetroArch and bring ES-DE back afterwards.
 * Screenshots are black while the device is locked
-  (`dumpsys window | grep isKeyguardShowing`).
+  (`dumpsys window | grep isKeyguardShowing`), and install taps miss: wake
+  and unlock first (`input keyevent KEYCODE_WAKEUP`, swipe up). RetroArch may
+  open in portrait or landscape: look at a screenshot before tapping.
+* Testing inside one RetroArch session (switching games): start it with a
+  copy of its config in `/sdcard/Download/x2test` (`-e CONFIGFILE`) with
+  `input_overlay_enable` on (the overlay's RetroArch button opens the
+  Quick Menu; key events and network commands don't reach it) and
+  `quit_on_close_content = "0"` (the user's config quits on close), then
+  play games from Playlists → History by taps. A second launch intent
+  while RetroArch runs crashes RetroArch itself.
 * The user plays the test and says "check": then read `adb logcat -d`
   (tag `x2`). Put temporary switches (`X2_PACELOG=1`, ...) in the game's
   `x2.env` and restore it afterwards (normally `X2_FPS=1` + the `X2_PAD`
@@ -246,6 +257,9 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
   that say why. HLE functions are `static void Name(X2Cpu *c)` reading
   `ARG(n)` and returning with `RET(v)`, listed with their stdcall argument
   count in the module's `X2Hle` table.
+* The runtime's threads start with `x2_spawn`, not `pthread_create`: a
+  closed libretro session parks its own threads and tells them from the
+  frontend's.
 * Log once per unusual event with `x2_log`; verbose detail behind
   `X2_TRACE` / `-vv`.
 * New debugging switches are environment variables named `X2_*`, read once,

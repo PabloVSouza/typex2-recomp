@@ -2,6 +2,33 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-15: RetroArch switches games without a restart
+
+Closing a game in RetroArch and loading another used to be refused ("restart
+RetroArch"): guest threads cannot be stopped and the runtime's state is
+global, so a second game could not boot in the same library instance.
+
+- **One instance per game:** the core RetroArch loaded runs the first game;
+  each later game runs in a fresh instance of the same file
+  (`android_dlopen_ext` with `ANDROID_DLEXT_FORCE_LOAD` on Android, a
+  temporary copy elsewhere), with its own globals. The `retro_*` entry points
+  forward to it. The environment is restored before each game, so one
+  game's `x2.env` does not carry over.
+- **What a closed game gives back:** its 4 GiB guest space is remapped
+  inaccessible (pages freed), and on ELF platforms its large heap blocks
+  too: the core links with `--wrap=malloc,...` (`runtime/src/heap.c`), blocks
+  of 256 KiB or more are mapped one by one and released at unload. Parked
+  threads that wake up later fault on the released memory and stay parked
+  (threads started with `x2_spawn` are told apart from the frontend's).
+- **Measured on the tablet** (KOF XII, BlazBlue CT, SSF4, KOF XII,
+  BlazBlue CT, SSF4 in one session): 67-80 MB released per game, 4-19 MB of
+  small blocks stays; RetroArch was at 320 MB after the sixth game, against
+  750-1100 MB while one plays.
+- **Launched by ES-DE**, RetroArch ends its process when the game closes
+  (and with `quit_on_close_content`), so that path always started fresh.
+- **Testing:** `retro_host --next <content>` closes and reopens the core
+  between contents as RetroArch does.
+
 ## 2026-11-14: First-play shader stalls: Metal batches, Android app cache
 
 First plays on the Mac stalled for up to 2 s at a time: Metal compiled each

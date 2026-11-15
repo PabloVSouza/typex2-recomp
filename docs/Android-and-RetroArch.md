@@ -47,8 +47,11 @@ Settings and limits:
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
 - **Missing features.** No save states, rewind, run-ahead or reset.
-- **One game per session.** After closing a game, restart RetroArch before
-  loading another.
+- **Switching games.** Close a game (Quick Menu → Close Content) and load
+  another, no restart needed. A closed game gives back most of its memory;
+  some 5-20 MB stays until RetroArch quits. Launched from ES-DE, RetroArch
+  quits when the game closes (as it does with Settings → User Interface →
+  "Quit on Close Content").
 - **Latency.** One frame in flight: the game computes frame N+1 while
   RetroArch shows frame N, as on the cabinet's driver. `X2_PIPELINE=0` runs in
   lockstep (a frame less latency, drops when a frame's work exceeds 16.7 ms).

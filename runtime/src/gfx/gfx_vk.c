@@ -2378,7 +2378,7 @@ static VkPipeline build_ahead(const PipeKey *k, VkShaderModule vm, VkShaderModul
     pthread_t th[AHEAD_THREADS];
     u32 nth = 0;
     for (; nth < AHEAD_THREADS && nth + 1 < ahead_n; nth++)
-        if (pthread_create(&th[nth], NULL, ahead_worker, NULL)) break;
+        if (x2_spawn(&th[nth], NULL, ahead_worker, NULL)) break;
     ahead_worker(NULL);
     for (u32 i = 0; i < nth; i++) pthread_join(th[i], NULL);
     for (u32 i = 0; i < ahead_n; i++) {

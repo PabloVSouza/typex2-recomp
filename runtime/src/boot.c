@@ -48,9 +48,11 @@ void x2_load_env_file(const char *dir) {
 #ifndef _WIN32
 static struct sigaction prev_segv, prev_bus;
 static void on_fault(int sig, siginfo_t *si, void *uc) {
+    /* a finished session's thread (its memory released, see x2_mem_release): park it */
+    if (x2_park_here()) x2_park_forever();
     uintptr_t a = (uintptr_t)si->si_addr;
     if (x2_mem && a >= (uintptr_t)x2_mem && a < (uintptr_t)x2_mem + X2_GUEST_SPACE) {
-        if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) _exit(0); /* session over, see below */
+        if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) _exit(0); /* see below */
         if (x2_self) x2_trace_dump(x2_self, 48);
         if (x2_self && x2_self->cpu.host_fn) fprintf(stderr, "[x2] inside host function %s\n", x2_self->cpu.host_fn);
         void *gbt[48];

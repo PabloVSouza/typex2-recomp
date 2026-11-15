@@ -221,6 +221,10 @@ if(X2_LIBRETRO)
   target_include_directories(x2rt_retro PRIVATE src ${CMAKE_BINARY_DIR}/libretro)
   target_compile_definitions(x2rt_retro PRIVATE "X2_VERSION=\"${PROJECT_VERSION}\"")
   target_link_libraries(x2rt_retro PUBLIC x2rt_common ${CMAKE_DL_LIBS})
+  if(NOT APPLE AND NOT WIN32) # ELF: the instance heap, see src/heap.c (the core links with --wrap)
+    target_sources(x2rt_retro PRIVATE src/heap.c)
+    target_compile_definitions(x2rt_retro PRIVATE X2_INSTANCE_HEAP)
+  endif()
   if(ANDROID) # the Vulkan backend in RetroArch's context (X2_RENDERER=vulkan)
     target_sources(x2rt_retro PRIVATE src/gfx/gfx_vk.c)
     target_compile_definitions(x2rt_retro PRIVATE X2_VULKAN)
@@ -370,6 +374,10 @@ function(x2_add_libretro_core)
     set(vs ${CMAKE_BINARY_DIR}/libretro/exports.map)
     file(WRITE ${vs} "{ global: retro_*; local: *; };\n")
     target_link_options(typex2_libretro PRIVATE "LINKER:--version-script=${vs}" "LINKER:-Bsymbolic" "LINKER:--gc-sections")
+    if(NOT WIN32) # every allocation of the core through src/heap.c
+      target_link_options(typex2_libretro PRIVATE "LINKER:--wrap=malloc,--wrap=free,--wrap=calloc,--wrap=realloc"
+                          "LINKER:--wrap=posix_memalign,--wrap=strdup,--wrap=strndup,--wrap=vasprintf")
+    endif()
     if(ANDROID AND CMAKE_STRIP) # debug info is ~90% of the file; RetroArch installs copy it
       add_custom_command(TARGET typex2_libretro POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:typex2_libretro> $<TARGET_FILE:typex2_libretro>.sym
                          COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:typex2_libretro> VERBATIM)

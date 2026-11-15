@@ -127,7 +127,7 @@ void x2_start_watchdog(void) {
     if (!e && !getenv("X2_CALL_DELAY")) return;
     if (!e) e = "1000";
     pthread_t pt;
-    pthread_create(&pt, NULL, watchdog, (void *)(uintptr_t)(u32)atoi(e));
+    x2_spawn(&pt, NULL, watchdog, (void *)(uintptr_t)(u32)atoi(e));
     pthread_detach(pt);
 }
 
@@ -337,7 +337,7 @@ static X2Thread *thread_create(u32 start, u32 param, u32 stack_size, bool suspen
     pthread_attr_init(&a);
     pthread_attr_setstacksize(&a, 64u << 20);  /* guest call depth maps onto the host stack */
     pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
-    if (pthread_create(&t->pt, &a, thread_main, t)) x2_fatal("pthread_create failed");
+    if (x2_spawn(&t->pt, &a, thread_main, t)) x2_fatal("pthread_create failed");
     pthread_attr_destroy(&a);
     return t;
 }
@@ -466,7 +466,7 @@ X2Thread *x2_start_main(void) {
     pthread_attr_t a;
     pthread_attr_init(&a);
     pthread_attr_setstacksize(&a, 256u << 20);
-    if (pthread_create(&t->pt, &a, guest_main, t)) x2_fatal("cannot start guest main thread");
+    if (x2_spawn(&t->pt, &a, guest_main, t)) x2_fatal("cannot start guest main thread");
     pthread_attr_destroy(&a);
     return t;
 }

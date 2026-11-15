@@ -311,8 +311,8 @@ void x2_video_run(X2Video *v) {
     }
     if (!v->thread_started) {
         v->thread_started = true;
-        pthread_create(&v->thread, NULL, decode_thread, v);
-        if (v->vdec) pthread_create(&v->vthread, NULL, video_thread, v);
+        x2_spawn(&v->thread, NULL, decode_thread, v);
+        if (v->vdec) x2_spawn(&v->vthread, NULL, video_thread, v);
     }
     pthread_cond_broadcast(&v->cond);
     pthread_mutex_unlock(&v->lock);
