@@ -27,6 +27,8 @@ jobs:
           v="${tag#v}"; v="${v%%-*}" # v0.1.0-rc.1: the notes of 0.1.0
           awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1} on' CHANGELOG.md | tail -n +2 > notes.md
           test -s notes.md || { echo "CHANGELOG.md has no section for $v"; exit 1; }
+          # known issues live in one page (docs/Known-Issues.md), not in the notes
+          printf '\n**Known issues:** [docs/Known-Issues.md](https://github.com/%s/blob/main/docs/Known-Issues.md)\n' "$GITHUB_REPOSITORY" >> notes.md
           pre=; case "$tag" in *-*) pre=--prerelease ;; esac
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --draft $pre --title "typex2-recomp ${tag#v}" --notes-file notes.md
 

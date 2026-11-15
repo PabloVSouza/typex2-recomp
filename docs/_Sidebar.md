@@ -2,6 +2,7 @@
 
 **Status**
 - [Game status](Game-Status.md)
+- [Known issues](Known-Issues.md)
 - [Progress log](Progress-Log.md)
 
 **Games**

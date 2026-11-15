@@ -50,6 +50,9 @@ gets an entry per milestone. Update them with the README.
   `CHANGELOG.md` as they land; a release is `tools/version.sh set X.Y.Z`, the
   section dated, a commit, then the tag `vX.Y.Z` pushed (the release workflow
   checks tag = version and publishes). Tag only when the maintainer asks.
+  Known issues never go in `CHANGELOG.md`: they live in
+  `docs/Known-Issues.md` (with the game pages), which the release notes and
+  the Discord post link to; keep it current as issues are found and fixed.
 * **Never write into the user's game folders** (debug dumps, logs, test
   files). Use `$TMPDIR` / `/tmp` or the session scratchpad. The games' own
   saves (`sv/`, `Ranking/`, ...) are the exception: the game writes them.

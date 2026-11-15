@@ -51,6 +51,3 @@ Japanese, Korean and Simplified Chinese.
 **Controls:** gamepads and arcade sticks with per-game layouts (`X2_PAD`), remapped in the launcher by pressing the buttons,
 on-screen touch controls on Android with each game's buttons.
 
-**Known issues:** BlazBlue Calamity Trigger pauses for about 0.25 s at fight
-start on slower Android devices.
-No save states.

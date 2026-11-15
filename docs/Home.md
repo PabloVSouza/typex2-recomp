@@ -16,6 +16,7 @@ Each game then runs in one of two ways:
 | Page | What it covers |
 |---|---|
 | [Game status](Game-Status.md) | Status of every Type X / X+ and Type X2 game, and the next candidates |
+| [Known issues](Known-Issues.md) | What doesn't work yet in the current version |
 | [Launcher](Launcher.md) | The desktop app: play, export for Android / RetroArch, downloaded build tools |
 | [Hardware](Hardware.md) | The Type X and Type X2 boards, and how the runtime stands in for them |
 | [Building from source](Building.md) | Desktop builds, tools, contributing, releases |

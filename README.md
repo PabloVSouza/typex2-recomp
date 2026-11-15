@@ -40,7 +40,7 @@ happens on your computer.
 ✅ playable start to finish. Android is tested on a Samsung Galaxy Tab A11
 (Helio G99, Mali-G57), where these games run at 60 fps. The status of every
 Type X / X2 game, including the ones not supported yet:
-[Game status](docs/Game-Status.md).
+[Game status](docs/Game-Status.md); what doesn't work yet: [Known issues](docs/Known-Issues.md).
 
 ## Platforms
 
@@ -90,7 +90,8 @@ Everything is in [`docs/`](docs/Home.md), also published as the
 - [Android and RetroArch](docs/Android-and-RetroArch.md): installing the core
   and the app, ES-DE, settings.
 - [Controls](docs/Controls.md) · [Launcher](docs/Launcher.md) ·
-  [Game status](docs/Game-Status.md) · a page per game.
+  [Game status](docs/Game-Status.md) · [Known issues](docs/Known-Issues.md) ·
+  a page per game.
 - For developers: [Building from source](docs/Building.md),
   [Architecture](docs/Architecture.md),
   [Porting a game](docs/Porting-a-Game.md), [Debugging](docs/Debugging.md),

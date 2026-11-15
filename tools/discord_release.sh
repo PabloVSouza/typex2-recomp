@@ -5,7 +5,8 @@
 # after publishing, discord-release.yml posts one again). DRY_RUN=1 prints the post instead.
 #
 # The post, as the bloodborne-native releases are: "Version X is out", the summary, What's new (one
-# bullet per **Label:** paragraph or list), Known issues, the download, how to update, the community
+# bullet per **Label:** paragraph or list), a link to docs/Known-Issues.md (known issues are not in the
+# notes), the download, how to update, the community
 # line. Plain text: Discord keeps the notes' line breaks, so lines are joined, links and bold dropped.
 set -eu
 tag=${1:?usage: discord_release.sh vX.Y.Z}
@@ -20,7 +21,7 @@ notes=$(awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1; next} on' CHANG
 [ -n "$notes" ] || { echo "CHANGELOG.md has no section for $v" >&2; exit 1; }
 
 version=$(printf '%s' "${tag#v}" | sed 's/-rc\./ RC /')
-body=$(printf '%s\n' "$notes" | awk -v version="$version" -v url="https://github.com/$repo/releases/tag/$tag" '
+body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v url="https://github.com/$repo/releases/tag/$tag" '
     function plain(s) { gsub(/\*\*/, "", s); s = gensub_links(s); return s }
     function gensub_links(s,   out, i) { # [text](url) -> text
         out = ""
@@ -39,10 +40,10 @@ body=$(printf '%s\n' "$notes" | awk -v version="$version" -v url="https://github
     END {
         flush()
         print "Version " version " is out 🕹️"
-        new = ""; known = ""; summary = ""
+        new = ""; summary = ""
         for (i = 0; i < n; i++) {
             s = items[i]
-            if (s ~ /^\*\*Known issues:\*\*/) { sub(/^\*\*Known issues:\*\* */, "", s); known = plain(s); continue }
+            if (s ~ /^\*\*Known issues:\*\*/) continue # the page below has them
             if (s ~ /^- /) { new = new "\n   ◦ " plain(substr(s, 3)); continue }
             if (s ~ /^\*\*/) { new = new "\n• " plain(s); continue }
             if (new == "") summary = summary (summary == "" ? "" : "\n\n") plain(s)
@@ -50,7 +51,7 @@ body=$(printf '%s\n' "$notes" | awk -v version="$version" -v url="https://github
         }
         if (summary != "") print "\n" summary
         if (new != "") print "\nWhat'"'"'s new" new
-        if (known != "") print "\nKnown issues\n" known
+        print "\nKnown issues: https://github.com/" repo "/blob/main/docs/Known-Issues.md"
         print "\nDownload: " url
         print "\nInstall over the previous version: your game folders, builds and settings are kept. Bring your own games: none are included."
     }')
