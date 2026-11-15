@@ -23,31 +23,20 @@ The first release.
 - Super Street Fighter IV Arcade Edition
 - BlazBlue: Calamity Trigger and Continuum Shift
 - The King of Fighters '98 Ultimate Match
-- The King of Fighters Maximum Impact Regulation A (Android: attract mode only
-  tested so far)
+- The King of Fighters: Maximum Impact Regulation A
 
 **Platforms:**
 
-- macOS (Apple Silicon): games play in the launcher, rendered with Metal.
-  Shaders are compiled in batches while a game loads, so a first play does
-  not stall on them mid-game.
-- Android: a RetroArch core holding the chosen games, or a standalone app
-  that ES-DE can launch, rendered with Vulkan (OpenGL ES as a fallback);
-  both keep compiled shaders and pipelines, so only a first play compiles.
-  In RetroArch, close a game and load another without restarting it.
-  Built by the launcher from your games.
-- Linux and Windows: the launcher runs and builds the Android exports; playing
-  games on these systems is new in this release and not yet tested with games
-  (Vulkan, with OpenGL as a fallback). Reports welcome, working or not:
-  GitHub issues or Discord.
+- macOS (Apple Silicon): play in the launcher, rendered with Metal.
+- Android: a RetroArch core with your games (switch games without
+  restarting RetroArch), or a standalone app ES-DE can launch. Vulkan, with
+  OpenGL ES as a fallback.
+- Linux and Windows: the launcher builds the Android exports; playing there
+  is untested, so reports are welcome.
 
-**Launcher:** add the folders of the games you own (or scan a folder holding
-them all), recompile them, play them
-on this computer, or export the Android core or app. Build tools (clang,
-CMake, Ninja, the Android NDK) are downloaded on demand into the launcher's own
-folder. In English, Spanish, French, Portuguese (Brazil and Portugal), German,
-Japanese, Korean and Simplified Chinese.
+**Launcher:** add your game folders (or scan a folder of them), recompile
+them on your computer, play, or export for Android. Build tools download on
+demand. In 9 languages.
 
-**Controls:** gamepads and arcade sticks with per-game layouts (`X2_PAD`), remapped in the launcher by pressing the buttons,
-on-screen touch controls on Android with each game's buttons.
-
+**Controls:** gamepads and arcade sticks with per-game layouts, remapped by
+pressing the buttons; touch controls on Android.
