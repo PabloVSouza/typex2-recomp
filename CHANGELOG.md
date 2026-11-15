@@ -9,6 +9,9 @@ games are recompiled on your computer from your own files.
 
 ## Unreleased
 
+- **Android requires Vulkan 1.3** (most devices from 2022 on, with Android 13
+  or later). OpenGL ES stays only as a development reference and will be
+  removed; it is no longer a supported fallback.
 - **Launcher:** tells you when a new version is out (checks GitHub's
   releases at start and every six hours; off in About → Updates), with the
   release notes and a link to the downloads.

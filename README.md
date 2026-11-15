@@ -45,7 +45,8 @@ Type X / X2 game, including the ones not supported yet:
 ## Platforms
 
 - **Android:** in RetroArch (one core with all your games) or as a standalone
-  app that ES-DE can launch. Rendered with Vulkan (OpenGL ES as a fallback),
+  app that ES-DE can launch. **Requires Vulkan 1.3** (most devices from 2022
+  on, with Android 13 or later). Rendered with Vulkan,
   with on-screen touch controls when no pad is connected.
 - **macOS** on Apple Silicon: games play right in the launcher, rendered with
   Metal.

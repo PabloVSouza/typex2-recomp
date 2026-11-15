@@ -11,7 +11,7 @@ Static recompilation of Taito Type X and Type X2 arcade games (x86 Windows XP PC
 native code for macOS and Android: `x2recomp` lifts `game.exe` (or `launcher.exe`) to C, the C
 runtime provides memory, threads, Win32 / D3D9 / D3DX / DirectSound /
 DirectShow, a JVS I/O board and renderers (Metal by default on macOS, Vulkan on
-Android, GL as the reference and fallback). Front ends: a standalone app
+Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Front ends: a standalone app
 (SDL3, launched by ES-DE) and a libretro core holding every game.
 
 | Game | `games/<id>` | State |

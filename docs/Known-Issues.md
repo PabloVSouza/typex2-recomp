@@ -10,8 +10,7 @@ that isn't here? Report it in
 
 - **Linux and Windows:** playing games there is untested: development
   happens on a Mac. Reports are welcome, working or not.
-- **RetroArch:** no save states, rewind or run-ahead; Reset works with the
-  Vulkan renderer (the default), not with OpenGL.
+- **RetroArch:** no save states, rewind or run-ahead.
 - **RetroArch, switching games:** a closed game leaves 5-20 MB behind until
   RetroArch quits.
 
@@ -31,8 +30,6 @@ that isn't here? Report it in
   not played by hand yet. Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
-- **Super Street Fighter IV Arcade Edition:** with OpenGL
-  (`X2_RENDERER=gl`) a few stages run at 50-55 fps on slower Android devices
-  (Vulkan, the default, holds 60). No link play; the opening movie's English
-  audio track isn't in the game's files
+- **Super Street Fighter IV Arcade Edition:** no link play; the opening
+  movie's English audio track isn't in the game's files
   ([details](Game-SSF4-AE.md#known-issues)).

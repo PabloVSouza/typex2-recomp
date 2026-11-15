@@ -39,11 +39,12 @@ also keeps an unstripped `typex2_libretro_android.so.sym` for the profiler.
    Android only loads cores from RetroArch's own data folder.
 
 Settings and limits:
-- **Video.** The core renders with Vulkan 1.3. RetroArch switches to its
+- **Video.** Vulkan 1.3 is required (most devices from 2022 on, with Android
+  13 or later). The core renders with Vulkan. RetroArch switches to its
   `vulkan` driver by itself while "Allow driver switching" (Settings →
-  Drivers) is on, the default. Put `X2_RENDERER=gl` in the game's `x2.env`
-  to use OpenGL ES 3.2 instead (needed on devices without Vulkan 1.3). The
-  standalone app uses Vulkan too, and falls back to OpenGL by itself.
+  Drivers) is on, the default. The OpenGL ES renderer (`X2_RENDERER=gl`) is
+  a development reference that will be removed, not a supported fallback.
+  The standalone app uses Vulkan too.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
 - **Missing features.** No save states, rewind or run-ahead. Reset (Quick
