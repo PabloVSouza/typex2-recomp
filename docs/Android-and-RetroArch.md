@@ -46,7 +46,9 @@ Settings and limits:
   standalone app uses Vulkan too, and falls back to OpenGL by itself.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
-- **Missing features.** No save states, rewind, run-ahead or reset.
+- **Missing features.** No save states, rewind or run-ahead. Reset (Quick
+  Menu → Restart) restarts the game with Vulkan; with OpenGL it isn't
+  supported.
 - **Switching games.** Close a game (Quick Menu → Close Content) and load
   another, no restart needed. A closed game gives back most of its memory;
   some 5-20 MB stays until RetroArch quits. Launched from ES-DE, RetroArch

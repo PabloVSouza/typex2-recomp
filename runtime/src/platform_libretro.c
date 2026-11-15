@@ -15,7 +15,8 @@
  * fresh instance of this library (see "one instance per game" below). A closed
  * game's threads stay parked; its guest memory is freed.
  *
- * Limits: no save states, no reset.
+ * Reset restarts the game in a fresh instance too, on the video context RetroArch
+ * already made (Vulkan only). No save states.
  *
  * RetroPad (per player): D-pad / left stick = joystick, Y B X A = A B C D
  * (KOF layout: bottom row A B, top row C D), L = button 5, R = button 6,
@@ -56,6 +57,13 @@ static retro_audio_sample_batch_t audio_batch_cb;
 static retro_input_poll_t input_poll_cb;
 static retro_input_state_t input_state_cb;
 static struct retro_hw_render_callback hw_render;
+/* Reset: the game restarts in a fresh instance on the context RetroArch already made
+ * (see retro_reset). RetroArch keeps calling the context callbacks it was given, so a
+ * replaced instance forwards them to its successor; a successor takes the context over
+ * instead of asking for one. */
+static void (*fwd_reset)(void), (*fwd_destroy)(void);
+static bool inherited;
+static struct retro_hw_render_callback inherited_hw;
 
 /* Vulkan (the default on Android; X2_RENDERER=gl in x2.env selects GL): gfx/gfx_vk.c in RetroArch's context.
  * RetroArch creates the device through our negotiation interface, so it has what the
@@ -138,6 +146,10 @@ static const struct retro_hw_render_context_negotiation_interface_vulkan vk_nego
     vk_create_device2};
 
 static void vk_context_reset(void) {
+    if (fwd_reset) {
+        fwd_reset();
+        return;
+    }
     if (vk_ready) {
         msg("Type X2: the video context was recreated; restart the game", 600);
         x2_log("libretro: context_reset on a live session (resources lost)");
@@ -276,6 +288,10 @@ static void blit(GLuint tex, u32 w, u32 h, float v0, float v1) {
 }
 
 static void context_reset(void) {
+    if (fwd_reset) {
+        fwd_reset();
+        return;
+    }
     if (gl_ready) {
         /* every texture, buffer and shader the game created lived in the old
          * context; the guest cannot re-create them */
@@ -292,7 +308,13 @@ static void context_reset(void) {
     x2_thread_perf("x2-render", true);
 }
 
-static void context_destroy(void) { x2_log("libretro: context_destroy"); }
+static void context_destroy(void) {
+    if (fwd_destroy) {
+        fwd_destroy();
+        return;
+    }
+    x2_log("libretro: context_destroy");
+}
 
 /* ---- input ------------------------------------------------------------------------- */
 static bool btn(unsigned port, unsigned id) { return input_state_cb(port, RETRO_DEVICE_JOYPAD, 0, id) != 0; }
@@ -414,11 +436,17 @@ static void on_guest_exit(u32 code) {
  * live in them); at unload a closed game's guest memory (x2_mem_release) and, on ELF
  * platforms, its large heap blocks (heap.c) go back to the system. */
 EXPORT void retro_x2_instance(void);
+EXPORT bool retro_x2_release(struct retro_hw_render_callback *hw);
+EXPORT void retro_x2_takeover(const struct retro_hw_render_callback *hw);
+EXPORT void retro_x2_forward(void (*reset)(void), void (*destroy)(void));
+EXPORT void retro_x2_context_reset(void);
+EXPORT void retro_x2_context_destroy(void);
 // clang-format off
 #define INSTANCE_FNS(X)                                                                                  \
     X(set_environment) X(set_video_refresh) X(set_audio_sample) X(set_audio_sample_batch)               \
     X(set_input_poll) X(set_input_state) X(init) X(deinit) X(load_game) X(unload_game) X(run)            \
-    X(get_system_av_info) X(set_controller_port_device) X(reset) X(x2_instance)
+    X(get_system_av_info) X(set_controller_port_device) X(reset) X(x2_instance) X(x2_release)       \
+    X(x2_takeover) X(x2_forward) X(x2_context_reset) X(x2_context_destroy)
 // clang-format on
 #define INSTANCE_FIELD(n) __typeof__(&retro_##n) n;
 static struct {
@@ -426,6 +454,7 @@ static struct {
 } inst;                           /* the instance running the current game */
 static bool inst_on, is_instance; /* is_instance: this is such an instance, loaded by another */
 static char **env0;               /* the environment before any game's x2.env */
+static char content_path[1100];   /* the current game's, for Reset */
 
 /* called on a fresh instance before retro_init: the logging and pinning are its loader's */
 EXPORT void retro_x2_instance(void) { is_instance = true; }
@@ -488,7 +517,8 @@ static void env_restore(void) {
     }
 }
 
-static bool load_instance(const struct retro_game_info *gi) {
+/* hw: Reset, the context the new instance takes over */
+static bool load_instance(const struct retro_game_info *gi, const struct retro_hw_render_callback *hw) {
     env_restore();
     void *h = open_instance();
     if (!h) return false;
@@ -508,6 +538,7 @@ static bool load_instance(const struct retro_game_info *gi) {
     inst.set_input_poll(input_poll_cb);
     inst.set_input_state(input_state_cb);
     inst.init();
+    if (hw) inst.x2_takeover(hw);
     if (!inst.load_game(gi)) { /* nothing was started: it can go */
         inst.deinit();
         dlclose(h);
@@ -605,7 +636,8 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         inst_on = false;
     }
     if (!env0) env_snapshot();
-    if (loaded_once) return load_instance(gi); /* this instance ran a game already */
+    snprintf(content_path, sizeof content_path, "%s", gi->path);
+    if (loaded_once) return load_instance(gi, NULL); /* this instance ran a game already */
 
     /* the game folder: the content itself, or the folder holding it */
     static char dir[1024];
@@ -630,9 +662,16 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         gfx_gl_set_cache_dir(sd, game->name);
     }
 
+    x2_load_env_file(dir); /* X2_RENDERER is needed before the context (x2_boot loads it again) */
+    if (inherited) {       /* Reset: RetroArch's context, made for the instance this one replaces */
+        hw_render = inherited_hw;
+#ifdef X2_VULKAN
+        use_vk = hw_render.context_type == RETRO_HW_CONTEXT_VULKAN;
+#endif
+        goto boot;
+    }
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_XRGB8888;
     environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
-    x2_load_env_file(dir); /* X2_RENDERER is needed before the context (x2_boot loads it again) */
 #ifdef X2_VULKAN
     use_vk = !(getenv("X2_RENDERER") && !strcmp(getenv("X2_RENDERER"), "gl"));
     if (use_vk) {
@@ -687,14 +726,70 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
     bool shared = true;
     if (!use_vk) environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, &shared);
 
+boot:
     loaded_once = true;
     running = true;
     x2_exit_hook = on_guest_exit;
     gfx_set_external_clock(true);
     x2_boot(game->tables, dir);
     set_input_descriptors(); /* after x2_boot: x2.env may set X2_PAD */
+#ifdef X2_VULKAN
+    if (inherited && use_vk) vk_context_reset(); /* RetroArch made the context already */
+#endif
     return true;
 }
+
+/* Closing the game this instance runs: its threads parked, its guest memory and large heap
+ * blocks released */
+static void close_game(const char *why) {
+    running = false;
+    x2_park_all();
+    x2_mem_release();
+#ifdef X2_INSTANCE_HEAP
+    void x2_heap_release(void);
+    x2_heap_release();
+#endif
+    x2_log("libretro: %s %s", game ? game->name : "game", why);
+}
+
+/* Reset, on the instance running the game: its GPU objects freed on RetroArch's device, the
+ * game closed, and RetroArch's context handed back (*hw) for the instance that restarts it.
+ * Vulkan only: false (nothing done) with OpenGL. */
+EXPORT bool retro_x2_release(struct retro_hw_render_callback *hw) {
+#ifdef X2_VULKAN
+    if (!running || !use_vk || !vk_ready) return false;
+    *hw = hw_render;
+    x2_park_all(); /* before the objects go: the guest stops recording */
+    void gfx_vk_release(void);
+    gfx_vk_release();
+    vk_ready = false;
+    close_game("released for a reset");
+    return true;
+#else
+    (void)hw;
+    return false;
+#endif
+}
+/* on the instance that restarts the game, before its retro_load_game */
+EXPORT void retro_x2_takeover(const struct retro_hw_render_callback *hw) {
+    inherited = true;
+    inherited_hw = *hw;
+}
+/* RetroArch's context callbacks, on the instance that replaced this one */
+EXPORT void retro_x2_forward(void (*reset)(void), void (*destroy)(void)) {
+    fwd_reset = reset;
+    fwd_destroy = destroy;
+}
+EXPORT void retro_x2_context_reset(void) {
+#ifdef X2_VULKAN
+    if (use_vk) {
+        vk_context_reset();
+        return;
+    }
+#endif
+    context_reset();
+}
+EXPORT void retro_x2_context_destroy(void) { context_destroy(); }
 
 EXPORT bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) {
     (void)type; (void)info; (void)num;
@@ -709,22 +804,29 @@ EXPORT void retro_unload_game(void) {
     }
     if (!running) return;
     /* The guest stays parked in Present (no more clock ticks); see header. */
-    running = false;
-    x2_park_all();
-    x2_mem_release();
-#ifdef X2_INSTANCE_HEAP
-    void x2_heap_release(void);
-    x2_heap_release();
-#endif
-    x2_log("libretro: %s closed", game ? game->name : "game");
+    close_game("closed");
 }
 
+/* Reset: a guest cannot be restarted in place, so the game restarts in a fresh instance
+ * (as switching games does), on the context RetroArch already made: the running instance
+ * frees its GPU objects first (retro_x2_release). Vulkan only. */
 EXPORT void retro_reset(void) {
-    if (inst_on) {
-        inst.reset();
+    struct retro_hw_render_callback hw;
+    if (inst_on ? !inst.x2_release(&hw) : !retro_x2_release(&hw)) {
+        if (inst_on)
+            inst.reset(); /* says why, from the running instance */
+        else
+            msg("Type X2: reset needs the Vulkan renderer", 180);
         return;
     }
-    msg("Type X2: reset is not supported", 180);
+    __typeof__(&retro_x2_forward) forward = inst_on ? inst.x2_forward : retro_x2_forward;
+    inst_on = false;
+    struct retro_game_info gi = {content_path, NULL, 0, NULL};
+    if (!load_instance(&gi, &hw)) {
+        x2_log("libretro: the game could not be restarted");
+        return;
+    }
+    forward(inst.x2_context_reset, inst.x2_context_destroy);
 }
 
 static int pace_ab;     /* X2_AB half of this call */

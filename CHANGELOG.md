@@ -17,6 +17,7 @@ games are recompiled on your computer from your own files.
 - **BlazBlue Calamity Trigger, Android:** a shorter pause at fight start (the
   renderer's part went from 0.25 s to under 0.1 s, and the game's loading
   frame is faster); loading screens elsewhere benefit too.
+- **RetroArch:** Reset restarts the game (with Vulkan, the default renderer).
 
 ## 0.1.0 - 2026-11-15
 

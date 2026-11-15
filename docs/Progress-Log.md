@@ -28,6 +28,13 @@ Milestones, newest first. `git log` has the details.
   - Result: the renderer's worst frame at fight start went from 226-252 ms
     to 31-92 ms. The game's loading frame takes 0.3-0.6 s depending on the
     stage, now mostly the game's own work.
+- **RetroArch Reset (Vulkan):** the game restarts in a fresh instance, as a
+  switch does. RetroArch keeps its device across a reset, so the running
+  instance destroys its objects and frees their memory (`gfx_vk_release`),
+  the new one takes the context over (`retro_x2_takeover`) and the old one
+  forwards RetroArch's context callbacks to it. Tested on the tablet: KOF XII
+  reset twice, then SSF4 reset once; memory stays level and closing gives it
+  back. OpenGL still says Reset isn't supported.
 - **Left:** a full upload ring waits for the GPU (76-88 ms once, around
   character select); spilling into a second staging buffer would avoid it.
 

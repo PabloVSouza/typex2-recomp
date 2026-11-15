@@ -3394,3 +3394,67 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     *oh = h;
     return true;
 }
+
+/* libretro Reset: the game restarts in a fresh instance of the core on this same device (RetroArch's),
+ * so everything this instance made goes: objects destroyed, memory freed. The device stays. */
+void gfx_vk_release(void) {
+    if (!dev) return;
+    pthread_mutex_lock(&spare_mu); /* the ahead thread allocates nothing more */
+    tex_mem_type = ~0u;
+    announced = 0;
+    pthread_mutex_unlock(&spare_mu);
+    gfx_tex_create_hook = NULL;
+    if (qlock) qlock(qlock_handle);
+    vkDeviceWaitIdle(dev);
+    if (qunlock) qunlock(qlock_handle);
+    if (pcache_dirty) pcache_save();
+    pend_head = pend_tail = NULL; /* their frames are host memory, released with the instance */
+    for (u32 i = 0; i < MAX_IDS; i++) {
+        if (texs[i]) tex_free(texs[i]), texs[i] = NULL;
+        if (bufs[i]) do_buf_destroy(i);
+        if (shaders[i]) {
+            for (u32 v = 0; v < shaders[i]->nvar; v++)
+                if (shaders[i]->var[v].m) vkDestroyShaderModule(dev, shaders[i]->var[v].m, NULL);
+            shaders[i]->nvar = 0;
+        }
+    }
+    for (u32 i = 0; i < 3; i++)
+        if (black[i]) tex_free(black[i]), black[i] = NULL;
+    for (u32 i = 0; i < INFLIGHT; i++) {
+        if (outs[i].t) tex_free(outs[i].t), outs[i].t = NULL;
+        if (outs[i].fence) vkDestroyFence(dev, outs[i].fence, NULL), outs[i].fence = VK_NULL_HANDLE;
+    }
+    for (u32 b = 0; b < PIPE_BUCKETS; b++)
+        for (PipeEnt *p = pipes[b]; p; p = p->next)
+            if (p->p) vkDestroyPipeline(dev, p->p, NULL), p->p = VK_NULL_HANDLE;
+    for (SampEnt *s = samps; s; s = s->next) vkDestroySampler(dev, s->s, NULL);
+    samps = NULL;
+    completed_serial = cur_serial; /* the device is idle: everything trashed can go */
+    collect();
+    for (u32 i = 0; i < INFLIGHT; i++) {
+        if (slots[i].ring) vkDestroyBuffer(dev, slots[i].ring, NULL);
+        if (slots[i].fence) vkDestroyFence(dev, slots[i].fence, NULL);
+        if (pr_fence[i]) vkDestroyFence(dev, pr_fence[i], NULL);
+        if (acq_sem[i]) vkDestroySemaphore(dev, acq_sem[i], NULL);
+    }
+    for (u32 i = 0; i < 2; i++)
+        if (dxt_pipe[i]) vkDestroyPipeline(dev, dxt_pipe[i], NULL);
+    if (dxt_layout) vkDestroyPipelineLayout(dev, dxt_layout, NULL);
+    if (dxt_dsl) vkDestroyDescriptorSetLayout(dev, dxt_dsl, NULL);
+    if (tsq) vkDestroyQueryPool(dev, tsq, NULL);
+    if (passq) vkDestroyQueryPool(dev, passq, NULL);
+    vkDestroyCommandPool(dev, cpool, NULL); /* and its command buffers */
+    vkDestroyPipelineCache(dev, pcache, NULL);
+    vkDestroyPipelineLayout(dev, playout, NULL);
+    vkDestroyDescriptorSetLayout(dev, dslayout, NULL);
+    for (u32 i = 0; i < nblocks; i++) {
+        if (blocks[i].map) vkUnmapMemory(dev, blocks[i].mem);
+        vkFreeMemory(dev, blocks[i].mem, NULL);
+    }
+    nblocks = 0;
+    pthread_mutex_lock(&spare_mu);
+    while (nspare_mem) vkFreeMemory(dev, spare_mem[--nspare_mem], NULL);
+    pthread_mutex_unlock(&spare_mu);
+    x2_log("vulkan: released this instance's objects and memory");
+    dev = VK_NULL_HANDLE;
+}

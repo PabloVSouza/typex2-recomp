@@ -79,6 +79,11 @@ HLE functions follow one pattern:
   first runs in a fresh instance of the core's library (Android:
   `ANDROID_DLEXT_FORCE_LOAD`; elsewhere a temporary copy), and the `retro_*`
   entry points of the instance RetroArch loaded forward to it.
+- **Reset.** The same: the game restarts in a fresh instance. RetroArch keeps
+  its video context across a reset, so the running instance first destroys
+  its Vulkan objects and frees their memory (`gfx_vk_release`), the new one
+  takes the context over instead of asking for one, and the replaced
+  instance forwards RetroArch's context callbacks to it.
 
 ## The libretro core
 
