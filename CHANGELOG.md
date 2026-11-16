@@ -7,7 +7,9 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.3.0 - 2026-11-16
+
+Save states, and KOF XIII in English.
 
 - **Save states**, in the standalone app (F5 saves, F7 loads) and in
   RetroArch. A state loads on the screen it was saved on, such as the same
