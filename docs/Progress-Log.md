@@ -2,6 +2,19 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-16: KOF XIII starts in English
+
+- **Found:** the language is an owner setting the Lua scripts read through
+  `OwnerSettingLanguage` (`0x49afa0`): a static at `0x77503c` set by the
+  defaults routine `0x43faf0` (0 Japanese, 1 English(US)) before the saved
+  settings are read over it.
+- **Fix:** a byte patch in the lifter turns the default's zero store into
+  `mov [0x77503c], ecx` (1); the neighbouring zero store it replaces wrote
+  BSS that nothing touches earlier. A fresh start (no `sv/`) shows LANGUAGE:
+  ENGLISH in the test menu and "INSERT COIN" in attract mode, where the
+  unpatched build showed "0 CREDIT(S)". The pattern matches only XIII (not
+  Climax or XII).
+
 ## 2026-11-16: The launcher is the Android app; game packs
 
 - **What:** the Android app is the launcher built with Tauri

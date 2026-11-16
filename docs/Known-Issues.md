@@ -25,9 +25,6 @@ that isn't here? Report it in
 - **The King of Fighters XIII Climax:** on slower Android devices most stages
   are too heavy for 60 fps in fights (about 50 on the test tablet: the game
   thread needs 16.5-18 ms a frame); a few, like the green one, hold 60.
-- **The King of Fighters XIII:** starts in Japanese; switch the language in
-  the test menu
-  ([details](Game-KOF-XIII.md#known-issues)).
 - **The King of Fighters: Maximum Impact Regulation A:** on Android, a fight
   starts after a ~1 s load, and each next team member after 0.3-0.5 s (the
   game's own loading). Not played by hand yet.

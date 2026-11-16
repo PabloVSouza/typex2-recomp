@@ -302,7 +302,8 @@ const vector<NativeSig>& native_sigs() {
 
 // ---- byte patches ----------------------------------------------------------------
 // Code patched before discovery, found by a unique byte pattern (exec sections).
-// Each fixes a behaviour that is wrong under the runtime, not the game logic.
+// Each fixes a behaviour that is wrong under the runtime, not the game logic, or a default
+// that doesn't suit play at home (KOF XIII's language).
 namespace {
 struct BytePatch {
     const char* name;
@@ -326,6 +327,13 @@ const BytePatch kPatches[] = {
     // The accumulator stays bounded: each pass adds about one frame's worth and takes one.
     {"KOF MI frame pacing (skip)", "8b4de8894dfc817dece80300000f8e84000000", 0xd, "909090909090"},
     {"KOF MI frame pacing (one frame a pass)", "8b157006c10083c2018915" "7006c100e96fffffff", 0xf, "e900000000"},
+    // KOF XIII owner settings defaults (0x43faf0, run once before the saved settings are read
+    // over them): the language (0x77503c, read by Lua's OwnerSettingLanguage; 0 Japanese,
+    // 1 English(US)) defaults to English instead of Japanese. The two zero stores at 0x43fb01
+    // (language, and 0x775040, still zero from the image's BSS) become mov [0x77503c], ecx
+    // (ecx = 1 there) and nops. A language saved in the test menu still wins.
+    {"KOF XIII default language English", "33c0b901000000a236507700a237507700a33c507700a340507700", 0x11,
+     "890d3c50770090909090"},
 };
 } // namespace
 

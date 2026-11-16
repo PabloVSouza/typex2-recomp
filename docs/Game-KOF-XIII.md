@@ -16,10 +16,12 @@ SHOT2 and SHOT5 (checked in XIII's order select).
 
 - zlib `inflate_fast` native, shared with XII and Climax.
 - GDI text, rendered with CoreText on macOS and stb_truetype on Android.
-  The stb_truetype backend finds a CJK font, since the game defaults to
-  Japanese.
+  The stb_truetype backend finds a CJK font, for Japanese text.
+- English by default: the recompiler patches the owner settings' factory
+  default (`0x43faf0`) from Japanese to English. A language chosen in the
+  test menu (SYSTEM SETTINGS → LANGUAGE) is saved and still wins; a copy that
+  already saved Japanese keeps it until changed there.
 
 ## Known issues
 
-- The game starts in Japanese. Switch the language in the test menu: F2,
-  hold Select / Back on a pad, or TEST on the touch pad.
+- None known.
