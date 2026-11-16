@@ -13,6 +13,9 @@ games are recompiled on your computer from your own files.
   app installed, or the RetroArch core copied, ready for RetroArch's *Install
   or Restore a Core*. Android's platform tools (`adb`) download from Build
   tools when needed.
+- **Launcher:** Log → Report a problem copies a report (version, system,
+  games, logs; your home folder hidden) and opens a new GitHub issue for it.
+  The Log page no longer goes blank in newer web engines.
 - **RetroArch:** a closed game now leaves 1-3 MB behind (was 4-20).
 
 ## 0.1.1 - 2026-11-16

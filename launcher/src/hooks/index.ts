@@ -6,4 +6,5 @@ export * from "@/hooks/useEvents";
 export * from "@/hooks/useLanguageSync";
 export * from "@/hooks/useOpenRelease";
 export * from "@/hooks/useRelease";
+export * from "@/hooks/useReport";
 export * from "@/hooks/useScanFolder";

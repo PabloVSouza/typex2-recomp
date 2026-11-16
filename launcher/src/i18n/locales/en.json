@@ -236,6 +236,13 @@
     "gameEmpty": "The game's output appears here while it runs.",
     "buildEmpty": "Build output appears here."
   },
+  "report": {
+    "button": "Report a problem",
+    "hint": "Copies a report (version, system, games, logs; your home folder hidden) and opens a new GitHub issue",
+    "copied": "Report copied",
+    "copiedText": "Paste it into the new issue and say what happened.",
+    "copyFailed": "Couldn't copy the report."
+  },
   "about": {
     "description": "Static recompilation of Taito Type X and Type X2 arcade games: each game's x86 code is translated to C and compiled to native code, with Windows, Direct3D, DirectSound and the JVS I/O board provided by the runtime.",
     "settings": "Launcher",

@@ -234,6 +234,13 @@
     "gameEmpty": "ゲームの実行中、その出力がここに表示されます。",
     "buildEmpty": "ビルドの出力がここに表示されます。"
   },
+  "report": {
+    "button": "問題を報告",
+    "hint": "レポート（バージョン、システム、ゲーム、ログ。ホームフォルダーは伏せます）をコピーし、GitHub の新しい Issue を開きます",
+    "copied": "レポートをコピーしました",
+    "copiedText": "新しい Issue に貼り付けて、何が起きたかを書いてください。",
+    "copyFailed": "レポートをコピーできませんでした。"
+  },
   "about": {
     "description": "タイトー Type X / Type X2 アーケードゲームの静的再コンパイル: 各ゲームの x86 コードを C に変換してネイティブコードにコンパイルし、Windows、Direct3D、DirectSound、JVS I/O ボードはランタイムが提供します。",
     "settings": "ランチャー",

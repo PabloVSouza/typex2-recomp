@@ -17,7 +17,7 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 | Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (presets per game, or remapped button by button: Assign, then press the controller button; saved as an `X2_PAD` line), log detail and extra `X2_*` switches. |
 | Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. An Android export can go straight to a connected device (USB debugging, or wireless debugging paired with `adb`): **Send to device** installs the app, or copies the core to `RetroArch/downloads/` for RetroArch's *Install or Restore a Core*. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. Android's platform tools (`adb`, for Send to device) download here too, or come from the Android SDK. |
-| Log | The game's output and the build tools' output. |
+| Log | The game's output and the build tools' output. **Report a problem** copies a report (launcher version, system, each game's build state, the last 200 lines of both logs; home folders shown as `~`) and opens a new GitHub issue to paste it into. |
 | About | The launcher's language, updates (below), the installation (version, kit, data folder). |
 
 **Updates.** The launcher asks GitHub for the latest release at start and every six hours (About → Updates turns that off; Check now works either way). A newer one shows a banner with its notes (Markdown without HTML or images) and a button to its release page; nothing is downloaded or installed by the launcher. A release-candidate build (its tag baked in as `X2_RELEASE_TAG` by `release.yml`) also learns of newer candidates. `updates.rs`.
