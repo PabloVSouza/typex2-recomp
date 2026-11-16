@@ -318,7 +318,9 @@ const BytePatch kPatches[] = {
     // frame whenever the spin overruns the frontend's tick. jbe -> jmp skips
     // the spin and keeps the lateness bookkeeping after it.
     {"SSF4 AE frame limiter spin",
-     "f30f108eac010000f30f109eb00100000f2fd90f82b60000000f2f4424107668" "6a00ff15", 0x1e, "eb"},
+     "f30f108eac010000f30f109eb00100000f2fd90f82b60000000f2f4424107668"
+     "6a00ff15",
+     0x1e, "eb"},
     // KOF Maximum Impact Regulation A main loop (0x40a8b0): spins on timeGetTime and runs a
     // frame each time elapsed ms * 60 passes 1000, so against the display's clock it ran two
     // frames back to back now and then (a third of the fights' frames came late on Android).
@@ -326,7 +328,10 @@ const BytePatch kPatches[] = {
     // jump back to that check after a frame (0x40a9b2) falls through to the input polling.
     // The accumulator stays bounded: each pass adds about one frame's worth and takes one.
     {"KOF MI frame pacing (skip)", "8b4de8894dfc817dece80300000f8e84000000", 0xd, "909090909090"},
-    {"KOF MI frame pacing (one frame a pass)", "8b157006c10083c2018915" "7006c100e96fffffff", 0xf, "e900000000"},
+    {"KOF MI frame pacing (one frame a pass)",
+     "8b157006c10083c2018915"
+     "7006c100e96fffffff",
+     0xf, "e900000000"},
     // KOF XIII owner settings defaults (0x43faf0, run once before the saved settings are read
     // over them): the language (0x77503c, read by Lua's OwnerSettingLanguage; 0 Japanese,
     // 1 English(US)) defaults to English instead of Japanese. The two zero stores at 0x43fb01
