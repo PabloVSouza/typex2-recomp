@@ -39,6 +39,8 @@ gets an entry per milestone. Update them with the README.
 * **No Python.** Anywhere in the repo, helper scripts included (shell is fine
   for throwaway scripts). The recompiler and tools are C++20, the runtime C;
   the launcher (`launcher/`) is Tauri: Rust and TypeScript.
+* **License: GPL-3.0-or-later** (`LICENSE`). A new dependency must be
+  GPL-compatible and gets a row in `THIRD-PARTY.md`.
 * **Nothing copyrighted in git.** Game executables, assets, dumps, generated
   code (`games/*/gen/`, gitignored) and screenshots of games never get
   committed. Only our own source and docs.

@@ -7,6 +7,16 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **License:** the project is now GPL-3.0-or-later. The libraries the builds
+  include are listed with their licenses in THIRD-PARTY.md.
+- **Android app:** game packs now go to `TypeX2/packs` on the device's
+  internal storage, where Send to device and file managers can both put
+  them (Android hides `Android/data` from file managers). Packs sent before
+  the app had ever been opened were not installed.
+- **Android app:** the update check works (it failed silently there).
+
 ## 0.2.0 - 2026-11-16
 
 The launcher becomes the Android app, and games' code travels as packs.
@@ -23,8 +33,8 @@ folders and stay.
    game's `x2.env`.
 3. In the launcher on your computer, Export → **Game packs for the Android
    app** with your games, then **Send to device** (USB debugging on). Or
-   copy the `x2-*.so` files to `TypeX2/packs` on the
-   device (internal storage).
+   copy the `x2-*.so` files to `Android/data/com.typex2.recomp/files/packs`
+   on the device.
 4. Open the app again: it installs the packs and lists your games. ES-DE
    launches them as before.
 

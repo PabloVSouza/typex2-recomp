@@ -118,3 +118,9 @@ typex2-recomp is an independent fan project. It is not affiliated with or
 endorsed by Taito, SNK, Capcom or Arc System Works, and contains no game code
 or assets. Game names and trademarks belong to their owners. Please own the
 games you play.
+
+## License
+
+[GPL-3.0-or-later](LICENSE). The libraries the builds include keep their own
+licenses: [THIRD-PARTY.md](THIRD-PARTY.md). Game files and recompiled game code
+are never part of this project or its releases.
