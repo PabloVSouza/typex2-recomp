@@ -37,6 +37,9 @@ core `build/typex2_libretro.dylib` / `.so` (`-DX2_LIBRETRO=OFF` /
 `-DX2_STANDALONE=OFF` to skip either), and `build/x2-player`, the launcher's
 host (`x2-player <game dir> --game-lib <library>`). `-DX2_GAMES_DIR=<folder>`
 takes the generated code from another folder than `games/`.
+`-DX2_GEN_LTO=ON` builds the generated code with ThinLTO (the default on
+Android, where it saves 10-30 % of the game thread's time). Each game's LTO link
+takes every core and several GB, so the links run one at a time.
 
 Renderers: Metal on macOS, Vulkan on Linux and Windows (with OpenGL as the
 fallback); `X2_RENDERER=gl` selects OpenGL anywhere.

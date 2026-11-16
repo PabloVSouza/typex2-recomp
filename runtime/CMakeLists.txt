@@ -260,6 +260,9 @@ function(x2_add_game target gen_dir)
   target_include_directories(x2gen_${game} PRIVATE ${gen_dir} ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/include)
   # Generated code: huge functions, gotos everywhere, flags computed and dropped.
   set(opts "-w;-fno-strict-aliasing;-fwrapv;-fno-semantic-interposition;-O${X2_GEN_OPT};${X2_GEN_FLAGS}")
+  if(X2_GEN_LTO)
+    list(APPEND opts "-flto=thin")
+  endif()
   if(X2_FN_TRACE)
     list(APPEND opts "-DX2_FN_TRACE")
   endif()
@@ -301,6 +304,10 @@ function(x2_add_game target gen_dir)
     target_compile_definitions(${target} PRIVATE X2_GAME_LIB)
     # calls between generated functions bind locally (no PLT), names stay exported
     target_link_options(${target} PRIVATE -Wl,-Bsymbolic)
+    if(X2_GEN_LTO)
+      target_link_options(${target} PRIVATE -flto=thin)
+      set_property(TARGET ${target} PROPERTY JOB_POOL_LINK x2_lto_link)
+    endif()
     # the game's image identity (from the generated x2_image) names its pack
     file(STRINGS ${gen_dir}/table.c img REGEX "const X2ImageInfo x2_image")
     string(REGEX MATCH "\\{(0x[0-9a-f]+)u, (0x[0-9a-f]+)u, (0x[0-9a-f]+)u" _ "${img}")
@@ -353,10 +360,15 @@ function(x2_add_libretro_core)
       set(cmd ${CMAKE_LINKER} -r -o ${o} $<TARGET_OBJECTS:x2gen_${g}>
         COMMAND ${X2_OBJCOPY} --wildcard --localize-symbol=f_* ${o})
     endif()
+    set(pool "")
+    if(X2_GEN_LTO) # the partial link does the game's LTO (see JOB_POOLS)
+      set(pool JOB_POOL x2_lto_link)
+    endif()
     add_custom_command(OUTPUT ${o}
       COMMAND ${cmd}
       DEPENDS x2gen_${g} $<TARGET_OBJECTS:x2gen_${g}>
       COMMENT "Partially linking ${g} for the libretro core"
+      ${pool}
       COMMAND_EXPAND_LISTS
       VERBATIM)
     set_source_files_properties(${o} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)

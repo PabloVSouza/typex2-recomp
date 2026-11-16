@@ -23,6 +23,11 @@ Same panel as [KOF XII](Game-KOF-XII.md).
   ends crop the 16:9 band, so the screen gets a true 1280×720 picture.
 - **Natives.** zlib `inflate_fast`, plus an unoptimised byte-fill loop that
   dominated loading on Android.
+- **Link-time optimisation.** The game was built unoptimised: its hot paths
+  call one-line getters, and each call was a spill and reload of every
+  register. ThinLTO inlines them across the generated files. On the Galaxy
+  Tab A11, heavy stages went from 16.5-18 ms a frame (about 50 fps) to
+  11-13 ms, so every stage tested holds 60.
 - **Archive tool.** `tools/kofarc` lists and extracts `media.kof`, decrypting
   TXAC entries with the key in `TypeXmulti/txac`.
 

@@ -495,6 +495,7 @@ static void *guest_main(void *p) {
 /* Starts the guest's main thread. The host main thread stays free for the
  * platform layer (SDL event loop, or a libretro frontend calling retro_run). */
 X2Thread *x2_start_main(void) {
+    x2_lookup(0); /* the dispatch table and x2_ic_base, before any guest thread reads them */
     X2Thread *t = thread_alloc(x2_module.stack_reserve);
     pthread_attr_t a;
     pthread_attr_init(&a);

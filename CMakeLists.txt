@@ -63,6 +63,20 @@ if(NOT X2_TSO STREQUAL "")
   add_compile_definitions(X2_TSO=${X2_TSO})
 endif()
 set(X2_GEN_FLAGS "" CACHE STRING "Extra compile flags for generated code (e.g. -DX2_TSO=0)")
+# ThinLTO for generated code: one guest function inlined into another across the generated
+# files. Games built unoptimised call one-line getters everywhere, each call a spill and reload
+# of every register: KOF XIII Climax's game thread needs 15-20 % less time per frame on the
+# test tablet. Android only (it costs link time; the libretro core's partial link does the LTO).
+if(ANDROID)
+  option(X2_GEN_LTO "ThinLTO for generated code" ON)
+else()
+  option(X2_GEN_LTO "ThinLTO for generated code" OFF)
+endif()
+if(X2_GEN_LTO)
+  # a game's ThinLTO link takes every core and several GB: one at a time (several at once
+  # swapped an 18 GB Mac for over an hour)
+  set_property(GLOBAL APPEND PROPERTY JOB_POOLS x2_lto_link=1)
+endif()
 # save states and the profiler walk frame pointers (runtime/src/savestate.c, prof.c): keep them
 # where -O2 drops them by default (x86-64 Linux and Windows; Apple and ARM64 keep them)
 if(NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")

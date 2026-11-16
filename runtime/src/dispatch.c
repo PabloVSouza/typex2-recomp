@@ -92,7 +92,9 @@ void x2_clock_ss_load(X2SsBuf *b) {
 static X2Func *direct;  /* indexed by addr - text_start */
 static u32 text_start, text_end;
 
+uintptr_t x2_ic_base; /* X2_ICALL's reference point: the game's first function */
 static void build_direct(void) {
+    x2_ic_base = (uintptr_t)x2_game->funcs[0].fn;
     text_start = x2_game->image->text_start;
     text_end = x2_game->image->text_end;
     /* functions may live in other code sections too (KOF MI Regulation A's
@@ -150,12 +152,16 @@ const char *x2_thunk_name(u32 addr) {
 /* Runs `target` as if just called: the return address is already on the
  * guest stack. Returns when the guest function executes its `ret`. */
 static void run(X2Cpu *c, u32 target, bool tail) {
-    X2Func f = x2_lookup(target);
-    if (f) {
-        f(c);
-        return;
+    /* imports first: they live above X2_THUNK_BASE, so their calls (about a million a second in
+     * KOF XIII Climax's fights) skip the search of the recompiled code's table */
+    Thunk *t = target >= X2_THUNK_BASE ? thunk_at(target) : NULL;
+    if (!t) {
+        X2Func f = x2_lookup(target);
+        if (f) {
+            f(c);
+            return;
+        }
     }
-    Thunk *t = thunk_at(target);
     if (t) {
         if (__atomic_load_n(&x2_parked, __ATOMIC_ACQUIRE)) x2_park_forever();
         if (!t->fn) x2_fatal("unimplemented import %s (called from %08x)", t->name, RD32(c->esp));
@@ -175,6 +181,18 @@ static void run(X2Cpu *c, u32 target, bool tail) {
 }
 
 void x2_dispatch_call(X2Cpu *c, u32 target) { run(c, target, false); }
+
+/* X2_ICALL's miss: a recompiled target goes into the site's cache (when its offset fits) */
+void x2_dispatch_call_ic(X2Cpu *c, u32 target, u64 *ic) {
+    X2Func f = target < X2_THUNK_BASE ? x2_lookup(target) : NULL;
+    if (f) {
+        intptr_t d = (intptr_t)((uintptr_t)f - x2_ic_base);
+        if (d && d == (intptr_t)(s32)d) __atomic_store_n(ic, (u64)(u32)(s32)d << 32 | target, __ATOMIC_RELAXED);
+        f(c);
+        return;
+    }
+    run(c, target, false);
+}
 void x2_dispatch_jmp(X2Cpu *c, u32 target) { run(c, target, true); }
 
 void x2_call(X2Cpu *c, u32 target) { run(c, target, false); }

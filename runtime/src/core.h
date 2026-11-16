@@ -117,6 +117,7 @@ typedef struct X2Thread {
     int ss_cs;            /* critical sections held (savestate.c: where a thread may stop) */
     u32 ss_held[16];      /* ... the first 16 of them, in order */
     u32 ss_blocked_cs;    /* the section EnterCriticalSection is blocked on */
+    bool ss_bt_ok;        /* ... and ss_bt holds the chain it was blocked in */
     bool ss_guest;        /* has started running guest code */
     bool ss_parked;       /* stopped while a state is taken or restored */
     const char *ss_at;    /* the import it stopped in */

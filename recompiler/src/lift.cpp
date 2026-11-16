@@ -512,8 +512,8 @@ Lifter::Out Lifter::lift(const Insn& ins, const Function& fn, const vector<uint3
             return o;
         }
         case Kind::ICall: {
-            o.lines = {format("{{ u32 t={}; esp-=4; WR32(esp,0x{:x}u); {} x2_dispatch_call(c,t); {} }}",
-                              rd(x.operands[0], 4), nxt, SPILL, RELOAD)};
+            o.lines = {format("{{ u32 t={}; esp-=4; WR32(esp,0x{:x}u); {} X2_ICALL(c,t); {} }}", rd(x.operands[0], 4),
+                              nxt, SPILL, RELOAD)};
             if (disc_.is_noreturn_call(ins)) {
                 o.lines.push_back("return;");
                 o.falls = false;

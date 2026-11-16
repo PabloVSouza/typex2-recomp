@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Android:** games run faster. Game code is now built with link-time
+  optimisation, and calls between its parts are cheaper. **The King of
+  Fighters XIII Climax** holds 60 fps in fights on every stage tested on
+  the test tablet; before, most stages ran at about 50.
+
 ## 0.3.0 - 2026-11-16
 
 Save states, and KOF XIII in English.

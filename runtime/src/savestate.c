@@ -27,6 +27,7 @@
 #define SS_VERSION 2u
 
 int x2_ss_pending;
+static bool ss_used; /* a state has been asked for in this run */
 char x2_ss_error[256];
 static pthread_mutex_t ss_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t ss_cond = PTHREAD_COND_INITIALIZER;
@@ -155,6 +156,7 @@ void x2_ss_frame(pthread_mutex_t *held) {
  * one); the others hold none, unless they keep holding one for a second. A load requires each
  * thread to hold the sections it held in the state, so the host locks are owned as the
  * restored guest memory says. */
+static bool blocked_without_chain(void);
 void x2_ss_point(const char *at, pthread_mutex_t *held) {
     X2Thread *t = x2_self;
     if (!t || !t->ss_guest) return;
@@ -166,6 +168,8 @@ void x2_ss_point(const char *at, pthread_mutex_t *held) {
     X2Thread *ft = frame_thread;
     if (t != ft && ft && !ft->finished && !ft->ss_parked && !late) return;
     if (t == frame_thread ? !present : (t->ss_cs > 0 && !late) || (!ss_loading && !idle_point(at) && !late)) return;
+    /* stopped holding sections, it would leave such a thread blocked for good: another frame */
+    if (t == frame_thread && t->ss_cs > 0 && !late && blocked_without_chain()) return;
     if (held) pthread_mutex_unlock(held);
     t->ss_nbt = capture_chain(t->ss_bt, 256);
     t->ss_at = at;
@@ -189,7 +193,10 @@ void x2_ss_point(const char *at, pthread_mutex_t *held) {
 void x2_ss_cs_blocking(u32 cs) {
     X2Thread *t = x2_self;
     if (!t || !t->ss_guest) return;
-    t->ss_nbt = capture_chain(t->ss_bt, 256);
+    /* the walk costs on every contended section (KOF XIII Climax: 13 job threads), so only
+     * once states are in use in this run; a thread blocked without its chain is not stopped */
+    t->ss_bt_ok = __atomic_load_n(&ss_used, __ATOMIC_ACQUIRE);
+    if (t->ss_bt_ok) t->ss_nbt = capture_chain(t->ss_bt, 256);
     t->ss_at = "EnterCriticalSection";
     __atomic_store_n(&t->ss_blocked_cs, cs, __ATOMIC_SEQ_CST);
 }
@@ -202,7 +209,7 @@ void x2_ss_cs_acquired(void) {
     pthread_mutex_lock(&ss_lock);
     X2Thread *ft = frame_thread; /* the presenting thread stops first (see x2_ss_point) */
     bool frame_done = !ft || ft->finished || ft->ss_parked || x2_time_ns() - ss_start >= 1000000000ull;
-    if (t != ft && frame_done && __atomic_load_n(&x2_ss_pending, __ATOMIC_SEQ_CST)) {
+    if (t != ft && t->ss_bt_ok && frame_done && __atomic_load_n(&x2_ss_pending, __ATOMIC_SEQ_CST)) {
         t->ss_parked = true;
         __atomic_store_n(&t->ss_blocked_cs, 0, __ATOMIC_SEQ_CST);
         pthread_cond_broadcast(&ss_cond);
@@ -225,7 +232,17 @@ void x2_ss_thread_start(X2Thread *t) {
 /* (the presenting thread only in Present) */
 static bool stopped(X2Thread *t) {
     return t->finished || !t->ss_guest || t->ss_parked ||
-           (t != frame_thread && __atomic_load_n(&t->ss_blocked_cs, __ATOMIC_SEQ_CST));
+           (t != frame_thread && t->ss_bt_ok && __atomic_load_n(&t->ss_blocked_cs, __ATOMIC_SEQ_CST));
+}
+
+/* a thread blocked on a section since before states were in use (no chain: not stopped) */
+static bool blocked_without_chain(void) {
+    X2Thread *ts[256];
+    int n = x2_threads(ts, 256);
+    for (int i = 0; i < n; i++)
+        if (!ts[i]->finished && !ts[i]->ss_bt_ok && __atomic_load_n(&ts[i]->ss_blocked_cs, __ATOMIC_SEQ_CST))
+            return true;
+    return false;
 }
 
 /* under ss_lock */
@@ -496,6 +513,7 @@ static bool read_file(const char *path, X2SsBuf *b) {
 
 /* Takes (into b) or restores (from b) a state on the calling thread; msg gets the outcome. */
 static bool run_state(bool load, X2SsBuf *b, char *msg, size_t nmsg) {
+    __atomic_store_n(&ss_used, true, __ATOMIC_RELEASE);
     x2_ss_error[0] = 0;
     if (x2_video_playing()) {
         snprintf(msg, nmsg, "state not %s: a movie is playing", load ? "loaded" : "saved");

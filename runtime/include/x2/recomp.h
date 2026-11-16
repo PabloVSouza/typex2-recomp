@@ -82,6 +82,21 @@ extern u8 *x2_mem;
 /* ---- runtime services called by generated code ------------------------- */
 void x2_dispatch_call(X2Cpu *c, u32 target);  /* return address already pushed */
 void x2_dispatch_jmp(X2Cpu *c, u32 target);   /* tail transfer */
+/* Indirect call through a per-site cache of the last recompiled target: the guest address
+ * in the low half, the host function as an offset from x2_ic_base in the high half (one
+ * 64-bit word, so threads racing on a site always read a matching pair). A miss, or a target
+ * that is not recompiled code (an import), goes through x2_dispatch_call_ic. */
+extern uintptr_t x2_ic_base;
+void x2_dispatch_call_ic(X2Cpu *c, u32 target, u64 *ic);
+#define X2_ICALL(c, t)                                                                                                 \
+    do {                                                                                                               \
+        static u64 ic_;                                                                                                \
+        u64 v_ = __atomic_load_n(&ic_, __ATOMIC_RELAXED);                                                              \
+        if ((u32)v_ == (t) && (v_ >> 32))                                                                              \
+            ((X2Func)(x2_ic_base + (uintptr_t)(intptr_t)(s32)(u32)(v_ >> 32)))(c);                                     \
+        else                                                                                                           \
+            x2_dispatch_call_ic((c), (t), &ic_);                                                                       \
+    } while (0)
 void x2_unimpl(X2Cpu *c, u32 va, const char *text) __attribute__((noreturn));
 /* native replacements x2recomp emits for recognised library routines (natives.c) */
 void x2n_inflate_fast(X2Cpu *c, u32 msg_far, u32 msg_dist, u32 msg_len);

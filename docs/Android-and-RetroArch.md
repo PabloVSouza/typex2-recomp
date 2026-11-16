@@ -132,6 +132,8 @@ both variants in the same session because the games pick random stages.
 | Deferred texture uploads past a per-frame budget | Fewer load pauses. |
 | BGRA8 uploaded unswapped, swizzled when sampled; `UpdateTexture` from the source | BlazBlue's worst pause ~430 → ~230 ms. |
 | Natives for hot routines (zlib, sprite RLE, fills) | Shorter loads. |
+| ThinLTO for generated code (`X2_GEN_LTO`, on for Android) | Guest functions inline across the generated files. Climax's game thread on heavy stages: 15.3-17.5 → 10.8-13.2 ms a frame; SSF4 about 1.5 ms less. |
+| Per-site cache for indirect calls (`X2_ICALL`); imports dispatched before the code table | Removes the 27 MB table lookup from virtual calls and from about a million import calls a second (Climax): `x2_lookup` 4.2 % of the game thread → gone. |
 
 ### Measuring
 

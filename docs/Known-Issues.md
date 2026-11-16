@@ -24,9 +24,6 @@ that isn't here? Report it in
 - **BlazBlue: Continuum Shift:** loading pauses of up to about 230 ms on
   slower Android devices, outside fights
   ([details](Game-BlazBlue-CS.md#known-issues)).
-- **The King of Fighters XIII Climax:** on slower Android devices most stages
-  are too heavy for 60 fps in fights (about 50 on the test tablet: the game
-  thread needs 16.5-18 ms a frame); a few, like the green one, hold 60.
 - **The King of Fighters: Maximum Impact Regulation A:** on Android, a fight
   starts after a ~1 s load, and each next team member after 0.3-0.5 s (the
   game's own loading). Not played by hand yet.

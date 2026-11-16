@@ -2,6 +2,33 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-16: Link-time optimisation; KOF XIII Climax holds 60 fps on Android
+
+- **Found:** `X2_PROF` on the tablet, Climax fight on the Japanese temple
+  stage. 9 % of the game thread was `f_0046c970`, `return this->field0`.
+  The game was built unoptimised, so its hot paths are calls to one-line
+  getters. Each call spills every register to `X2Cpu` and reloads them, and
+  the generated files are separate C files, so nothing inlined.
+- **ThinLTO** (`X2_GEN_LTO`, default on Android) inlines across them. The
+  libretro core's per-game partial link (`ld.lld -r`) does the LTO.
+  - Game thread on the same stages: street 15.3 → 12.7-13.9 ms, night
+    market ~17.5 → 10.8-13.0 ms. Every stage tested is at 10.8-13.2 ms with
+    under 1 late frame per 120.
+  - SSF4 is about 1.5 ms lower; the other games are unchanged or faster
+    (checked in fights on the tablet).
+  - Eight LTO links at once swapped an 18 GB Mac for over an hour, so they
+    run one at a time in a Ninja job pool. A full Android build takes about
+    13 minutes.
+- **Indirect calls:** `x2_lookup` plus `run` were the next ~8 %.
+  - Indirect call sites now cache their last recompiled target (`X2_ICALL`:
+    address and offset in one 64-bit word).
+  - Most lookups turned out to be imports, about a million calls a second in
+    Climax (`InterlockedExchangeAdd`, `D3DXVec4Transform`, D3D9 methods).
+    They are now dispatched before the table is searched, and `x2_lookup`
+    left the profile.
+- **Save states:** contended `EnterCriticalSection` recorded its call chain
+  every time. It now does so only once states are used in a run.
+
 ## 2026-11-16: Save states
 
 - **Method** (`savestate.c`, [Architecture](Architecture.md#save-states)):
