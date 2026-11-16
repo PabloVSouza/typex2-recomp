@@ -63,6 +63,11 @@ if(NOT X2_TSO STREQUAL "")
   add_compile_definitions(X2_TSO=${X2_TSO})
 endif()
 set(X2_GEN_FLAGS "" CACHE STRING "Extra compile flags for generated code (e.g. -DX2_TSO=0)")
+# save states and the profiler walk frame pointers (runtime/src/savestate.c, prof.c): keep them
+# where -O2 drops them by default (x86-64 Linux and Windows; Apple and ARM64 keep them)
+if(NOT APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  add_compile_options(-fno-omit-frame-pointer)
+endif()
 add_subdirectory(runtime)
 # every games/<name>/gen produced by x2recomp becomes an x2-<name> executable
 set(X2_GAMES "" CACHE STRING "Games to build (e.g. kof12;kof13); empty = every games/*/gen")

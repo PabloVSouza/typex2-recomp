@@ -85,6 +85,44 @@ HLE functions follow one pattern:
   takes the context over instead of asking for one, and the replaced
   instance forwards RetroArch's context callbacks to it.
 
+## Save states
+
+`savestate.c`; players' view in [Save states](Save-States.md).
+
+- **What a state holds.** Generated code spills the guest registers to the
+  thread's `X2Cpu` around every call, so at an import call a thread's guest
+  state is its `X2Cpu` plus guest memory. A state holds:
+  - every allocated guest page, and the region map and heap lists;
+  - each thread's registers;
+  - the handle table: events, mutexes and semaphores with their state, and
+    files with their path and offset;
+  - the COM objects' reference counts;
+  - the D3D9 device's state, the DirectSound buffers' playback, and the guest
+    clock.
+- **What it can't hold.** Each guest function a thread is inside is a C
+  frame on its host stack. A state is therefore restored only into threads
+  whose host stacks hold the same chain of generated-code frames (return
+  addresses, compared module-relative). The host objects behind handles and
+  COM objects (textures, buffers) are not saved either: a state needs the
+  run that took it. Objects released after a state was taken are kept for a
+  while (up to 4096 `keep` objects; their guest memory is freed as usual),
+  so loading it can bring them back.
+- **Stopping the threads.** Every thread has to stop at a reproducible point,
+  or no load would find them where the state has them.
+  - The thread that presents frames stops only in Present (`gfx_present`,
+    also inside its waits for the renderer and the front end). It may hold
+    critical sections there.
+  - The others keep running until it has stopped, since it may need them
+    for its frame. Then they stop where they wait, holding no section.
+  - A thread blocked entering a section counts as stopped. Its chain is
+    recorded before it blocks.
+  - A load waits for each thread to reach the chain and sections it has in
+    the state. A worker elsewhere is retried at later frames.
+- **Front ends.** The player saves to a file from a worker thread (F5 / F7,
+  `X2_STATE_AT`). The core serialises in memory on RetroArch's thread. It
+  reports `SINGLE_SESSION`, and refuses a state a frame (rewind,
+  run-ahead).
+
 ## The libretro core
 
 - **Linking.** Every game's generated code is partially linked into one
@@ -95,6 +133,8 @@ HLE functions follow one pattern:
 
 ## Limits
 
+- **Save states** load only in the run that took them, on the same screen,
+  and not during movies (see above).
 - **Structured exceptions** (`RaiseException`, C++ `throw`) are not
   dispatched to the guest.
 - **Memory ordering.** Guest threads run truly parallel. On ARM, shared

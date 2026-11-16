@@ -17,5 +17,7 @@ bool x2_video_finished(X2Video *v);   /* all streams played out */
 /* Copy the current frame as YV12 (Y, V, U planes) at w x h; false if none yet. */
 bool x2_video_frame_yv12(X2Video *v, uint8_t *dst, size_t n);
 void x2_video_set_volume(X2Video *v, float gain);
+/* a movie is playing (save states wait until it is over: its decoder is not in guest memory) */
+bool x2_video_playing(void);
 /* Mixed into the audio output by the DirectSound mixer. */
 void x2_video_mix(float *out, uint32_t frames, uint32_t rate);

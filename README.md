@@ -84,6 +84,10 @@ matches its arcade panel (four buttons for KOF and BlazBlue, six for Street
 Fighter). Hold Select / Back for the game's test menu. Custom layouts and
 keyboard keys: [Controls](docs/Controls.md).
 
+Save states work in the standalone app (F5 / F7) and in RetroArch, on the
+screen they were saved on, until the game is closed:
+[Save states](docs/Save-States.md).
+
 ## Documentation
 
 Everything is in [`docs/`](docs/Home.md), also published as the

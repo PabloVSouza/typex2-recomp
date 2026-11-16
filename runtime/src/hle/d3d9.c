@@ -147,16 +147,24 @@ static void init_vtables(void);
 static u32 next_surface_scale = 1;
 /* a standalone surface owns its pixels and its renderer texture: games create
  * and release them per frame (KOF MI Regulation A: an image surface a frame) */
+/* still bound (released early by a game that relies on the device's reference): kept */
+static bool surface_bound(Surface *s) {
+    Device *d = s->dev;
+    if (d)
+        for (int i = 0; i < 4; i++)
+            if (d->rt_obj[i] == s->com.guest || d->ds_obj == s->com.guest || d->backbuffer == s->com.guest) return true;
+    return false;
+}
 static void surface_destroy(X2ComObj *o) {
     Surface *s = (Surface *)o;
-    Device *d = s->dev;
-    if (d) /* still bound (released early by a game that relies on the device's reference): keep it */
-        for (int i = 0; i < 4; i++)
-            if (d->rt_obj[i] == o->guest || d->ds_obj == o->guest || d->backbuffer == o->guest) return;
+    if (surface_bound(s)) return;
     gfx_texture_destroy(s->tex);
-    x2_heap_free(x2_process_heap(), s->mem);
+    if (!s->com.keep) x2_heap_free(x2_process_heap(), s->mem);
     free(s->shadow);
     free(s);
+}
+static void surface_free_guest(X2ComObj *o) {
+    if (!surface_bound((Surface *)o)) x2_heap_free(x2_process_heap(), ((Surface *)o)->mem);
 }
 static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, GfxId tex, u32 level, u32 container) {
     if (!tex && (usage == 1 || usage == 2)) X2_TRACE("d3d9: %s surface %ux%u fmt %u", usage == 1 ? "render-target" : "depth", w, h, fmt);
@@ -175,6 +183,8 @@ static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, G
         tex = new_id();
         gfx_texture_create_scaled(tex, gfx_fmt(fmt), w, h, 1, true, next_surface_scale);
         s->com.destroy = surface_destroy;
+        s->com.keep = true;
+        s->com.free_guest = surface_free_guest;
     }
     s->tex = tex;
     return x2_com_wrap(&s->com, d && d->d3d8 ? vt_surface8 : vt_surface, "IDirect3DSurface9");
@@ -324,6 +334,7 @@ static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt,
     t->fmt = fmt; t->w = w; t->h = h; t->levels = levels; t->usage = usage; t->pool = pool;
     t->id = new_id();
     t->com.destroy = texture_destroy;
+    t->com.keep = true;
     gfx_texture_create(t->id, gfx_fmt(fmt), w, h, levels, (usage & 3) != 0 /* RENDERTARGET|DEPTHSTENCIL */);
     if (usage & 3) X2_TRACE("d3d9: %s texture %ux%u fmt %u", usage & 1 ? "render-target" : "depth", w, h, fmt);
     u32 g = x2_com_wrap(&t->com, d->d3d8 ? vt_texture8 : vt_texture, "IDirect3DTexture9");
@@ -401,6 +412,7 @@ static u32 make_cube(Device *d, u32 size, u32 levels, u32 usage, u32 fmt, u32 po
     t->fmt = fmt; t->w = t->h = size; t->levels = levels; t->usage = usage; t->pool = pool;
     t->id = new_id();
     t->com.destroy = cube_destroy;
+    t->com.keep = true;
     gfx_texture_create_cube(t->id, gfx_fmt(fmt), size, levels);
     u32 g = x2_com_wrap(&t->com, d->d3d8 ? vt_cube8 : vt_cube, "IDirect3DCubeTexture9");
     for (u32 f = 0; f < 6; f++)
@@ -448,9 +460,10 @@ static void B_GetDesc(X2Cpu *c) {
 static void buffer_destroy(X2ComObj *o) {
     Buffer *b = (Buffer *)o;
     gfx_buffer_destroy(b->id);
-    x2_heap_free(0, b->mem);
+    if (!b->com.keep) x2_heap_free(0, b->mem);
     free(b);
 }
+static void buffer_free_guest(X2ComObj *o) { x2_heap_free(0, ((Buffer *)o)->mem); }
 static u32 make_buffer(Device *d, bool index, u32 size, u32 usage, u32 fmt_or_fvf, u32 pool) {
     Buffer *b = calloc(1, sizeof *b);
     b->dev = d;
@@ -462,6 +475,8 @@ static u32 make_buffer(Device *d, bool index, u32 size, u32 usage, u32 fmt_or_fv
     b->mem = x2_galloc(size + 16);
     b->id = new_id();
     b->com.destroy = buffer_destroy;
+    b->com.keep = true;
+    b->com.free_guest = buffer_free_guest;
     gfx_buffer_create(b->id, size, index);
     return x2_com_wrap(&b->com, index ? vt_ib : vt_vb, index ? "IDirect3DIndexBuffer9" : "IDirect3DVertexBuffer9");
 }
@@ -2188,3 +2203,36 @@ const X2Hle x2_hle_d3d8[] = {
     {"Direct3DCreate8", Direct3DCreate8, 1},
     {NULL, NULL, 0},
 };
+
+/* ---- save states ------------------------------------------------------------ *
+ * The devices' state (render states, bound objects, constants); the objects themselves
+ * are the ones of the state (com.c checks). The renderer gets the constants again. */
+void x2_d3d9_ss_save(X2SsBuf *b) {
+    u32 id = 0;
+    for (X2ComObj *o; (o = x2_com_next(&id));) {
+        if (strcmp(o->iface, "IDirect3DDevice9")) continue;
+        X2_SS_PUT(b, id);
+        x2_ss_put(b, (u8 *)o + sizeof(X2ComObj), sizeof(Device) - sizeof(X2ComObj));
+    }
+    u32 end = 0;
+    X2_SS_PUT(b, end);
+}
+bool x2_d3d9_ss_load(X2SsBuf *b) {
+    for (;;) {
+        u32 id = 0, want;
+        if (!X2_SS_GET(b, id)) return false;
+        if (!id) return true;
+        want = id - 1;
+        X2ComObj *o = x2_com_next(&want);
+        if (!o || want != id || strcmp(o->iface, "IDirect3DDevice9")) return false;
+        Device *d = (Device *)o;
+        if (!x2_ss_get(b, (u8 *)d + sizeof(X2ComObj), sizeof(Device) - sizeof(X2ComObj))) return false;
+        gfx_set_consts(false, 0, &d->vsc[0][0], GFX_VS_CONSTS);
+        gfx_set_consts(true, 0, &d->psc[0][0], GFX_PS_CONSTS);
+        gfx_set_consts_ib(false, false, 0, &d->vsi[0][0], 16);
+        gfx_set_consts_ib(true, false, 0, &d->psi[0][0], 16);
+        gfx_set_consts_ib(false, true, 0, (const s32 *)d->vsb, 16);
+        gfx_set_consts_ib(true, true, 0, (const s32 *)d->psb, 16);
+        d->ffp_vs_loaded = d->ffp_ps_loaded = false;
+    }
+}

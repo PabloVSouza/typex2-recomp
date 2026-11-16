@@ -9,6 +9,10 @@ games are recompiled on your computer from your own files.
 
 ## Unreleased
 
+- **Save states**, in the standalone app (F5 saves, F7 loads) and in
+  RetroArch. A state loads on the screen it was saved on, such as the same
+  fight, until the game is closed. States hold the game's whole memory, so
+  they are large (55-550 MB); see [Save states](docs/Save-States.md).
 - **The King of Fighters XIII** starts in English. A language you saved in
   the test menu still applies.
 

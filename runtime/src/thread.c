@@ -52,9 +52,38 @@ void x2_set_last_error(u32 e) {
 void x2_trace_register(X2Thread *t);
 void x2_trace_dump(X2Thread *t, int n);
 
-/* registry of guest threads, for diagnostics */
+/* registry of guest threads (diagnostics, save states); finished threads' slots are reused */
 static X2Thread *all_threads[256];
 static int nthreads;
+static pthread_mutex_t reg_lock = PTHREAD_MUTEX_INITIALIZER;
+static void thread_register(X2Thread *t) {
+    pthread_mutex_lock(&reg_lock);
+    int i = 0;
+    while (i < nthreads && !all_threads[i]->finished) i++;
+    if (i < nthreads)
+        all_threads[i] = t;
+    else if (nthreads < 256)
+        all_threads[nthreads++] = t;
+    else
+        x2_log("more than 256 threads: thread %u is not registered", t->id);
+    pthread_mutex_unlock(&reg_lock);
+}
+int x2_threads(X2Thread **out, int max) {
+    pthread_mutex_lock(&reg_lock);
+    int n = nthreads < max ? nthreads : max;
+    memcpy(out, all_threads, sizeof *out * (size_t)n);
+    pthread_mutex_unlock(&reg_lock);
+    return n;
+}
+void x2_threads_wake(void) {
+    X2Thread *ts[256];
+    int n = x2_threads(ts, 256);
+    for (int i = 0; i < n; i++) {
+        pthread_mutex_lock(&ts[i]->lock);
+        pthread_cond_broadcast(&ts[i]->cond);
+        pthread_mutex_unlock(&ts[i]->lock);
+    }
+}
 
 /* what a guest thread is doing (diagnostics): its start address and the import it is in, if any */
 const char *x2_thread_activity(u32 id, u32 *start) {
@@ -176,7 +205,7 @@ static X2Thread *thread_alloc(u32 stack_size) {
     t->cpu.fs_base = teb;
     t->cpu.esp = t->stack_base - 16;
     t->handle = x2_handle_new(H_THREAD, t, NULL);
-    if (nthreads < 256) all_threads[nthreads++] = t;
+    thread_register(t);
     return t;
 }
 
@@ -302,11 +331,13 @@ static void *thread_main(void *p) {
     x2_thread_perf("x2-worker", false);
     X2Thread *t = p;
     x2_self = t;
+    t->host_top = (uintptr_t)__builtin_frame_address(0);
     thread_started(t);
     x2_trace_register(t);
     pthread_mutex_lock(&t->lock);
     while (t->suspend > 0) pthread_cond_wait(&t->cond, &t->lock);
     pthread_mutex_unlock(&t->lock);
+    x2_ss_thread_start(t);
     run_tls_callbacks(t, 2 /* DLL_THREAD_ATTACH */);
     X2_TRACE("thread %u start %08x(%08x)", t->id, t->start, t->param);
     u32 rc = x2_guest_call(&t->cpu, t->start, 1, t->param);
@@ -438,6 +469,7 @@ static void *guest_main(void *p) {
     x2_thread_perf("x2-guest", true);
     X2Thread *t = p;
     x2_self = t;
+    t->host_top = (uintptr_t)__builtin_frame_address(0);
 #ifdef __linux__
     t->host_tid = (long)gettid();
 #endif
@@ -447,6 +479,7 @@ static void *guest_main(void *p) {
         self_test_strchr(t, (u32)strtoul(getenv("X2_TEST_STRCHR"), NULL, 16));
         exit(0);
     }
+    x2_ss_thread_start(t);
     run_tls_callbacks(t, 1 /* DLL_PROCESS_ATTACH */);
     x2_log("entering guest entry point %08x", x2_module.entry);
     u32 rc = x2_guest_call(&t->cpu, x2_module.entry, 0);
@@ -472,7 +505,7 @@ X2Thread *x2_start_main(void) {
 }
 
 /* ---- handle table -------------------------------------------------------- */
-#define MAX_HANDLES 8192
+#define MAX_HANDLES X2_MAX_HANDLES
 static X2Handle handles[MAX_HANDLES];
 static pthread_mutex_t handle_lock = PTHREAD_MUTEX_INITIALIZER;
 #define HANDLE_BIAS 0x1000u
@@ -488,6 +521,12 @@ u32 x2_handle_new(X2HType type, void *obj, void (*close)(X2Handle *)) {
     }
     pthread_mutex_unlock(&handle_lock);
     x2_fatal("out of handles");
+}
+
+X2Handle *x2_handle_slot(u32 i, u32 *value) {
+    if (i == 0 || i >= MAX_HANDLES) return NULL;
+    if (value) *value = HANDLE_BIAS + i * 4;
+    return &handles[i];
 }
 
 X2Handle *x2_handle_get(u32 h, X2HType type) {
@@ -545,7 +584,10 @@ void x2_watch_init(void) {
 int x2_thread_suspend_self(X2Thread *t) {
     pthread_mutex_lock(&t->lock);
     int prev = t->suspend++;
-    while (t->suspend > 0) pthread_cond_wait(&t->cond, &t->lock);
+    while (t->suspend > 0) {
+        pthread_cond_wait(&t->cond, &t->lock);
+        x2_ss_check("SuspendThread", &t->lock);
+    }
     pthread_mutex_unlock(&t->lock);
     return prev;
 }

@@ -23,6 +23,7 @@ Each game then runs in one of two ways:
 | [Architecture](Architecture.md) | Recompiler and runtime internals |
 | [Porting a game](Porting-a-Game.md) | Steps to bring up a new game |
 | [Controls](Controls.md) | Keyboard, pads, `X2_PAD` / `X2_INPUT`, each game's layout |
+| [Save states](Save-States.md) | Saving and loading a moment of a fight, and the limits |
 | [Android and RetroArch](Android-and-RetroArch.md) | Building, installing, ES-DE, performance work |
 | [Debugging](Debugging.md) | Methods that found past bugs, and the debugging switches |
 | [Progress log](Progress-Log.md) | What changed, milestone by milestone |

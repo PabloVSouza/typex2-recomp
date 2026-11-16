@@ -375,3 +375,15 @@ void x2_video_mix(float *out, uint32_t frames, uint32_t rate) {
     }
     pthread_mutex_unlock(&videos_lock);
 }
+
+bool x2_video_playing(void) {
+    bool any = false;
+    pthread_mutex_lock(&videos_lock);
+    for (X2Video *v = videos; v && !any; v = v->next) {
+        pthread_mutex_lock(&v->lock);
+        any = v->running && !(v->eof && v->ring_w == v->ring_r);
+        pthread_mutex_unlock(&v->lock);
+    }
+    pthread_mutex_unlock(&videos_lock);
+    return any;
+}

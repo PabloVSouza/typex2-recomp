@@ -20,6 +20,19 @@ typedef struct X2ComObj {
     const char *iface;
     void (*destroy)(struct X2ComObj *o);
     bool immortal; /* never destroyed by Release (stand-in objects with loose refcounting) */
+    /* Save states: after a state has been taken, an object with `keep` set outlives its last
+     * Release for a while (host struct and renderer resources), so loading that state can bring
+     * it back. free_guest (optional) frees the guest memory it owns at the Release; retire and
+     * revive (optional) stop and restart its host activity (a sound buffer's mixing) when it is
+     * kept and when a load brings it back; destroy frees the rest later. Without `keep`,
+     * destroy frees everything at the Release. */
+    bool keep;
+    bool zombie;
+    void (*free_guest)(struct X2ComObj *o);
+    void (*retire)(struct X2ComObj *o);
+    void (*revive)(struct X2ComObj *o);
+    struct X2ComObj *znext;
+    bool ss_seen; /* in the state being loaded */
 } X2ComObj;
 
 /* Builds a guest vtable for interface `iface`; `methods` is in vtable order. */
@@ -28,6 +41,8 @@ u32 x2_com_vtable(const char *iface, const X2Method *methods, int count);
 u32 x2_com_wrap(X2ComObj *o, u32 vtable, const char *iface);
 /* Host object behind a guest pointer, or NULL. */
 X2ComObj *x2_com_get(u32 guest);
+/* objects in slot order (save states): the next one after *id (start at 0), or NULL */
+X2ComObj *x2_com_next(u32 *id);
 #define COM_THIS(type) ((type *)x2_com_get(ARG(0)))
 
 /* Generic IUnknown methods operating on X2ComObj. */

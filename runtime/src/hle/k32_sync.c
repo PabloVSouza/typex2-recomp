@@ -161,10 +161,19 @@ static void EnterCriticalSection(X2Cpu *c) {
     u32 cs = ARG(0);
     pthread_mutex_t *m = cs_get(cs);
     if (csprof < 0) csprof = getenv("X2_CSPROF") != NULL;
-    if (!csprof) pthread_mutex_lock(m);
-    else if (pthread_mutex_trylock(m)) csprof_wait(c, cs, m); /* contended */
+    if (pthread_mutex_trylock(m)) { /* contended */
+        x2_ss_cs_blocking(cs);
+        if (csprof)
+            csprof_wait(c, cs, m);
+        else
+            pthread_mutex_lock(m);
+        x2_ss_cs_acquired();
+    }
     WR32(cs + 0x0C, x2_self->id);  /* OwningThread, some code peeks at it */
     WR32(cs + 0x08, RD32(cs + 0x08) + 1);
+    X2Thread *t = x2_self; /* save states: the sections each thread holds */
+    if (t->ss_cs < 16) t->ss_held[t->ss_cs] = cs;
+    t->ss_cs++;
 }
 static void LeaveCriticalSection(X2Cpu *c) {
     u32 cs = ARG(0);
@@ -172,6 +181,13 @@ static void LeaveCriticalSection(X2Cpu *c) {
     if (rc) WR32(cs + 0x08, rc - 1);
     if (rc <= 1) WR32(cs + 0x0C, 0);
     pthread_mutex_unlock(cs_get(cs));
+    X2Thread *t = x2_self;
+    if (t->ss_cs > 0) { /* take this section's latest entry out of the list */
+        int n = t->ss_cs < 16 ? t->ss_cs : 16, k = n - 1;
+        while (k >= 0 && t->ss_held[k] != cs) k--;
+        if (k >= 0) memmove(&t->ss_held[k], &t->ss_held[k + 1], sizeof(u32) * (size_t)(n - 1 - k));
+        t->ss_cs--;
+    }
 }
 
 /* ---- events / mutexes / semaphores --------------------------------------- */
@@ -312,6 +328,132 @@ static bool check(u32 handle, bool take) {
     }
 }
 
+void x2_sync_wake_all(void) {
+    pthread_mutex_lock(&sync_lock);
+    wake_all();
+    pthread_mutex_unlock(&sync_lock);
+}
+
+/* ---- save states ------------------------------------------------------------ *
+ * The handle table as it was: events, mutexes and semaphores with their state, files
+ * reopened at their offset (k32_file.c), slots freed. A slot that held another kind of object
+ * then (a thread, a find or a port) refuses the load. An object a load replaces is not freed:
+ * a stopped wait may still hold it. */
+typedef struct {
+    u8 type;
+    u32 a, b;
+} SsHandle;
+static SsHandle ss_handle(X2Handle *h) {
+    SsHandle r = {(u8)h->type, 0, 0};
+    switch (h->type) {
+    case H_EVENT:
+        r.a = ((Event *)h->obj)->signaled;
+        r.b = ((Event *)h->obj)->manual;
+        break;
+    case H_MUTEX:
+        r.a = ((Mutex *)h->obj)->owner;
+        r.b = ((Mutex *)h->obj)->count;
+        break;
+    case H_SEMAPHORE:
+        r.a = (u32)((Semaphore *)h->obj)->count;
+        r.b = (u32)((Semaphore *)h->obj)->max;
+        break;
+    case H_THREAD: r.a = ((X2Thread *)h->obj)->id; break;
+    default: break;
+    }
+    return r;
+}
+/* kinds of object a load can put back in a slot, or take out of one */
+static bool restorable(X2HType t) {
+    return t == H_FREE || t == H_EVENT || t == H_MUTEX || t == H_SEMAPHORE || t == H_FILE;
+}
+
+void x2_sync_ss_save(X2SsBuf *b) {
+    pthread_mutex_lock(&sync_lock);
+    for (u32 i = 1; i < X2_MAX_HANDLES; i++) {
+        X2Handle *h = x2_handle_slot(i, NULL);
+        SsHandle r = ss_handle(h);
+        X2_SS_PUT(b, r);
+        if (h->type == H_FILE) {
+            X2SsFile sf;
+            x2_file_ss_info(h, &sf);
+            X2_SS_PUT(b, sf);
+        }
+    }
+    pthread_mutex_unlock(&sync_lock);
+}
+
+bool x2_sync_ss_load(X2SsBuf *b, bool apply) {
+    bool ok = true;
+    pthread_mutex_lock(&sync_lock);
+    for (u32 i = 1; i < X2_MAX_HANDLES && ok; i++) {
+        SsHandle r;
+        X2SsFile sf;
+        u32 value;
+        X2Handle *h = x2_handle_slot(i, &value);
+        SsHandle now = ss_handle(h);
+        if (!X2_SS_GET(b, r) || (r.type == H_FILE && !X2_SS_GET(b, sf))) {
+            ok = false;
+            break;
+        }
+        bool same = r.type == now.type && !(r.type == H_THREAD && r.a != now.a) && !(r.type == H_EVENT && r.b != now.b);
+        /* a finished thread's handle may go: the thread is not in the state */
+        bool gone_thread = now.type == H_THREAD && ((X2Thread *)h->obj)->finished;
+        if (!same && !(restorable((X2HType)r.type) && (restorable(h->type) || gone_thread))) {
+            snprintf(x2_ss_error, sizeof x2_ss_error,
+                     "handle %x is another kind of object now: load the state where it was saved", value);
+            ok = false;
+            break;
+        }
+        if (!apply) continue;
+        if (same && r.type != H_FILE) {
+            switch (h->type) {
+            case H_EVENT: ((Event *)h->obj)->signaled = r.a != 0; break; /* pulses and waiters are live waits' */
+            case H_MUTEX:
+                ((Mutex *)h->obj)->owner = r.a;
+                ((Mutex *)h->obj)->count = r.b;
+                break;
+            case H_SEMAPHORE: ((Semaphore *)h->obj)->count = (s32)r.a; break;
+            default: break;
+            }
+            continue;
+        }
+        /* rebuild the slot as it was */
+        if (h->type == H_FILE && h->close) h->close(h);
+        *h = (X2Handle){H_FREE, NULL, NULL};
+        switch (r.type) {
+        case H_EVENT: {
+            Event *e = calloc(1, sizeof *e);
+            e->signaled = r.a != 0;
+            e->manual = r.b != 0;
+            *h = (X2Handle){H_EVENT, e, free_obj};
+            break;
+        }
+        case H_MUTEX: {
+            Mutex *m = calloc(1, sizeof *m);
+            m->owner = r.a;
+            m->count = r.b;
+            *h = (X2Handle){H_MUTEX, m, free_obj};
+            break;
+        }
+        case H_SEMAPHORE: {
+            Semaphore *sm = calloc(1, sizeof *sm);
+            sm->count = (s32)r.a;
+            sm->max = (s32)r.b;
+            *h = (X2Handle){H_SEMAPHORE, sm, free_obj};
+            break;
+        }
+        case H_FILE:
+            if (!x2_file_ss_open(h, &sf)) x2_log("state: cannot reopen %s; handle %x stays closed", sf.path, value);
+            break;
+        default: break;
+        }
+    }
+    if (apply) wake_all();
+    pthread_mutex_unlock(&sync_lock);
+    return ok;
+}
+
 void x2_sync_broadcast(void) {
     pthread_mutex_lock(&sync_lock);
     wake_all(); /* a thread ended (its handle is waitable) */
@@ -376,11 +518,14 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
             t.tv_nsec += 20000000;
             if (t.tv_nsec >= 1000000000) { t.tv_sec++; t.tv_nsec -= 1000000000; }
             pthread_cond_timedwait(&cv, &sync_lock, &t);
+            x2_ss_check("wait", &sync_lock);
         } else if (pthread_cond_timedwait(&cv, &sync_lock, &dl) == ETIMEDOUT) {
             /* one last check happens on the next loop iteration only if time remains */
             bool any = false;
             for (u32 i = 0; i < n && !any; i++) any = PULSED(i) || check(hs[i], false);
             if (!any || all) { rc = WAIT_TIMEOUT; break; }
+        } else {
+            x2_ss_check("wait", &sync_lock);
         }
     }
 #undef PULSED
@@ -450,8 +595,14 @@ static void do_sleep(u32 ms) {
         sched_yield();
         return;
     }
-    struct timespec t = {ms / 1000, (long)(ms % 1000) * 1000000L};
-    while (nanosleep(&t, &t) && errno == EINTR) {}
+    /* long sleeps in slices, so a save state need not wait for them */
+    while (ms) {
+        u32 step = ms > 50 ? 50 : ms;
+        struct timespec t = {0, (long)step * 1000000L};
+        while (nanosleep(&t, &t) && errno == EINTR) {}
+        ms -= step;
+        if (ms) x2_ss_check("Sleep", NULL);
+    }
 }
 static void Sleep(X2Cpu *c) { do_sleep(ARG(0)); }
 static void SleepEx(X2Cpu *c) {

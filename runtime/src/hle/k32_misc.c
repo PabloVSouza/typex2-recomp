@@ -908,12 +908,23 @@ static void mm_timer_thread(X2Cpu *c) {
     MmTimer *t = &mm_timers[id - 1];
     for (;;) {
         pthread_mutex_lock(&mm_lock);
-        while (!t->armed) pthread_cond_wait(&mm_cond, &mm_lock);
+        while (!t->armed) {
+            struct timespec dl;
+            clock_gettime(CLOCK_REALTIME, &dl);
+            dl.tv_nsec += 20000000;
+            if (dl.tv_nsec >= 1000000000) {
+                dl.tv_sec++;
+                dl.tv_nsec -= 1000000000;
+            }
+            pthread_cond_timedwait(&mm_cond, &mm_lock, &dl);
+            x2_ss_check("wait", &mm_lock); /* idle between timers: a save state may stop it here */
+        }
         pthread_mutex_unlock(&mm_lock);
         u64 next = x2_time_ns() + (u64)t->delay * 1000000ull;
         while (!t->killed) {
             u64 now = x2_time_ns();
             if (now < next) {
+                x2_ss_check("wait", NULL);
                 usleep((useconds_t)((next - now) / 1000));
                 continue;
             }

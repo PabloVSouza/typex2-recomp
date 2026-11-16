@@ -138,6 +138,7 @@ static pthread_mutex_t heap_lock = PTHREAD_MUTEX_INITIALIZER;
 static u32 free_list[HEAP_MAX_SHIFT + 1];  /* guest addr of first free payload */
 static u32 arena_cur, arena_end;
 static u32 process_heap_handle;
+static u32 heap_next = 0x00500000u; /* heap handles: opaque values, not addresses */
 
 static u32 size_class(u32 n) {
     u32 s = HEAP_MIN_SHIFT;
@@ -218,9 +219,8 @@ u32 x2_heap_realloc(u32 heap, u32 p, u32 size, bool zero) {
 }
 
 u32 x2_heap_create(void) {
-    static u32 next = 0x00500000u;  /* opaque handle values; not real addresses */
     pthread_mutex_lock(&heap_lock);
-    u32 h = next += 0x10;
+    u32 h = heap_next += 0x10;
     pthread_mutex_unlock(&heap_lock);
     return h;
 }
@@ -237,4 +237,83 @@ u32 x2_gstrdup(const char *s) {
     u32 p = x2_galloc(n);
     memcpy(X2P(p), s, n);
     return p;
+}
+
+/* ---- save states ----------------------------------------------------------- *
+ * The region map, the heap's lists and every allocated page (pages of zeros only as a flag). */
+static const u8 zero_page[X2_PAGE];
+static bool page_zero(u32 a) { return !memcmp(X2P(a), zero_page, X2_PAGE); }
+
+void x2_mem_ss_save(X2SsBuf *b) {
+    pthread_mutex_lock(&vm_lock);
+    pthread_mutex_lock(&heap_lock);
+    x2_ss_put(b, gran_owner, sizeof gran_owner);
+    x2_ss_put(b, gran_count, sizeof gran_count);
+    x2_ss_put(b, free_list, sizeof free_list);
+    X2_SS_PUT(b, arena_cur);
+    X2_SS_PUT(b, arena_end);
+    X2_SS_PUT(b, process_heap_handle);
+    X2_SS_PUT(b, heap_next);
+    for (u32 g = 1; g < NGRAN; g++) {
+        if (gran_owner[g] != g) continue;
+        for (u32 a = g * X2_GRANULE, end = a + gran_count[g] * X2_GRANULE; a < end; a += X2_PAGE) {
+            u8 flag = !page_zero(a);
+            X2_SS_PUT(b, flag);
+            if (flag) x2_ss_put(b, X2P(a), X2_PAGE);
+        }
+    }
+    pthread_mutex_unlock(&heap_lock);
+    pthread_mutex_unlock(&vm_lock);
+}
+
+/* what the memory part takes now: a flag per allocated page, and the pages that are not zero
+ * (most of the address space games allocate is never written) */
+size_t x2_mem_ss_bound(void) {
+    size_t n = sizeof gran_owner + sizeof gran_count + sizeof free_list + 64;
+    pthread_mutex_lock(&vm_lock);
+    for (u32 g = 1; g < NGRAN; g++)
+        if (gran_owner[g])
+            for (u32 a = g * X2_GRANULE, end = a + X2_GRANULE; a < end; a += X2_PAGE)
+                n += 1 + (page_zero(a) ? 0 : X2_PAGE);
+    pthread_mutex_unlock(&vm_lock);
+    return n;
+}
+
+bool x2_mem_ss_load(X2SsBuf *b) {
+    static u32 owner[NGRAN], count[NGRAN];
+    pthread_mutex_lock(&vm_lock);
+    pthread_mutex_lock(&heap_lock);
+    x2_ss_get(b, owner, sizeof owner);
+    x2_ss_get(b, count, sizeof count);
+    x2_ss_get(b, free_list, sizeof free_list);
+    X2_SS_GET(b, arena_cur);
+    X2_SS_GET(b, arena_end);
+    X2_SS_GET(b, process_heap_handle);
+    X2_SS_GET(b, heap_next);
+    bool ok = !b->bad;
+    if (ok) {
+        /* regions allocated since the state was taken: back to zero */
+        for (u32 g = 1; g < NGRAN; g++)
+            if (gran_owner[g] == g && owner[g] != g) {
+                size_t n = (size_t)gran_count[g] * X2_GRANULE;
+                madvise(X2P(g * X2_GRANULE), n, MADV_FREE);
+                memset(X2P(g * X2_GRANULE), 0, n);
+            }
+        memcpy(gran_owner, owner, sizeof owner);
+        memcpy(gran_count, count, sizeof count);
+        for (u32 g = 1; g < NGRAN && ok; g++) {
+            if (gran_owner[g] != g) continue;
+            for (u32 a = g * X2_GRANULE, end = a + gran_count[g] * X2_GRANULE; a < end && ok; a += X2_PAGE) {
+                u8 flag = 0;
+                ok = X2_SS_GET(b, flag);
+                if (flag)
+                    ok = ok && x2_ss_get(b, X2P(a), X2_PAGE);
+                else if (!page_zero(a))
+                    memset(X2P(a), 0, X2_PAGE);
+            }
+        }
+    }
+    pthread_mutex_unlock(&heap_lock);
+    pthread_mutex_unlock(&vm_lock);
+    return ok;
 }

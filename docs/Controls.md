@@ -8,6 +8,7 @@
 | 1, 2 | start P1, P2 |
 | 5, 6 | coin P1, P2 |
 | F2 / F1 | test / service |
+| F5 / F7 | save state / load state (one slot; see [Save states](Save-States.md)) |
 | F9 | capture: log every draw of the next frame |
 | F10 | FPS overlay |
 | F11 / F12 / Esc | fullscreen / screenshot / quit |

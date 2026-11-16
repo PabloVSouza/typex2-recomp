@@ -231,6 +231,35 @@ static void present_image(GLuint tex, u32 tw, u32 th) {
     glUniform2f(blit_rows, 0, 1); /* the FPS overlay shares the program */
 }
 
+/* ---- save states (F5 save, F7 load) ------------------------------------------------
+ * One slot per game in the player's data folder, or X2_STATE_PATH. */
+static void state_path(char *out, size_t n) {
+    if (getenv("X2_STATE_PATH")) {
+        snprintf(out, n, "%s", getenv("X2_STATE_PATH"));
+        return;
+    }
+    char *dir = SDL_GetPrefPath("TypeX2", "states");
+    snprintf(out, n, "%s%s.state", dir ? dir : "", x2_game && x2_game->id ? x2_game->id : "game");
+    SDL_free(dir);
+}
+static void state_request(bool load) {
+    char path[1024];
+    state_path(path, sizeof path);
+    x2_ss_request(load, path, NULL);
+}
+/* X2_STATE_AT=s600,l900,...: save (s) or load (l) when the frame count reaches each number */
+static const char *state_script;
+static void state_script_step(void) {
+    if (!state_script) state_script = getenv("X2_STATE_AT") ? getenv("X2_STATE_AT") : "";
+    if (!*state_script) return;
+    char op = state_script[0];
+    unsigned long long at = strtoull(state_script + 1, NULL, 10);
+    if (gfx_frame_count() < at) return;
+    state_request(op == 'l');
+    const char *next = strchr(state_script, ',');
+    state_script = next ? next + 1 : "";
+}
+
 /* ---- FPS overlay (F10 or X2_FPS=1) --------------------------------------------
  * "GAME 60.0  DISP 60.0  CPU 7.2MS": guest frames/s, host swaps/s and the
  * guest's mean busy time per frame (16.7 ms is the budget at 60 Hz). Text is
@@ -793,6 +822,8 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
                 }
                 if (e.key.scancode == SDL_SCANCODE_F12) want_shot = true;
                 if (e.key.scancode == SDL_SCANCODE_F10) fps_overlay = !fps_overlay;
+                if (e.key.scancode == SDL_SCANCODE_F5 || e.key.scancode == SDL_SCANCODE_F7)
+                    state_request(e.key.scancode == SDL_SCANCODE_F7);
                 if (e.key.scancode == SDL_SCANCODE_F9) { /* capture: draw log of the next frame + window screenshot */
                     static int ncap;
                     gfx_request_capture();
@@ -814,6 +845,7 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
                 running = false; /* frontend-friendly exit (ES-DE) */
         if (getenv("X2_HEARTBEAT") && (++loops % 120 == 1 || loops < 4)) x2_log("platform: loop %llu, frames %llu", (unsigned long long)loops, (unsigned long long)gfx_frame_count());
         update_inputs();
+        state_script_step();
         GLuint t;
         u32 w, h;
         if (loops < 4 && getenv("X2_HEARTBEAT")) x2_log("platform: run_frames");

@@ -155,14 +155,35 @@ void x2_dsound_mix(float *out, u32 frames, u32 rate) {
 /* ---- IDirectSoundBuffer8 ---------------------------------------------- */
 #define BUF Buf *b = COM_THIS(Buf)
 
-static void buf_destroy(X2ComObj *o) {
+/* out of the mixer (released, or kept for a save state) */
+static void buf_retire(X2ComObj *o) {
     Buf *b = (Buf *)o;
     pthread_mutex_lock(&ds_lock);
     for (Buf **p = &buffers; *p; p = &(*p)->next)
         if (*p == b) { *p = b->next; break; }
     pthread_mutex_unlock(&ds_lock);
+}
+static void buf_revive(X2ComObj *o) {
+    Buf *b = (Buf *)o;
+    pthread_mutex_lock(&ds_lock);
+    b->next = buffers;
+    buffers = b;
+    pthread_mutex_unlock(&ds_lock);
+}
+static void buf_free_guest(X2ComObj *o) {
+    Buf *b = (Buf *)o;
     if (b->mem) x2_heap_free(0, b->mem);
-    free(b);
+}
+static void buf_destroy(X2ComObj *o) {
+    buf_retire(o); /* already out if it was kept */
+    free(o);
+}
+static void buf_keep(Buf *b) {
+    b->com.destroy = buf_destroy;
+    b->com.keep = true;
+    b->com.free_guest = buf_free_guest;
+    b->com.retire = buf_retire;
+    b->com.revive = buf_revive;
 }
 
 static void B_QueryInterface(X2Cpu *c) {
@@ -323,7 +344,7 @@ static void DS_CreateSoundBuffer(X2Cpu *c) {
     b->freq = b->rate;
     b->size = b->primary ? 0 : bytes;
     if (b->size) b->mem = x2_galloc(b->size);
-    b->com.destroy = buf_destroy;
+    buf_keep(b);
     pthread_mutex_lock(&ds_lock);
     b->next = buffers;
     buffers = b;
@@ -348,7 +369,7 @@ static void DS_DuplicateSoundBuffer(X2Cpu *c) {
     Buf *b = calloc(1, sizeof *b);
     *b = *src;
     b->com = (X2ComObj){0};
-    b->com.destroy = buf_destroy;
+    buf_keep(b);
     b->playing = false;
     b->pos = 0;
     b->nnotify = 0;
@@ -402,4 +423,45 @@ u32 x2_dsound_create(void) {
     }
     DSound *d = calloc(1, sizeof *d);
     return x2_com_wrap(&d->com, vt_ds, "IDirectSound8");
+}
+
+/* ---- save states ------------------------------------------------------------ *
+ * The buffers' playback state; the buffers themselves are the state's (com.c). */
+typedef struct {
+    u32 guest, freq;
+    s32 volume, pan;
+    u8 playing, looping;
+    double pos;
+    Notify notify[64];
+    u32 nnotify;
+} SsBuf;
+void x2_dsound_ss_save(X2SsBuf *sb) {
+    pthread_mutex_lock(&ds_lock);
+    for (Buf *b = buffers; b; b = b->next) {
+        SsBuf s = {b->com.guest, b->freq, b->volume, b->pan, b->playing, b->looping, b->pos, {{0}}, b->nnotify};
+        memcpy(s.notify, b->notify, sizeof s.notify);
+        X2_SS_PUT(sb, s);
+    }
+    SsBuf end = {0};
+    X2_SS_PUT(sb, end);
+    pthread_mutex_unlock(&ds_lock);
+}
+bool x2_dsound_ss_load(X2SsBuf *sb) {
+    for (;;) {
+        SsBuf s;
+        if (!X2_SS_GET(sb, s)) return false;
+        if (!s.guest) return true;
+        Buf *b = (Buf *)x2_com_get(s.guest);
+        if (!b) continue;
+        pthread_mutex_lock(&ds_lock);
+        b->freq = s.freq;
+        b->volume = s.volume;
+        b->pan = s.pan;
+        b->playing = s.playing;
+        b->looping = s.looping;
+        b->pos = s.pos;
+        memcpy(b->notify, s.notify, sizeof b->notify);
+        b->nnotify = s.nnotify;
+        pthread_mutex_unlock(&ds_lock);
+    }
 }

@@ -8,6 +8,8 @@
  * --frames N    exit after N retro_run calls (with --shot: save the last frame; -1, -2, ...
  *               appended to the name with --next)
  * --hidden      no visible window (automated runs)
+ * --state s600,l900  retro_serialize (s) / retro_unserialize (l) of one in-memory state
+ *               at those retro_run counts, as RetroArch's Save / Load State do
  * --exit        end like RetroArch: retro_deinit, then exit() with its cleanup
  *               (default: _Exit, since guest threads cannot be joined)
  * Keys: arrows, Z X C V = Y B X A (game A B C D), 1 = Start, 5 = Select (coin),
@@ -178,7 +180,10 @@ static void save_png(const char *path, unsigned w, unsigned h) {
     X(bool, load_game, (const struct retro_game_info *))                                                               \
     X(void, run, (void))                                                                                               \
     X(void, unload_game, (void))                                                                                       \
-    X(void, deinit, (void))
+    X(void, deinit, (void))                                                                                            \
+    X(size_t, serialize_size, (void))                                                                                  \
+    X(bool, serialize, (void *, size_t))                                                                               \
+    X(bool, unserialize, (const void *, size_t))
 #define CORE_FIELD(ret, name, args) ret(*name) args;
 static struct {
     CORE_FNS(CORE_FIELD)
@@ -228,6 +233,9 @@ int main(int argc, char **argv) {
     long max_frames = 0;
     const char *shot = NULL;
     bool hidden = false, full_exit = false;
+    const char *state_ops = "";
+    void *state = NULL;
+    size_t state_size = 0;
     const char *contents[16] = {argv[2]};
     int ncontents = 1;
     for (int i = 3; i < argc; i++) {
@@ -236,6 +244,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--next") && i + 1 < argc && ncontents < 16)
             contents[ncontents++] = argv[++i];
         else if (!strcmp(argv[i], "--hidden")) hidden = true;
+        else if (!strcmp(argv[i], "--state") && i + 1 < argc)
+            state_ops = argv[++i];
         else if (!strcmp(argv[i], "--exit"))
             full_exit = true;
     }
@@ -298,6 +308,30 @@ int main(int argc, char **argv) {
                     quit = true;
             update_keys();
             core.run();
+            if (*state_ops && n >= atol(state_ops + 1)) { /* --state */
+                if (*state_ops == 's') {
+                    size_t sz = core.serialize_size();
+                    void *buf = malloc(sz ? sz : 1);
+                    uint64_t t = SDL_GetTicksNS();
+                    bool ok = buf && core.serialize(buf, sz);
+                    if (ok) { /* a failed save keeps the previous state, as RetroArch's slot does */
+                        free(state);
+                        state = buf;
+                        state_size = sz;
+                    } else {
+                        free(buf);
+                    }
+                    fprintf(stderr, "[host] frame %ld: serialize %zu MB: %s (%.0f ms)\n", n, sz >> 20,
+                            ok ? "ok" : "failed", (SDL_GetTicksNS() - t) / 1e6);
+                } else {
+                    uint64_t t = SDL_GetTicksNS();
+                    bool ok = state && core.unserialize(state, state_size);
+                    fprintf(stderr, "[host] frame %ld: unserialize: %s (%.0f ms)\n", n, ok ? "ok" : "failed",
+                            (SDL_GetTicksNS() - t) / 1e6);
+                }
+                const char *next = strchr(state_ops, ',');
+                state_ops = next ? next + 1 : "";
+            }
             if (!hidden) {
                 int ww, wh;
                 SDL_GetWindowSizeInPixels(win, &ww, &wh);

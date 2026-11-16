@@ -87,7 +87,8 @@ Settings and limits:
   The app uses Vulkan too.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
-- **Missing features.** No save states, rewind or run-ahead. Reset (Quick
+- **Save states** work within a run of the game, on the screen they were
+  saved on ([Save states](Save-States.md)). No rewind or run-ahead. Reset (Quick
   Menu → Restart) restarts the game with Vulkan; with OpenGL it isn't
   supported.
 - **Switching games.** Close a game (Quick Menu → Close Content) and load

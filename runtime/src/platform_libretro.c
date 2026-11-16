@@ -731,6 +731,9 @@ boot:
     running = true;
     x2_exit_hook = on_guest_exit;
     gfx_set_external_clock(true);
+    uint64_t quirks = RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION | RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE |
+                      RETRO_SERIALIZATION_QUIRK_PLATFORM_DEPENDENT | RETRO_SERIALIZATION_QUIRK_INCOMPLETE;
+    environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
     x2_boot(game->tables, dir);
     set_input_descriptors(); /* after x2_boot: x2.env may set X2_PAD */
 #ifdef X2_VULKAN
@@ -1006,10 +1009,36 @@ audio:;
     }
 }
 
-/* no save states: the guest's threads and host objects are not serialisable */
-EXPORT size_t retro_serialize_size(void) { return 0; }
-EXPORT bool retro_serialize(void *data, size_t size) { (void)data; (void)size; return false; }
-EXPORT bool retro_unserialize(const void *data, size_t size) { (void)data; (void)size; return false; }
+/* Save states (savestate.c), taken and restored in memory on RetroArch's thread. They load
+ * only in the run that took them and on the same screen (a refused load says why). A state is
+ * the game's whole memory (100-300 MB): one per frame (rewind, run-ahead) is refused. */
+static char ss_msg[400];
+static u64 ss_last_ns;
+static bool ss_too_often(void) {
+    u64 now = x2_time_ns();
+    bool r = ss_last_ns && now - ss_last_ns < 500000000ull;
+    ss_last_ns = now;
+    return r;
+}
+EXPORT size_t retro_serialize_size(void) { return running ? x2_ss_size() : 0; }
+EXPORT bool retro_serialize(void *data, size_t size) {
+    if (!running || !data || ss_too_often()) return false;
+    bool ok = x2_ss_save_into(data, size, ss_msg, sizeof ss_msg);
+    if (!ok)
+        msg(ss_msg, 240);
+    else
+        x2_log("libretro: %s", ss_msg);
+    return ok;
+}
+EXPORT bool retro_unserialize(const void *data, size_t size) {
+    if (!running || !data || ss_too_often()) return false;
+    bool ok = x2_ss_load_from(data, size, ss_msg, sizeof ss_msg);
+    if (!ok)
+        msg(ss_msg, 300);
+    else
+        x2_log("libretro: %s", ss_msg);
+    return ok;
+}
 EXPORT void retro_cheat_reset(void) {}
 EXPORT void retro_cheat_set(unsigned index, bool enabled, const char *code) { (void)index; (void)enabled; (void)code; }
 EXPORT unsigned retro_get_region(void) { return RETRO_REGION_NTSC; }

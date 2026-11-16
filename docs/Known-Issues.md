@@ -10,7 +10,9 @@ that isn't here? Report it in
 
 - **Linux and Windows:** playing games there is untested: development
   happens on a Mac. Reports are welcome, working or not.
-- **RetroArch:** no save states, rewind or run-ahead.
+- **Save states** load only on the screen they were saved on, and only until
+  the game is closed; none during movies. No rewind or run-ahead
+  ([details](Save-States.md)).
 - **RetroArch, switching games:** a closed game leaves 1-3 MB behind until
   RetroArch quits.
 

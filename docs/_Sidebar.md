@@ -20,6 +20,7 @@
 - [Launcher](Launcher.md)
 - [Android and RetroArch](Android-and-RetroArch.md)
 - [Controls](Controls.md)
+- [Save states](Save-States.md)
 
 **Development**
 - [Building from source](Building.md)

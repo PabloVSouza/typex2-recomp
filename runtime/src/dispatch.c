@@ -72,6 +72,22 @@ void x2_guest_clock_frame(void) {
     }
     last_present_guest = now;
 }
+/* A restored state continues the guest clock where it was saved: the game compares it
+ * with times it stored. */
+void x2_clock_ss_save(X2SsBuf *b) {
+    u64 now = x2_guest_ns();
+    X2_SS_PUT(b, now);
+    X2_SS_PUT(b, last_present_guest);
+}
+void x2_clock_ss_load(X2SsBuf *b) {
+    u64 then = 0;
+    int64_t last = 0;
+    X2_SS_GET(b, then);
+    X2_SS_GET(b, last);
+    guest_offset = (int64_t)then - (int64_t)x2_time_ns();
+    last_present_guest = last;
+}
+
 /* ---- function lookup ----------------------------------------------------- */
 static X2Func *direct;  /* indexed by addr - text_start */
 static u32 text_start, text_end;
@@ -146,6 +162,7 @@ static void run(X2Cpu *c, u32 target, bool tail) {
         if (x2_log_level >= 3) x2_log("-> %s from %08x (thread %u)", t->name, RD32(c->esp), x2_self ? x2_self->id : 0);
         bool held = x2_gil_on && x2_gil_held;
         if (held) { x2_gil_held = false; pthread_mutex_unlock(&x2_gil); }
+        x2_ss_check(t->name, NULL); /* a save state stops threads here */
         const char *prev_fn = c->host_fn;
         c->host_fn = t->name;
         t->fn(c);

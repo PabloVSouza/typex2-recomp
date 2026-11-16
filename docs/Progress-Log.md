@@ -2,6 +2,33 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-16: Save states
+
+- **Method** (`savestate.c`, [Architecture](Architecture.md#save-states)):
+  every guest thread stops at a reproducible point.
+  - The presenting thread stops in Present; the others stop where they wait,
+    once it has stopped.
+  - Then guest memory, the threads' registers and the runtime's state are
+    saved or restored.
+  - A thread's host stack (one C frame per guest function) can't be saved.
+    A load therefore requires the same chain of generated-code return
+    addresses in every thread: the same screen.
+  - Host objects (textures, sound buffers) belong to the run. Ones released
+    after a state are kept as zombies so a load can revive them.
+- **Found on the way:**
+  - KOF XII creates and frees about 6 textures a second in fights.
+  - KOF XIII and Climax open files and start loader threads at a round's
+    end, so files and sync objects are restored by path and offset.
+  - SSF4's multimedia timer thread idles in a host loop, which needed a
+    stop point.
+  - KOF '98 UM presents inside a critical section and needs its timer
+    thread's tick for the frame. So the presenting thread stops first, and
+    may hold sections; threads blocked on a section count as stopped.
+- **Result:** in scripted fights, saves and loads work in all eight games:
+  - states take 55 MB (KOF '98 UM) to 540 MB (BlazBlue CT);
+  - saving takes 50-250 ms and loading 30-300 ms;
+  - RetroArch's `retro_serialize` path was checked with `retro_host --state`.
+
 ## 2026-11-16: KOF XIII starts in English
 
 - **Found:** the language is an owner setting the Lua scripts read through

@@ -82,7 +82,9 @@ gets an entry per milestone. Update them with the README.
   generated shaders), `jvs.c` + `padmap.c` (inputs),
   `platform_sdl.c` / `platform_libretro.c` (front ends; the core runs each
   game after the first in a fresh instance of its library), `heap.c` (the
-  core's heap on ELF, releasable at unload), `prof.c` (profiler).
+  core's heap on ELF, releasable at unload), `prof.c` (profiler),
+  `savestate.c` (save states: threads stop at reproducible points, guest
+  memory and runtime state; loads only into the same call chains, same run).
 * `runtime/CMakeLists.txt`: one target per `games/*/gen`; the game's label
   is set in the `if(game STREQUAL ...)` chain.
 * `tools/`: `arc`, `kofarc`, `lifttest` (Unicorn differential tests of the

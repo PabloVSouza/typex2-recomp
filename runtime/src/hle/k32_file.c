@@ -97,6 +97,29 @@ static void close_file(X2Handle *h) {
     free(f);
 }
 
+/* save states */
+void x2_file_ss_info(X2Handle *h, X2SsFile *out) {
+    File *f = h->obj;
+    memset(out, 0, sizeof *out);
+    snprintf(out->path, sizeof out->path, "%s", f->path);
+    out->offset = f->fd >= 0 ? (int64_t)lseek(f->fd, 0, SEEK_CUR) : 0;
+#ifdef F_GETFL
+    out->flags = f->fd >= 0 ? fcntl(f->fd, F_GETFL) : O_RDONLY;
+#else
+    out->flags = O_RDONLY;
+#endif
+}
+bool x2_file_ss_open(X2Handle *h, const X2SsFile *s) {
+    int fd = open(s->path, s->flags & (O_RDONLY | O_WRONLY | O_RDWR | O_APPEND));
+    if (fd < 0) return false;
+    lseek(fd, (off_t)s->offset, SEEK_SET);
+    File *f = calloc(1, sizeof *f);
+    f->fd = fd;
+    snprintf(f->path, sizeof f->path, "%s", s->path);
+    *h = (X2Handle){H_FILE, f, close_file};
+    return true;
+}
+
 static int fd_of(u32 h) {
     if (h == STD_OUT) return 1;
     if (h == STD_ERR) return 2;

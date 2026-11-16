@@ -78,6 +78,8 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_LOG=0..3` | log level (same as -v/-vv/-vvv) |
 | `X2_SHOT=f1,f2,...` `X2_SHOT_PATH=x.png` `X2_SHOT_EXIT=1` | save frames as PNG |
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays; GL only) |
+| `X2_STATE_AT=s600,l900,...` | save (`s`) or load (`l`) a state when the frame count reaches each number (player) |
+| `X2_STATE_PATH=file` | the player's state file (default: `states/<game>.state` in its data folder) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_FRAME_CLOCK=0` | the guest's clocks (QueryPerformanceCounter, timeGetTime, GetTickCount) in plain real time; by default they advance at least 1/60 s from one Present to the next, so the games' own frame limiters don't beat against the runtime's pacing |
 | `X2_WAKE_ALL=1` | every change of a waitable object (SetEvent, ReleaseSemaphore, ...) wakes every waiting thread, as before targeted wakeups (A/B comparisons) |

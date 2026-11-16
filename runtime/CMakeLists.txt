@@ -49,6 +49,7 @@ add_library(x2rt_common OBJECT
   src/hle/k32_file.c
   src/hle/k32_misc.c
   src/com.c
+  src/savestate.c
   src/jvs.c
   src/image.c
   $<IF:$<BOOL:${X2_FONT_CORETEXT}>,src/font_coretext.c,src/font_stb.c>

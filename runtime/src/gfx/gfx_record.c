@@ -16,6 +16,18 @@
 
 #include "gfx_cmd.h"
 
+/* a condition wait of at most ms milliseconds (waits that a save state must be able to interrupt) */
+static void timed_wait(pthread_cond_t *cv, pthread_mutex_t *m, long ms) {
+    struct timespec dl;
+    clock_gettime(CLOCK_REALTIME, &dl);
+    dl.tv_nsec += ms * 1000000L;
+    if (dl.tv_nsec >= 1000000000L) {
+        dl.tv_sec++;
+        dl.tv_nsec -= 1000000000L;
+    }
+    pthread_cond_timedwait(cv, m, &dl);
+}
+
 static Frame *rec;                    /* being recorded (guest thread) */
 static Frame *q_head, *q_tail;        /* queued for replay */
 static u32 q_len;
@@ -300,14 +312,23 @@ void gfx_present(void) {
     q_tail = f;
     q_len++;
     pthread_cond_broadcast(&q_cond);
+    /* where save states stop the presenting thread (also while it waits for the renderer or
+     * the front end, which may be the one taking the state) */
+    x2_ss_frame(&q_lock);
     /* don't run ahead of the renderer by more than a couple of frames */
-    while (q_len > 3) pthread_cond_wait(&q_cond, &q_lock);
+    while (q_len > 3) {
+        timed_wait(&q_cond, &q_lock, 10);
+        x2_ss_frame(&q_lock);
+    }
     pthread_mutex_unlock(&q_lock);
     frames_presented++;
 
     if (ext_clock) { /* the front end's frame callback releases the guest */
         pthread_mutex_lock(&ext_lock);
-        while (frames_presented >= ext_allowed) pthread_cond_wait(&ext_cond, &ext_lock);
+        while (frames_presented >= ext_allowed) {
+            timed_wait(&ext_cond, &ext_lock, 10);
+            x2_ss_frame(&ext_lock);
+        }
         pthread_mutex_unlock(&ext_lock);
         guest_wake_ns = x2_time_ns();
         x2_guest_clock_frame();
