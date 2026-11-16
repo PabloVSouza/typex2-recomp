@@ -80,6 +80,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays; GL only) |
 | `X2_FPS=1` | start with the FPS overlay on |
 | `X2_FRAME_CLOCK=0` | the guest's clocks (QueryPerformanceCounter, timeGetTime, GetTickCount) in plain real time; by default they advance at least 1/60 s from one Present to the next, so the games' own frame limiters don't beat against the runtime's pacing |
+| `X2_WAKE_ALL=1` | every change of a waitable object (SetEvent, ReleaseSemaphore, ...) wakes every waiting thread, as before targeted wakeups (A/B comparisons) |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
 | `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
 | `X2_PADLOG=1` | RetroArch core: log each change of the RetroPad buttons the frontend reports and the cabinet buttons they press (finds remaps that move buttons) |

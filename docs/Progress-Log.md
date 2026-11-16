@@ -2,6 +2,23 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-16: Targeted wakeups (KOF XIII Climax at 60 fps on Android)
+
+- **Found:** with every game checked in a real fight on the tablet, KOF XIII
+  Climax ran at 46-54 fps (46-74 late frames per 120) with or without the
+  frame clock. `X2_PROF` showed its 13 job threads in `wait_many` at ~60% of
+  a core each: every wait shared one condition variable, so each SetEvent /
+  ReleaseSemaphore woke every waiting thread to re-check and sleep again.
+- **Fix:** a blocked thread waits on its own condition variable, listed with
+  its handles; a change wakes only the threads waiting on that object
+  (`X2_WAKE_ALL=1` restores the old behaviour for comparisons).
+- **Measured in fights after it:** Climax 13-17 late frames per 120 at
+  59.5-60.5 fps (game thread 13.5-14 ms, was ~18); BlazBlue CS 15.2, CT 14.9,
+  KOF '98 UM 14.3, KOF XII 17.2, KOF XIII 14.4, KOF MI 14.6.
+- **SSF4** varies with the stage (game thread 14-15.5 ms of 16.7): 15-28 late
+  frames per 120, about the same with targeted (19.3 average over three
+  fights) and broadcast wakeups (24.7).
+
 ## 2026-11-15: The guest's clock advances a frame per Present
 
 - **Found in real fights on the tablet** (scripted to the fight and checked

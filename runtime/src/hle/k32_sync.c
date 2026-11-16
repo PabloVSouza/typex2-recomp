@@ -1,9 +1,9 @@
 /* kernel32: threads, critical sections, events, mutexes, semaphores, waits,
  * interlocked operations and TLS slots.
  *
- * All waitable objects share one lock + condition variable. Every state change
- * broadcasts, and waiters re-check their objects. Simple and correct for
- * WaitForMultipleObjects; the game uses only a handful of threads. */
+ * All waitable objects share one lock. A blocked thread waits on its own
+ * condition variable, listed with the handles it waits for; a state change
+ * wakes the threads waiting on that object, which re-check their objects. */
 #include <errno.h>
 #include <sched.h>
 #include <stdlib.h>
@@ -14,7 +14,37 @@
 #include "../core.h"
 
 static pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
+
+/* Blocked threads, each on its own condition variable with the handles it waits for: a
+ * state change wakes only the threads waiting on that object. (With one condition variable
+ * for every wait, each SetEvent woke every waiting thread: KOF XIII Climax's 13 job threads
+ * spent most of a core each waking up to find nothing for them, and its fights ran at
+ * ~50 fps on the tablet.) */
+typedef struct Waiter {
+    struct Waiter *next, *prev;
+    const u32 *hs;
+    u32 n;
+    pthread_cond_t *cv;
+} Waiter;
+static Waiter *waiters; /* under sync_lock */
+static void wake_all(void);
+static void wake(u32 handle) {
+    static int all = -1; /* X2_WAKE_ALL=1: every change wakes every waiter, as before (A/B) */
+    if (all < 0) all = getenv("X2_WAKE_ALL") != NULL;
+    if (all) {
+        wake_all();
+        return;
+    }
+    for (Waiter *w = waiters; w; w = w->next)
+        for (u32 i = 0; i < w->n; i++)
+            if (w->hs[i] == handle) {
+                pthread_cond_signal(w->cv);
+                break;
+            }
+}
+static void wake_all(void) {
+    for (Waiter *w = waiters; w; w = w->next) pthread_cond_signal(w->cv);
+}
 
 typedef struct {
     bool manual, signaled;
@@ -159,7 +189,7 @@ static void set_event(X2Cpu *c, bool v) {
     if (!h) { RET(0); return; }
     pthread_mutex_lock(&sync_lock);
     ((Event *)h->obj)->signaled = v;
-    pthread_cond_broadcast(&sync_cond);
+    if (v) wake(ARG(0));
     pthread_mutex_unlock(&sync_lock);
     RET(1);
 }
@@ -182,7 +212,7 @@ bool x2_event_set(u32 handle) {
     if (!h) return false;
     pthread_mutex_lock(&sync_lock);
     ((Event *)h->obj)->signaled = true;
-    pthread_cond_broadcast(&sync_cond);
+    wake(handle);
     pthread_mutex_unlock(&sync_lock);
     return true;
 }
@@ -204,7 +234,7 @@ static void PulseEvent(X2Cpu *c) {
     } else {
         e->signaled = e->waiters > 0; /* the first waiter to look takes it */
     }
-    pthread_cond_broadcast(&sync_cond);
+    wake(ARG(0));
     pthread_mutex_unlock(&sync_lock);
     RET(1);
 }
@@ -225,7 +255,7 @@ static void ReleaseMutex(X2Cpu *c) {
     pthread_mutex_lock(&sync_lock);
     bool ok = m->owner == x2_self->id;
     if (ok && --m->count == 0) m->owner = 0;
-    pthread_cond_broadcast(&sync_cond);
+    wake(ARG(0));
     pthread_mutex_unlock(&sync_lock);
     RET(ok);
 }
@@ -243,7 +273,7 @@ static void ReleaseSemaphore(X2Cpu *c) {
     s32 prev = s->count;
     bool ok = s->count + (s32)ARG(1) <= s->max;
     if (ok) s->count += (s32)ARG(1);
-    pthread_cond_broadcast(&sync_cond);
+    wake(ARG(0));
     pthread_mutex_unlock(&sync_lock);
     if (ARG(2)) WR32(ARG(2), (u32)prev);
     RET(ok);
@@ -284,7 +314,7 @@ static bool check(u32 handle, bool take) {
 
 void x2_sync_broadcast(void) {
     pthread_mutex_lock(&sync_lock);
-    pthread_cond_broadcast(&sync_cond);
+    wake_all(); /* a thread ended (its handle is waitable) */
     pthread_mutex_unlock(&sync_lock);
 }
 
@@ -309,6 +339,15 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
         ev[i]->waiters++;
     }
 #define PULSED(i) (ev[i] && ev[i]->pulses != seen[i])
+    static _Thread_local pthread_cond_t cv;
+    static _Thread_local bool cv_ready;
+    if (!cv_ready) {
+        pthread_cond_init(&cv, NULL);
+        cv_ready = true;
+    }
+    Waiter me = {waiters, NULL, hs, n, &cv};
+    if (waiters) waiters->prev = &me;
+    waiters = &me;
     u32 rc;
     for (;;) {
         if (all) {
@@ -336,8 +375,8 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
             clock_gettime(CLOCK_REALTIME, &t);
             t.tv_nsec += 20000000;
             if (t.tv_nsec >= 1000000000) { t.tv_sec++; t.tv_nsec -= 1000000000; }
-            pthread_cond_timedwait(&sync_cond, &sync_lock, &t);
-        } else if (pthread_cond_timedwait(&sync_cond, &sync_lock, &dl) == ETIMEDOUT) {
+            pthread_cond_timedwait(&cv, &sync_lock, &t);
+        } else if (pthread_cond_timedwait(&cv, &sync_lock, &dl) == ETIMEDOUT) {
             /* one last check happens on the next loop iteration only if time remains */
             bool any = false;
             for (u32 i = 0; i < n && !any; i++) any = PULSED(i) || check(hs[i], false);
@@ -345,6 +384,11 @@ static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
         }
     }
 #undef PULSED
+    if (me.prev)
+        me.prev->next = me.next;
+    else
+        waiters = me.next;
+    if (me.next) me.next->prev = me.prev;
     for (u32 i = 0; i < n; i++)
         if (ev[i]) ev[i]->waiters--;
     pthread_mutex_unlock(&sync_lock);
@@ -363,7 +407,7 @@ void x2_queue_apc(X2Thread *t, u32 routine, u32 err, u32 bytes, u32 ov) {
         u32 *a = t->apc[t->apc_tail++ % 64];
         a[0] = routine; a[1] = err; a[2] = bytes; a[3] = ov;
     }
-    pthread_cond_broadcast(&sync_cond);
+    wake_all(); /* alertable waits: rare */
     pthread_mutex_unlock(&sync_lock);
 }
 bool x2_run_apcs(X2Cpu *c) {

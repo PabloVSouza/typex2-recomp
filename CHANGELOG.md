@@ -15,7 +15,9 @@ games are recompiled on your computer from your own files.
 - **Steadier frame pacing in every game:** the games' own 60 Hz frame
   limiters no longer beat against the runtime's pacing. Measured on Android in
   real fights: late frames went from 21-41 to 13-18 per 120 (BlazBlue), the
-  level of RetroArch's own timing jitter.
+  level of RetroArch's own timing jitter. KOF XIII Climax's fights went from
+  about 50 to 60 fps on Android: a signal now wakes only the threads waiting
+  for it, not every waiting thread.
 - **Launcher:** tells you when a new version is out (checks GitHub's
   releases at start and every six hours; off in About → Updates), with the
   release notes and a link to the downloads.
