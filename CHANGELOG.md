@@ -7,7 +7,9 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.1.2 - 2026-11-16
+
+A settings screen in the Android app, and sending exports to your device.
 
 - **Launcher:** sends an Android export straight to a connected device: the
   app installed, or the RetroArch core copied, ready for RetroArch's *Install
@@ -20,6 +22,8 @@ games are recompiled on your computer from your own files.
   each one's FPS counter, pad layout and touch pad, then plays it; no more
   editing `x2.env` by hand. ES-DE still starts games directly.
 - **RetroArch:** a closed game now leaves 1-3 MB behind (was 4-20).
+- **Android (Vulkan):** BlazBlue Calamity Trigger no longer stalls briefly at
+  character select while textures upload.
 
 ## 0.1.1 - 2026-11-16
 
