@@ -13,7 +13,7 @@ export function GameAction({ game, size = "default" }: { game: GameEntry; size?:
   const build = useAction(api.buildLibrary);
   const launch = useAction(api.launch);
   const stop = useAction(api.stop);
-  if (!data?.can_play) return null;
+  if (!data?.can_play || !game.supported) return null;
   const big = size === "lg" ? "h-11 px-5 text-base" : "";
   if (data.running === game.id) {
     return <Button variant="destructive" className={big} onClick={() => stop.mutate(undefined)}><Square /> {t("game.stop")}</Button>;
@@ -25,6 +25,7 @@ export function GameAction({ game, size = "default" }: { game: GameEntry; size?:
       </Button>
     );
   }
+  if (data.android) return null; // the pack comes from the launcher on a computer
   return (
     <Button variant="secondary" className={big} disabled={!game.found || !!data.job} onClick={() => build.mutate(game.id)}>
       <Hammer /> {game.library.state === "stale" ? t("game.rebuild") : t("game.build")}

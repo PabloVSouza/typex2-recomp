@@ -1,16 +1,20 @@
 export interface Layout { id: string; label: string; pad: string }
 export interface GameInfo { id: string; title: string; board: string; year: number; publisher: string; layouts: Layout[] }
-export interface GameSettings { fullscreen: boolean; fps: boolean; pad: string; scale: number; vsync: boolean; log_level: number; env: string }
+/** touch: the on-screen touch pad, 0 automatic, 1 always, 2 never */
+export interface GameSettings { fullscreen: boolean; fps: boolean; pad: string; scale: number; vsync: boolean; log_level: number; touch: number; env: string }
 export interface LibraryRecord { built: number; seconds: number; size: number; functions: number }
 export interface LibraryStatus { state: "none" | "ready" | "stale"; built: LibraryRecord | null }
-export interface GameEntry { id: string; path: string; settings: GameSettings; info: GameInfo | null; found: boolean; library: LibraryStatus }
+/** info: null for a game not supported yet (title: its folder's name) */
+export interface GameEntry { id: string; path: string; title: string; supported: boolean; settings: GameSettings; info: GameInfo | null; found: boolean; library: LibraryStatus }
+/** The Android app (android.rs): all-files access, the ROMs folder scanned, where packs arrive. */
+export interface AndroidInfo { all_files: boolean; roms: string; incoming: string | null }
 export interface Target { id: string; name: string; description: string; needs: string[] }
 export interface ExportRecord { target: string; games: string[]; files: string[]; built: number }
 export interface Tool { id: string; name: string; path: string | null; source: "kit" | "downloaded" | "system" | null; for_what: string; download: string | null; hint: string }
 export interface Package { id: string; name: string; version: string; size: number; for_what: string }
 export interface Kit { source: string; x2recomp: string | null; player: string | null; kind: "checkout" | "bundled" }
 export interface AppStateData {
-  version: string; os: string; arch: string; data: string; kit: Kit | null; can_play: boolean;
+  version: string; os: string; arch: string; data: string; kit: Kit | null; can_play: boolean; android: AndroidInfo | null;
   catalog: GameInfo[]; games: GameEntry[]; ndk: string; jobs: number; language: string; check_updates: boolean; job: string | null; running: string | null;
   targets: Target[]; exports: ExportRecord[]; tools: Tool[]; packages: Package[]; tools_size: number;
 }

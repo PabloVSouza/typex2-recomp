@@ -51,7 +51,14 @@
     "pickFolder": "Elige la carpeta de un juego (la que contiene game.exe)",
     "emptyTitle": "Aún no hay juegos",
     "emptyText": "Elige la carpeta de un juego (la que tiene su <code>game.exe</code>) o busca en una carpeta que contenga varios. El launcher reconoce los juegos compatibles por su ejecutable.",
-    "alsoSupported": "También compatibles"
+    "android": {
+      "description": "Tus juegos en {{path}}. Su código viene del launcher de tu ordenador: exporta allí el paquete Android de cada juego y envíalo a este dispositivo.",
+      "refresh": "Actualizar",
+      "allowTitle": "Permitir acceso a tus juegos",
+      "allowText": "Esta app lee tus juegos de la carpeta ROMs y guarda sus ajustes junto a ellos, para lo que necesita «Acceso a todos los archivos».",
+      "allow": "Permitir acceso",
+      "emptyText": "Pon cada juego en su propia carpeta llamada <code>Nombre del juego.x2</code> en {{path}} (la carpeta ROMs de ES-DE) y actualiza."
+    }
   },
   "game": {
     "play": "Jugar",
@@ -62,14 +69,19 @@
       "missing": "Falta la carpeta",
       "ready": "Listo",
       "stale": "Recompilar",
-      "none": "Sin compilar"
+      "none": "Sin compilar",
+      "noPack": "Sin paquete",
+      "unsupported": "Aún no compatible"
     },
     "status": {
       "title": "Estado",
       "missing": "La carpeta ya no existe o ya no contiene este juego. Vuelve a indicarle al launcher dónde está, más abajo.",
       "ready": "Recompilado para este equipo y listo para jugar.",
       "stale": "Compilado a partir de otra copia del juego o con un launcher anterior: vuelve a compilarlo.",
-      "none": "Aún no está recompilado. La compilación tarda uno o dos minutos y solo usa tu propia copia del juego."
+      "none": "Aún no está recompilado. La compilación tarda uno o dos minutos y solo usa tu propia copia del juego.",
+      "noPack": "El código de este juego aún no está en este dispositivo. En tu ordenador, exporta su paquete Android en el launcher y envíalo aquí.",
+      "packReady": "Su paquete Android está instalado: listo para jugar.",
+      "unsupported": "Este juego aún no es compatible: el recompilador no puede construirlo. Aparece aquí para que sepas que se encontró."
     },
     "noPlayer": "Todavía no se puede jugar en este equipo",
     "noPlayerText": "No hay x2-player para este sistema. Aun así puedes exportar el juego para Android o RetroArch.",
@@ -93,7 +105,12 @@
       "scale": "Escala de renderizado",
       "scaleText": "La imagen del juego se renderiza a un múltiplo de su tamaño. Automático elige el mayor que cabe en 1280×1024.",
       "scaleAuto": "Automático",
-      "scaleOriginal": "1× (original)"
+      "scaleOriginal": "1× (original)",
+      "touch": "Mando táctil en pantalla",
+      "touchText": "Automático lo muestra en pantallas táctiles mientras no haya un mando conectado.",
+      "touchAuto": "Automático",
+      "touchAlways": "Siempre",
+      "touchNever": "Nunca"
     },
     "advanced": {
       "title": "Avanzado",
@@ -104,7 +121,10 @@
       "logAll": "Todo (-vvv)",
       "env": "Entorno",
       "envText": "Opciones adicionales del runtime, una KEY=VALUE por línea (consulta Debugging → Switches en la documentación)."
-    }
+    },
+    "pack": "Paquete del juego",
+    "packText": "{{size}} · instalado {{when}}",
+    "hereDevice": "Este dispositivo"
   },
   "controls": {
     "title": "Controles",

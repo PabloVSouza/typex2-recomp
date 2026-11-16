@@ -49,7 +49,14 @@
     "pickFolder": "게임 폴더 선택(game.exe가 있는 폴더)",
     "emptyTitle": "아직 게임이 없습니다",
     "emptyText": "게임 폴더(<code>game.exe</code>가 있는 폴더)를 선택하거나, 여러 게임이 들어 있는 폴더를 검색하세요. 런처는 실행 파일로 지원 게임을 인식합니다.",
-    "alsoSupported": "그 밖의 지원 게임"
+    "android": {
+      "description": "{{path}}에 있는 게임. 코드는 컴퓨터의 런처에서 옵니다. 런처에서 각 게임의 Android 팩을 내보내 이 기기로 보내세요.",
+      "refresh": "새로 고침",
+      "allowTitle": "게임 접근 허용",
+      "allowText": "이 앱은 ROMs 폴더에서 게임을 읽고 설정을 그 옆에 저장하므로 \"모든 파일 접근\" 권한이 필요합니다.",
+      "allow": "접근 허용",
+      "emptyText": "각 게임을 {{path}}(ES-DE의 ROMs 폴더) 안의 <code>게임 이름.x2</code> 폴더에 넣은 뒤 새로 고치세요."
+    }
   },
   "game": {
     "play": "플레이",
@@ -60,14 +67,19 @@
       "missing": "폴더 없음",
       "ready": "준비됨",
       "stale": "다시 빌드 필요",
-      "none": "빌드 안 됨"
+      "none": "빌드 안 됨",
+      "noPack": "팩 없음",
+      "unsupported": "아직 지원 안 됨"
     },
     "status": {
       "title": "상태",
       "missing": "폴더가 없거나 더 이상 이 게임이 들어 있지 않습니다. 아래에서 폴더를 다시 지정하세요.",
       "ready": "이 컴퓨터용으로 재컴파일되어 플레이할 준비가 되었습니다.",
       "stale": "다른 게임 사본이나 이전 버전의 런처로 빌드되었습니다. 다시 빌드하세요.",
-      "none": "아직 재컴파일되지 않았습니다. 빌드는 1~2분 정도 걸리며 사용자의 게임 사본만 사용합니다."
+      "none": "아직 재컴파일되지 않았습니다. 빌드는 1~2분 정도 걸리며 사용자의 게임 사본만 사용합니다.",
+      "noPack": "이 게임의 코드가 아직 이 기기에 없습니다. 컴퓨터의 런처에서 Android 팩을 내보내 이곳으로 보내세요.",
+      "packReady": "Android 팩이 설치되어 있습니다. 플레이할 수 있습니다.",
+      "unsupported": "이 게임은 아직 지원되지 않아 리컴파일러가 빌드할 수 없습니다. 찾았다는 것을 알 수 있도록 여기에 표시됩니다."
     },
     "noPlayer": "이 컴퓨터에서는 아직 플레이할 수 없습니다",
     "noPlayerText": "이 시스템용 x2-player가 없습니다. Android나 RetroArch용으로 게임을 내보낼 수는 있습니다.",
@@ -91,7 +103,12 @@
       "scale": "렌더링 배율",
       "scaleText": "게임 화면을 원래 크기의 배수로 렌더링합니다. 자동은 1280×1024에 맞는 가장 큰 배율을 고릅니다.",
       "scaleAuto": "자동",
-      "scaleOriginal": "1×(원본)"
+      "scaleOriginal": "1×(원본)",
+      "touch": "화면 터치 패드",
+      "touchText": "자동은 컨트롤러가 연결되지 않은 동안 터치스크린에 표시합니다.",
+      "touchAuto": "자동",
+      "touchAlways": "항상",
+      "touchNever": "사용 안 함"
     },
     "advanced": {
       "title": "고급",
@@ -102,7 +119,10 @@
       "logAll": "전부(-vvv)",
       "env": "환경 변수",
       "envText": "추가 런타임 스위치를 한 줄에 하나씩 KEY=VALUE 형식으로 입력합니다(문서의 Debugging → Switches 참고)."
-    }
+    },
+    "pack": "게임 팩",
+    "packText": "{{size}} · {{when}} 설치",
+    "hereDevice": "이 기기"
   },
   "controls": {
     "title": "조작",

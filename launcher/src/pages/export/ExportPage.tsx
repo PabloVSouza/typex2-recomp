@@ -21,7 +21,7 @@ export function ExportPage() {
   const install = useAction(api.installTools);
   const cancel = useAction(api.cancelJob);
   if (!data) return null;
-  const games = data.games.filter((g) => g.found);
+  const games = data.games.filter((g) => g.found && g.supported);
   const chosen = picked ?? new Set(games.map((g) => g.id));
   const x = data.targets.find((y) => y.id === target)!;
   const missing = x.needs.map((id) => data.tools.find((tool) => tool.id === id)!).filter((tool) => tool && !tool.path);
@@ -51,7 +51,7 @@ export function ExportPage() {
           <div className="px-5 pb-4 text-sm text-muted-foreground">{t("export.noGames")}</div>
         ) : (
           <div className="grid gap-2 px-5 pb-4 sm:grid-cols-2">
-            {games.map((g) => <GamePick key={g.id} title={g.info?.title ?? g.id} on={chosen.has(g.id)} onClick={() => toggle(g.id)} />)}
+            {games.map((g) => <GamePick key={g.id} title={g.title} on={chosen.has(g.id)} onClick={() => toggle(g.id)} />)}
           </div>
         )}
         <JobProgress match={`export:${x.id}`} className="mx-5 mb-4" />

@@ -38,6 +38,8 @@ export const api = {
   listDevices: () => call<DeviceList>("list_devices"),
   /** The last export of a target to a device: "app" (installed) or "core" (copied for RetroArch). */
   sendExport: (target: string, serial: string) => call<string>("send_export", { target, serial }),
+  /** Android: the system screen granting "All files access". */
+  allowAllFiles: () => call<void>("allow_all_files"),
 };
 
 export async function pickFolder(title: string): Promise<string | null> {

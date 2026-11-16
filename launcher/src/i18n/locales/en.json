@@ -50,7 +50,14 @@
     "pickFolder": "Choose a game folder (the one holding game.exe)",
     "emptyTitle": "No games yet",
     "emptyText": "Choose a game's folder (the one with its <code>game.exe</code>), or scan a folder that holds several. The launcher recognises the supported games by their executable.",
-    "alsoSupported": "Also supported"
+    "android": {
+      "description": "Your games in {{path}}. Their code comes from the launcher on your computer: export each game's Android pack there and send it to this device.",
+      "refresh": "Refresh",
+      "allowTitle": "Allow access to your games",
+      "allowText": "This app reads your games from the ROMs folder and saves their settings next to them, which needs \"All files access\".",
+      "allow": "Allow access",
+      "emptyText": "Put each game in its own folder named <code>Game name.x2</code> in {{path}} (ES-DE's ROMs folder), then refresh."
+    }
   },
   "game": {
     "play": "Play",
@@ -61,14 +68,19 @@
       "missing": "Folder missing",
       "ready": "Ready",
       "stale": "Rebuild needed",
-      "none": "Not built"
+      "none": "Not built",
+      "noPack": "No pack",
+      "unsupported": "Not supported yet"
     },
     "status": {
       "title": "Status",
       "missing": "The folder is gone or no longer holds this game. Point the launcher at it again below.",
       "ready": "Recompiled for this computer and ready to play.",
       "stale": "Built from another copy of the game or by an older launcher: build it again.",
-      "none": "Not recompiled yet. Building takes a minute or two and uses only your own copy of the game."
+      "none": "Not recompiled yet. Building takes a minute or two and uses only your own copy of the game.",
+      "noPack": "This game's code isn't on this device yet. On your computer, export its Android pack in the launcher and send it here.",
+      "packReady": "Its Android pack is installed: ready to play.",
+      "unsupported": "This game isn't supported yet: the recompiler can't build it. It shows up here so you know it was found."
     },
     "noPlayer": "Playing here is not available on this computer yet",
     "noPlayerText": "There is no x2-player for this system. You can still export the game for Android or RetroArch.",
@@ -92,7 +104,12 @@
       "scale": "Render scale",
       "scaleText": "The game's frame rendered at a multiple of its size. Automatic picks the largest that fits 1280×1024.",
       "scaleAuto": "Automatic",
-      "scaleOriginal": "1× (original)"
+      "scaleOriginal": "1× (original)",
+      "touch": "On-screen touch pad",
+      "touchText": "Automatic shows it on touch screens while no pad is connected.",
+      "touchAuto": "Automatic",
+      "touchAlways": "Always",
+      "touchNever": "Never"
     },
     "advanced": {
       "title": "Advanced",
@@ -103,7 +120,10 @@
       "logAll": "Everything (-vvv)",
       "env": "Environment",
       "envText": "Extra runtime switches, one KEY=VALUE per line (see Debugging → Switches in the docs)."
-    }
+    },
+    "pack": "Game pack",
+    "packText": "{{size}} · installed {{when}}",
+    "hereDevice": "This device"
   },
   "controls": {
     "title": "Controls",

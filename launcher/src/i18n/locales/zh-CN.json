@@ -49,7 +49,14 @@
     "pickFolder": "选择游戏文件夹（包含 game.exe 的文件夹）",
     "emptyTitle": "暂无游戏",
     "emptyText": "选择游戏的文件夹（包含 <code>game.exe</code> 的那个），或扫描包含多个游戏的文件夹。启动器通过可执行文件识别受支持的游戏。",
-    "alsoSupported": "其他支持的游戏"
+    "android": {
+      "description": "{{path}} 中的游戏。它们的代码来自电脑上的启动器：在那里导出每个游戏的 Android 包，再发送到此设备。",
+      "refresh": "刷新",
+      "allowTitle": "允许访问你的游戏",
+      "allowText": "此应用从 ROMs 文件夹读取游戏，并把设置保存在游戏旁边，因此需要“所有文件访问权限”。",
+      "allow": "允许访问",
+      "emptyText": "把每个游戏放进 {{path}}（ES-DE 的 ROMs 文件夹）中名为 <code>游戏名.x2</code> 的单独文件夹，然后刷新。"
+    }
   },
   "game": {
     "play": "开始游戏",
@@ -60,14 +67,19 @@
       "missing": "文件夹丢失",
       "ready": "就绪",
       "stale": "需重新构建",
-      "none": "未构建"
+      "none": "未构建",
+      "noPack": "无游戏包",
+      "unsupported": "暂不支持"
     },
     "status": {
       "title": "状态",
       "missing": "文件夹已不存在，或其中已没有此游戏。请在下方重新指定文件夹。",
       "ready": "已为本机重编译，可以开始游戏。",
       "stale": "由另一份游戏副本或旧版启动器构建，请重新构建。",
-      "none": "尚未重编译。构建需要一两分钟，且只使用你自己的游戏副本。"
+      "none": "尚未重编译。构建需要一两分钟，且只使用你自己的游戏副本。",
+      "noPack": "此游戏的代码还不在此设备上。请在电脑上的启动器中导出它的 Android 包并发送到这里。",
+      "packReady": "已安装 Android 包：可以开始游戏。",
+      "unsupported": "此游戏暂不支持：重编译器还无法构建它。它显示在这里，让你知道已经找到它。"
     },
     "noPlayer": "本机暂不支持在此游玩",
     "noPlayerText": "此系统没有可用的 x2-player。你仍可将游戏导出到 Android 或 RetroArch。",
@@ -91,7 +103,12 @@
       "scale": "渲染倍数",
       "scaleText": "按原始尺寸的整数倍渲染游戏画面。自动会选择能放入 1280×1024 的最大倍数。",
       "scaleAuto": "自动",
-      "scaleOriginal": "1×（原始）"
+      "scaleOriginal": "1×（原始）",
+      "touch": "屏幕触控手柄",
+      "touchText": "自动：在触摸屏上且未连接手柄时显示。",
+      "touchAuto": "自动",
+      "touchAlways": "始终",
+      "touchNever": "从不"
     },
     "advanced": {
       "title": "高级",
@@ -102,7 +119,10 @@
       "logAll": "全部 (-vvv)",
       "env": "环境变量",
       "envText": "额外的运行时开关，每行一个 KEY=VALUE（参见文档中的 Debugging → Switches）。"
-    }
+    },
+    "pack": "游戏包",
+    "packText": "{{size}} · {{when}}安装",
+    "hereDevice": "此设备"
   },
   "controls": {
     "title": "按键设置",

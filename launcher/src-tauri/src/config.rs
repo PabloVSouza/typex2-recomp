@@ -18,6 +18,8 @@ pub struct GameSettings {
     pub vsync: bool,
     /// Log level 0-3 (-v, -vv, -vvv).
     pub log_level: u8,
+    /// On-screen touch pad: 0 automatic (touch screens without a pad), 1 always, 2 never (X2_TOUCH).
+    pub touch: u8,
     /// Extra environment, one KEY=VALUE per line.
     pub env: String,
 }
@@ -92,6 +94,11 @@ impl GameSettings {
         if self.vsync {
             env.push(("X2_VSYNC".into(), "1".into()));
         }
+        match self.touch {
+            1 => env.push(("X2_TOUCH".into(), "1".into())),
+            2 => env.push(("X2_TOUCH".into(), "0".into())),
+            _ => {}
+        }
         for line in self.env.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             if let Some((k, v)) = line.split_once('=') {
                 env.push((k.trim().into(), v.trim().into()));
@@ -104,6 +111,42 @@ impl GameSettings {
             args.push(format!("-{}", "v".repeat(self.log_level.min(3) as usize)));
         }
         (env, args)
+    }
+}
+
+impl GameSettings {
+    /// The game folder's `x2.env` for these settings (Android: the app and ES-DE launches read it).
+    /// The log level, an argument on the desktop, is X2_LOG there.
+    pub fn env_file(&self) -> String {
+        let mut env = self.launch().0;
+        if self.log_level > 0 {
+            env.insert(0, ("X2_LOG".into(), self.log_level.min(3).to_string()));
+        }
+        env.iter().map(|(k, v)| format!("{k}={v}\n")).collect()
+    }
+
+    /// Settings from an existing `x2.env`: the switches the launcher shows become its settings,
+    /// every other line stays in the extra environment.
+    pub fn from_env_file(text: &str) -> GameSettings {
+        let mut s = GameSettings::default();
+        let mut extra = Vec::new();
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            let Some((k, v)) = line.split_once('=').map(|(k, v)| (k.trim(), v.trim())) else {
+                extra.push(line);
+                continue;
+            };
+            match k {
+                "X2_FPS" => s.fps = v != "0",
+                "X2_PAD" => s.pad = v.into(),
+                "X2_BB_SCALE" => s.scale = v.parse().unwrap_or(0),
+                "X2_VSYNC" => s.vsync = v != "0",
+                "X2_TOUCH" => s.touch = if v == "0" { 2 } else { 1 },
+                "X2_LOG" => s.log_level = v.parse::<u8>().unwrap_or(0).min(3),
+                _ => extra.push(line),
+            }
+        }
+        s.env = extra.join("\n");
+        s
     }
 }
 
@@ -122,6 +165,19 @@ mod tests {
         assert_eq!(env, vec![("X2_FPS".into(), "1".into()), ("X2_PAD".into(), "l1=1".into()), ("X2_BB_SCALE".into(), "2".into()), ("X2_TOUCH".into(), "0".into())]);
         assert_eq!(args, vec!["-f".to_string(), "-vv".to_string()]);
         assert!(GameSettings::default().launch().0.is_empty());
+    }
+
+    #[test]
+    fn env_files_round_trip_through_settings() {
+        let text = "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\n# mine\nX2_TOUCH=0\nX2_PACELOG=1\n";
+        let s = GameSettings::from_env_file(text);
+        assert!(s.fps);
+        assert_eq!(s.pad, "l1=a,west=c");
+        assert_eq!(s.touch, 2);
+        assert_eq!(s.env, "# mine\nX2_PACELOG=1");
+        assert_eq!(s.log_level, 2);
+        assert_eq!(s.env_file(), "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\nX2_TOUCH=0\nX2_PACELOG=1\n");
+        assert_eq!(GameSettings::default().env_file(), "");
     }
 
     #[test]

@@ -104,14 +104,35 @@ pub fn identify(dir: &Path) -> Result<(&'static Game, PathBuf), String> {
     })
 }
 
-/// The supported games under `root` (a folder holding the game folders, like a collection on
+/// A game folder as the library lists it: a supported game, or another game's executable (not
+/// supported yet), kept as `other-<size>-<entry>` so each game is listed once.
+pub struct Detected {
+    pub id: String,
+    pub game: Option<&'static Game>,
+}
+
+/// Any game in `dir`: a supported one first, else the first executable with a PE header.
+pub fn detect(dir: &Path) -> Option<Detected> {
+    if let Ok((game, _)) = identify(dir) {
+        return Some(Detected { id: game.id.into(), game: Some(game) });
+    }
+    EXE_NAMES.iter().find_map(|name| pe_identity(&dir.join(name))).map(|(size, entry)| Detected { id: format!("other-{size:08x}-{entry:08x}"), game: None })
+}
+
+/// The name an unsupported game is listed under: its folder's, without ES-DE's `.x2`.
+pub fn folder_title(path: &str) -> String {
+    let name = Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.into());
+    name.strip_suffix(".x2").unwrap_or(&name).to_string()
+}
+
+/// The games under `root` (a folder holding the game folders, like a collection on
 /// another disk), each with its folder: folders are searched breadth-first, at most `SCAN_DEPTH`
 /// levels down, skipping hidden folders and links; a folder holding a game is not searched further,
 /// and only the first copy of a game counts. `SCAN_MAX_DIRS` keeps a whole disk from being walked.
-pub fn scan(root: &Path) -> Vec<(&'static Game, PathBuf)> {
+pub fn scan(root: &Path) -> Vec<(Detected, PathBuf)> {
     const SCAN_DEPTH: usize = 4;
     const SCAN_MAX_DIRS: usize = 20_000;
-    let mut found: Vec<(&'static Game, PathBuf)> = Vec::new();
+    let mut found: Vec<(Detected, PathBuf)> = Vec::new();
     let mut queue = std::collections::VecDeque::from([(root.to_path_buf(), 0usize)]);
     let mut visited = 0;
     while let Some((dir, depth)) = queue.pop_front() {
@@ -119,7 +140,7 @@ pub fn scan(root: &Path) -> Vec<(&'static Game, PathBuf)> {
         if visited > SCAN_MAX_DIRS {
             break;
         }
-        if let Ok((game, _)) = identify(&dir) {
+        if let Some(game) = detect(&dir) {
             if !found.iter().any(|(g, _)| g.id == game.id) {
                 found.push((game, dir));
             }
@@ -180,18 +201,22 @@ mod tests {
         let kof = root.join("SNK").join("KOF 98 UM").join("data"); // deeper, under a publisher folder
         let copy = root.join("Backups").join("BlazBlue CT copy");
         let hidden = root.join(".trash").join("BlazBlue");
-        for d in [&bbct, &kof, &copy, &hidden] {
+        let other = root.join("Raiden IV.x2"); // a game not supported yet
+        for d in [&bbct, &kof, &copy, &hidden, &other] {
             std::fs::create_dir_all(d).unwrap();
         }
         std::fs::write(bbct.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
         std::fs::write(copy.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
         std::fs::write(hidden.join("launcher.exe"), pe(0x400000, 0x0d703e, 0x714000)).unwrap();
         std::fs::write(kof.join("game.exe"), pe(0x400000, 0x1b5250, 0x18e5000)).unwrap();
+        std::fs::write(other.join("game.exe"), pe(0x400000, 0x1000, 0x2000)).unwrap();
         let found = scan(&root);
-        let ids: Vec<&str> = found.iter().map(|(g, _)| g.id).collect();
-        assert_eq!(ids, ["bbct", "kof98um"]); // the first copy only, nothing from the hidden folder
+        let ids: Vec<&str> = found.iter().map(|(g, _)| g.id.as_str()).collect();
+        assert_eq!(ids, ["bbct", "other-00002000-00401000", "kof98um"]); // the first copy only, nothing hidden
+        assert!(found[1].0.game.is_none());
+        assert_eq!(folder_title(&found[1].1.to_string_lossy()), "Raiden IV");
         assert_eq!(found[0].1, bbct);
-        assert_eq!(found[1].1, kof);
+        assert_eq!(found[2].1, kof);
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

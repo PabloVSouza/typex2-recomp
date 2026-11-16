@@ -1,5 +1,8 @@
 //! The launcher: the user's game folders, building them for this computer or another platform
 //! (recomp.rs), the downloaded build tools (toolchain.rs), and playing where a player exists.
+//! On Android it is the app: games found in ES-DE's ROMs folder, played from packs (android.rs).
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod config;
 pub mod device;
 pub mod games;
@@ -10,11 +13,16 @@ pub mod updates;
 
 use config::{Config, GameEntry, GameSettings};
 use serde_json::{json, Value};
+#[cfg(not(target_os = "android"))]
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
+#[cfg(not(target_os = "android"))]
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
+#[cfg(not(target_os = "android"))]
+use tauri::Emitter;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -49,9 +57,51 @@ fn exe_of(entry: &GameEntry) -> Option<PathBuf> {
     games::identify(Path::new(&entry.path)).ok().map(|(_, exe)| exe)
 }
 
+/// A supported game's title, else the name of its folder.
+fn title_of(id: &str, path: &str) -> String {
+    games::by_id(id).map(|g| g.title.to_string()).unwrap_or_else(|| games::folder_title(path))
+}
+
+/// Whether the game is ready to play: its library built for this computer, or on Android its pack.
+fn library_status(state: &AppState, id: &str, exe: Option<&Path>) -> Value {
+    #[cfg(target_os = "android")]
+    {
+        let _ = (state, exe);
+        android::pack_status(id)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = id;
+        json!(recomp::library_status(&state.data, state.kit.as_ref(), exe))
+    }
+}
+
+fn android_info() -> Value {
+    #[cfg(target_os = "android")]
+    return android::info();
+    #[cfg(not(target_os = "android"))]
+    Value::Null
+}
+
+/// Android: the system screen granting "All files access" (the ROMs folder, x2.env).
+#[tauri::command]
+fn allow_all_files() -> Result<()> {
+    #[cfg(target_os = "android")]
+    return android::request_all_files_access();
+    #[cfg(not(target_os = "android"))]
+    Err("Only on Android.".into())
+}
+
 /// Everything the window shows, in one call.
 #[tauri::command]
 fn load_state(state: State<AppState>) -> Result<Value> {
+    #[cfg(target_os = "android")]
+    {
+        let mut c = state.config.lock().map_err(|e| e.to_string())?;
+        if android::sync(&mut c) {
+            c.save(&config::path(&state.data))?;
+        }
+    }
     let config = state.config()?;
     let running = state.running.lock().ok().and_then(|r| r.as_ref().map(|r| r.game.clone()));
     let games: Vec<Value> = config
@@ -64,8 +114,10 @@ fn load_state(state: State<AppState>) -> Result<Value> {
                 "path": entry.path,
                 "settings": entry.settings,
                 "info": games::by_id(&entry.id),
-                "found": exe.is_some(),
-                "library": recomp::library_status(&state.data, state.kit.as_ref(), exe.as_deref()),
+                "title": title_of(&entry.id, &entry.path),
+                "supported": games::by_id(&entry.id).is_some(),
+                "found": exe.is_some() || (games::by_id(&entry.id).is_none() && games::detect(Path::new(&entry.path)).is_some()),
+                "library": library_status(&state, &entry.id, exe.as_deref()),
             })
         })
         .collect();
@@ -75,7 +127,8 @@ fn load_state(state: State<AppState>) -> Result<Value> {
         "arch": std::env::consts::ARCH,
         "data": state.data,
         "kit": state.kit,
-        "can_play": state.kit.as_ref().is_some_and(|k| k.player.is_some()),
+        "can_play": cfg!(target_os = "android") || state.kit.as_ref().is_some_and(|k| k.player.is_some()),
+        "android": android_info(),
         "catalog": games::GAMES,
         "games": games,
         "ndk": config.ndk,
@@ -95,15 +148,15 @@ fn load_state(state: State<AppState>) -> Result<Value> {
 /// Adds a game folder (or points an added game at a new folder).
 #[tauri::command]
 fn add_game(state: State<AppState>, path: String) -> Result<Value> {
-    let (game, _) = games::identify(Path::new(&path))?;
+    let found = games::detect(Path::new(&path)).ok_or("No game.exe or launcher.exe in this folder. Choose the folder that holds the game's executable.")?;
     state.update(|c| {
-        match c.games.iter_mut().find(|g| g.id == game.id) {
+        match c.games.iter_mut().find(|g| g.id == found.id) {
             Some(g) => g.path = path.clone(),
-            None => c.games.push(GameEntry { id: game.id.into(), path: path.clone(), settings: GameSettings::default() }),
+            None => c.games.push(GameEntry { id: found.id.clone(), path: path.clone(), settings: GameSettings::default() }),
         }
         Ok(())
     })?;
-    Ok(json!({"id": game.id, "title": game.title}))
+    Ok(json!({"id": found.id, "title": title_of(&found.id, &path)}))
 }
 
 /// Adds every supported game found under `path` (games::scan); a game already in the library
@@ -116,17 +169,18 @@ async fn scan_folder(state: State<'_, AppState>, path: String) -> Result<Value> 
     state.update(|c| {
         for (game, dir) in &found {
             let dir = dir.to_string_lossy().into_owned();
+            let title = title_of(&game.id, &dir);
             let new = match c.games.iter_mut().find(|g| g.id == game.id) {
                 Some(g) => {
                     g.path = dir;
                     false
                 }
                 None => {
-                    c.games.push(GameEntry { id: game.id.into(), path: dir, settings: GameSettings::default() });
+                    c.games.push(GameEntry { id: game.id.clone(), path: dir, settings: GameSettings::default() });
                     true
                 }
             };
-            out.push(json!({"id": game.id, "title": game.title, "new": new}));
+            out.push(json!({"id": game.id, "title": title, "new": new}));
         }
         Ok(())
     })?;
@@ -149,6 +203,9 @@ fn save_game_settings(state: State<AppState>, id: String, settings: GameSettings
     state.update(|c| {
         let g = c.games.iter_mut().find(|g| g.id == id).ok_or("Unknown game.")?;
         g.settings = settings;
+        // Android: the game folder's x2.env holds them, for ES-DE launches too
+        #[cfg(target_os = "android")]
+        android::write_env(g)?;
         Ok(())
     })
 }
@@ -256,6 +313,9 @@ fn delete_builds(state: State<AppState>, id: String) -> Result<()> {
     if state.jobs.running().is_some_and(|j| j.ends_with(&format!(":{id}"))) {
         return Err("Cancel the build first.".into());
     }
+    #[cfg(target_os = "android")]
+    return android::delete_pack(&id);
+    #[cfg(not(target_os = "android"))]
     recomp::delete_game_builds(&state.data, &id)
 }
 
@@ -265,7 +325,23 @@ fn delete_builds(state: State<AppState>, id: String) -> Result<()> {
 fn launch(app: AppHandle, state: State<AppState>, id: String) -> Result<()> {
     let config = state.config()?;
     let entry = config.game(&id).ok_or("This game is not in the library.")?.clone();
-    let (_, exe) = game_and_exe(&config, &id)?;
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        if android::pack_status(&id)["state"] != "ready" {
+            return Err("Send this game's Android pack from the launcher on your computer first.".into());
+        }
+        android::write_env(&entry)?;
+        android::play(&entry.path)
+    }
+    #[cfg(not(target_os = "android"))]
+    launch_desktop(app, &state, &config, entry, id)
+}
+
+/// The desktop: x2-player with the game's library, its output passed on as events.
+#[cfg(not(target_os = "android"))]
+fn launch_desktop(app: AppHandle, state: &AppState, config: &Config, entry: GameEntry, id: String) -> Result<()> {
+    let (_, exe) = game_and_exe(config, &id)?;
     let player = state.kit()?.player.clone().ok_or("No x2-player for this computer.")?;
     if recomp::library_status(&state.data, state.kit.as_ref(), Some(&exe)).state != "ready" {
         return Err("Build the game for this computer first.".into());
@@ -379,7 +455,8 @@ pub fn run() {
             list_devices,
             send_export,
             updates::check_release,
-            updates::open_release
+            updates::open_release,
+            allow_all_files
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {

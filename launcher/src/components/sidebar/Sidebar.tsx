@@ -13,12 +13,15 @@ export function Sidebar() {
   const { data } = useAppState();
   const { page, gameId, go } = useUi();
   const at = (p: Page) => page === p;
-  const tabs: [Page, string, ReactNode][] = [
+  // the Android app plays games built elsewhere: no exports or build tools there
+  const desktop = data?.os !== "android";
+  const all: [Page, string, ReactNode][] = [
     ["export", t("nav.export"), <Boxes key="e" />],
     ["tools", t("nav.tools"), <Wrench key="t" />],
     ["log", t("nav.log"), <ScrollText key="l" />],
     ["about", t("nav.about"), <Info key="a" />],
   ];
+  const tabs = desktop ? all : all.filter(([p]) => p !== "export" && p !== "tools");
   return (
     <aside className={cn("drag flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/70 px-3 pb-4 backdrop-blur-sm", data?.os === "macos" ? "pt-11" : "pt-5")} data-tauri-drag-region>
       <div className="mb-7 px-2"><Brand /></div>
@@ -30,7 +33,7 @@ export function Sidebar() {
             {data.games.map((g) => (
               <NavItem
                 key={g.id}
-                label={g.info?.title ?? g.id}
+                label={g.title}
                 icon={<Gamepad2 />}
                 active={at("game") && gameId === g.id}
                 onClick={() => go("game", g.id)}

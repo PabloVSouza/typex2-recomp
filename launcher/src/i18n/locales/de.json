@@ -50,7 +50,14 @@
     "pickFolder": "Spielordner wählen (der Ordner mit game.exe)",
     "emptyTitle": "Noch keine Spiele",
     "emptyText": "Wählen Sie den Ordner eines Spiels (den mit seiner <code>game.exe</code>) oder durchsuchen Sie einen Ordner mit mehreren. Der Launcher erkennt die unterstützten Spiele an ihrer ausführbaren Datei.",
-    "alsoSupported": "Ebenfalls unterstützt"
+    "android": {
+      "description": "Deine Spiele in {{path}}. Ihr Code kommt vom Launcher auf deinem Computer: Exportiere dort das Android-Paket jedes Spiels und sende es an dieses Gerät.",
+      "refresh": "Aktualisieren",
+      "allowTitle": "Zugriff auf deine Spiele erlauben",
+      "allowText": "Diese App liest deine Spiele aus dem ROMs-Ordner und speichert ihre Einstellungen daneben. Dafür braucht sie „Zugriff auf alle Dateien“.",
+      "allow": "Zugriff erlauben",
+      "emptyText": "Lege jedes Spiel in einen eigenen Ordner namens <code>Spielname.x2</code> in {{path}} (der ROMs-Ordner von ES-DE) und aktualisiere dann."
+    }
   },
   "game": {
     "play": "Spielen",
@@ -61,14 +68,19 @@
       "missing": "Ordner fehlt",
       "ready": "Bereit",
       "stale": "Neu bauen nötig",
-      "none": "Nicht gebaut"
+      "none": "Nicht gebaut",
+      "noPack": "Kein Paket",
+      "unsupported": "Noch nicht unterstützt"
     },
     "status": {
       "title": "Status",
       "missing": "Der Ordner ist nicht mehr vorhanden oder enthält dieses Spiel nicht mehr. Wählen Sie ihn unten erneut aus.",
       "ready": "Für diesen Computer rekompiliert und spielbereit.",
       "stale": "Aus einer anderen Kopie des Spiels oder mit einem älteren Launcher gebaut: bitte neu bauen.",
-      "none": "Noch nicht rekompiliert. Der Build dauert ein bis zwei Minuten und verwendet nur Ihre eigene Kopie des Spiels."
+      "none": "Noch nicht rekompiliert. Der Build dauert ein bis zwei Minuten und verwendet nur Ihre eigene Kopie des Spiels.",
+      "noPack": "Der Code dieses Spiels ist noch nicht auf diesem Gerät. Exportiere auf deinem Computer im Launcher sein Android-Paket und sende es hierher.",
+      "packReady": "Sein Android-Paket ist installiert: bereit zum Spielen.",
+      "unsupported": "Dieses Spiel wird noch nicht unterstützt: Der Recompiler kann es nicht bauen. Es steht hier, damit du siehst, dass es gefunden wurde."
     },
     "noPlayer": "Spielen ist auf diesem Computer noch nicht möglich",
     "noPlayerText": "Für dieses System gibt es keinen x2-player. Sie können das Spiel trotzdem für Android oder RetroArch exportieren.",
@@ -92,7 +104,12 @@
       "scale": "Renderskalierung",
       "scaleText": "Das Bild des Spiels wird in einem Vielfachen seiner Größe gerendert. Automatisch wählt das größte, das in 1280×1024 passt.",
       "scaleAuto": "Automatisch",
-      "scaleOriginal": "1× (Original)"
+      "scaleOriginal": "1× (Original)",
+      "touch": "Touch-Steuerung auf dem Bildschirm",
+      "touchText": "Automatisch zeigt sie auf Touchscreens, solange kein Controller verbunden ist.",
+      "touchAuto": "Automatisch",
+      "touchAlways": "Immer",
+      "touchNever": "Nie"
     },
     "advanced": {
       "title": "Erweitert",
@@ -103,7 +120,10 @@
       "logAll": "Alles (-vvv)",
       "env": "Umgebung",
       "envText": "Zusätzliche Runtime-Schalter, ein KEY=VALUE pro Zeile (siehe Debugging → Switches in der Dokumentation)."
-    }
+    },
+    "pack": "Spielpaket",
+    "packText": "{{size}} · installiert {{when}}",
+    "hereDevice": "Dieses Gerät"
   },
   "controls": {
     "title": "Steuerung",

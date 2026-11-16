@@ -16,15 +16,20 @@ const catalog: GameInfo[] = [
   { id: "kof98um", title: "The King of Fighters '98 Ultimate Match", board: "Type X", year: 2008, publisher: "SNK Playmore", layouts: kof },
   { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", layouts: kof },
 ];
-const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, env: "" };
+const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, touch: 0, env: "" };
 const entry = (id: string, state: "none" | "ready" | "stale") => ({
-  id, path: `/Games/${catalog.find((g) => g.id === id)!.title}`, settings, info: catalog.find((g) => g.id === id)!, found: true,
+  id, path: `/Games/${catalog.find((g) => g.id === id)!.title}`, title: catalog.find((g) => g.id === id)!.title, supported: true, settings, info: catalog.find((g) => g.id === id)!, found: true,
   library: { state, built: state === "none" ? null : { built: 1763000000, seconds: 74, size: 11228104, functions: 10967 } },
 });
+// a game the recompiler does not support yet: listed under its folder's name
+const other = { id: "other-00a3c000-0045e2f1", path: "/Games/Raiden IV.x2", title: "Raiden IV", supported: false, settings, info: null, found: true, library: { state: "none" as const, built: null } };
+// ?android in the preview: the Android app's pages
+const android = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("android");
 const state: AppStateData = {
-  version: "0.1.0", os: "macos", arch: "aarch64", data: "~/Library/Application Support/io.github.typex2-recomp.launcher",
+  version: "0.1.0", os: android ? "android" : "macos", arch: "aarch64", data: "~/Library/Application Support/io.github.typex2-recomp.launcher",
   kit: { source: "~/typex2-recomp", x2recomp: "build/recompiler/x2recomp", player: "build/x2-player", kind: "checkout" },
-  can_play: true, catalog, games: [entry("kof13", "ready"), entry("ssf4ae", "none"), entry("bbcs", "stale"), entry("kof98um", "ready")],
+  can_play: true, catalog, games: [entry("kof13", "ready"), entry("ssf4ae", "none"), entry("bbcs", android ? "none" : "stale"), entry("kof98um", "ready"), other],
+  android: android ? { all_files: false, roms: "/storage/emulated/0/ROMs/arcade", incoming: "/storage/emulated/0/Android/data/com.typex2.recomp/files/packs" } : null,
   ndk: "", jobs: 0, language: "", check_updates: true, job: null, running: null,
   targets: [
     { id: "android-retroarch", name: "RetroArch core for Android", description: "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
@@ -52,6 +57,7 @@ const state: AppStateData = {
 export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === "load_state") return structuredClone(state);
   if (cmd === "save_language") state.language = args?.language as string;
+  if (cmd === "allow_all_files" && state.android) state.android.all_files = true;
   if (cmd === "save_update_check") state.check_updates = args?.enabled as boolean;
   if (cmd === "list_devices") return { adb: true, devices: [{ serial: "R8YL10WF7EZ", model: "SM X130", state: "device" }, { serial: "192.168.1.20:5555", model: "192.168.1.20:5555", state: "unauthorized" }] };
   if (cmd === "send_export") return new Promise((done) => setTimeout(() => done(args?.target === "android-app" ? "app" : "core"), 1200));

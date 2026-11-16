@@ -10,7 +10,7 @@ export function anonymize(text: string): string {
 
 /** A problem report: the installation, the games and their builds, the end of both logs. */
 export function buildReport(data: AppStateData, gameLog: string[], buildLog: string[]): string {
-  const games = data.games.map((g) => `- ${g.info?.title ?? g.id}: ${g.found ? g.library.state : "folder missing"}`);
+  const games = data.games.map((g) => `- ${g.title}: ${!g.supported ? "not supported yet" : g.found ? g.library.state : "folder missing"}`);
   const tail = (lines: string[]) => (lines.length ? lines.slice(-TAIL).join("\n") : "(empty)");
   const text = [
     "### What happened",
