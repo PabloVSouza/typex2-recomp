@@ -7,9 +7,28 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.2.0 - 2026-11-16
 
 The launcher becomes the Android app, and games' code travels as packs.
+
+**Updating the Android app: uninstall the old one first.** The new Type X2
+app is signed with the project's release key, so Android refuses to install
+it over an older Type X2 app. Your saves and settings are in your game
+folders and stay.
+
+1. On the device, uninstall **Type X2**: long-press its icon → App info →
+   Uninstall (or Settings → Apps → Type X2 → Uninstall).
+2. Install `typex2-android.apk` from this release and open it. Allow "All
+   files access" when it asks: it reads your ROMs folder and writes each
+   game's `x2.env`.
+3. In the launcher on your computer, Export → **Game packs for the Android
+   app** with your games, then **Send to device** (USB debugging on). Or
+   copy the `x2-*.so` files to `Android/data/com.typex2.recomp/files/packs`
+   on the device.
+4. Open the app again: it installs the packs and lists your games. ES-DE
+   launches them as before.
+
+Later versions of the app update in place.
 
 - **Android app:** the Type X2 app is now the launcher itself, with its
   library, game pages and settings, and comes from the releases page. It
@@ -17,8 +36,7 @@ The launcher becomes the Android app, and games' code travels as packs.
   computer and send them to the device. A new pack (after a runtime fix, or
   another game) needs no new app. The app finds your games in ES-DE's ROMs
   folder, writes each game's settings to its `x2.env` (ES-DE launches use
-  them), and runs full screen. Uninstall the old Type X2 app first: the new
-  one is signed with another key.
+  them), and runs full screen.
 - **Launcher:** games not supported yet are listed too, under their
   folder's name, as *Not supported yet*. The "Also supported" list is gone.
 - **Launcher:** sends an Android export straight to a connected device: the

@@ -47,7 +47,9 @@ computer.
 
 1. **Install the app** from the releases page (`typex2-android.apk`). On
    first start, allow "All files access": the app reads the ROMs folder and
-   writes each game's `x2.env`.
+   writes each game's `x2.env`. Coming from a Type X2 app older than 0.2.0, uninstall
+   it first: the new app is signed with the release key, and Android won't
+   install it over the old one (saves and settings are in the game folders).
 2. **Make the packs** on a computer: in the launcher, Export → **Game packs
    for the Android app**, with the games you own.
 3. **Send them:** Export → Last exports → **Send to device**, with the device
