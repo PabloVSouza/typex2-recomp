@@ -163,6 +163,17 @@
     "last": "Derniers exports",
     "none": "Rien n'a encore été exporté"
   },
+  "devices": {
+    "send": "Envoyer sur l'appareil",
+    "sendTo": "Envoyer sur {{device}}",
+    "sending": "Envoi…",
+    "installed": "L'application est installée sur l'appareil.",
+    "copied": "Le cœur est sur l'appareil.",
+    "copiedText": "Dans RetroArch : Charger un cœur → Installer ou restaurer un cœur → typex2_libretro_android.so.",
+    "needAdb": "Obtenir adb pour l'envoyer",
+    "none": "Connectez un appareil avec le débogage USB activé pour l'envoyer",
+    "unauthorized": "Autorisez cet ordinateur sur l'appareil (invite de débogage USB)"
+  },
   "targets": {
     "androidRetroarch": {
       "name": "Core RetroArch pour Android",
@@ -198,14 +209,16 @@
       "play": "Jouer sur cet ordinateur",
       "exports": "Exports",
       "android": "Exports Android",
-      "compile": "Compiler les jeux pour jouer sur cet ordinateur"
+      "compile": "Compiler les jeux pour jouer sur cet ordinateur",
+      "send": "Envoyer des exports sur un appareil"
     },
     "hints": {
       "kit": "Fourni avec l'application. Dans une copie du dépôt : {{command}}",
       "ccMac": "Ou installez les Command Line Tools d'Apple : xcode-select --install",
       "ccWindows": "Installez LLVM (clang) depuis llvm.org",
       "ccLinux": "Installez clang depuis les paquets de votre distribution",
-      "ndk": "Android Studio → SDK Manager → NDK"
+      "ndk": "Android Studio → SDK Manager → NDK",
+      "adb": "Android Studio → SDK Manager → SDK Tools → Android SDK Platform-Tools"
     },
     "storage": "Stockage",
     "downloaded": "Outils téléchargés",

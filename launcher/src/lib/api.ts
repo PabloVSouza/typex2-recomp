@@ -1,4 +1,4 @@
-import type { AppStateData, GameSettings, ReleaseInfo } from "@/lib/types";
+import type { AppStateData, DeviceList, GameSettings, ReleaseInfo } from "@/lib/types";
 import { mockInvoke } from "@/lib/mockApi";
 
 /** In the app: the Rust commands (src-tauri/src/lib.rs). In a plain browser (npm run dev):
@@ -34,6 +34,10 @@ export const api = {
   /** The newest launcher release on GitHub, or null when there is none. */
   checkRelease: () => call<ReleaseInfo | null>("check_release"),
   openRelease: (tag: string) => call<void>("open_release", { tag }),
+  /** Android devices adb sees, or adb: false without adb. */
+  listDevices: () => call<DeviceList>("list_devices"),
+  /** The last export of a target to a device: "app" (installed) or "core" (copied for RetroArch). */
+  sendExport: (target: string, serial: string) => call<string>("send_export", { target, serial }),
 };
 
 export async function pickFolder(title: string): Promise<string | null> {

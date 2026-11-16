@@ -18,7 +18,7 @@ Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Fr
 |---|---|---|
 | The King of Fighters XII | `kof12` | playable (macOS, Android standalone + RetroArch) |
 | The King of Fighters XIII | `kof13` | playable |
-| The King of Fighters XIII Climax | `kof13cl` | playable |
+| The King of Fighters XIII Climax | `kof13cl` | playable; Android: about 50 fps in fights on most stages (the green one holds 60) |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; 60 fps on the test tablet with Vulkan (GL: a few stages 50-55 fps) |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |
@@ -213,7 +213,10 @@ gets an entry per milestone. Update them with the README.
   characters, each with A then a colour (A), moving right between them, then
   the order screen with A, B, C: `1500:c 1700:s 2100:a 2250:a 2400:r 2450:a
   2600:a 2750:r 2800:a 2950:a 3300:a 3450:b 3600:c` (each released 6 frames
-  later); the fight starts near frame 4400.
+  later); the fight starts near frame 4400. Games that pick their stage at
+  random (KOF XIII / Climax, SSF4, BlazBlue) can differ by 3x in load from
+  one stage to another: identify the stage in each run's screenshot before
+  comparing two runs, or the comparison measures the stage.
 
 ## Android test device
 

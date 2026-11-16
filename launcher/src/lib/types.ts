@@ -22,3 +22,6 @@ export interface JobEvent {
 }
 /** A launcher release on GitHub (updates.rs). */
 export interface ReleaseInfo { version: string; tag: string; newer: boolean; notes: string }
+/** An Android device adb sees (device.rs); state "device" when usable. */
+export interface Device { serial: string; model: string; state: string }
+export interface DeviceList { adb: boolean; devices: Device[] }

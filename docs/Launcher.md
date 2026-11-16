@@ -15,8 +15,8 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 |---|---|
 | Library | Add game folders, or scan a folder that holds several (searched 4 levels deep; hidden folders skipped; each game's first copy counts). A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. |
 | Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (presets per game, or remapped button by button: Assign, then press the controller button; saved as an `X2_PAD` line), log detail and extra `X2_*` switches. |
-| Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. |
-| Build tools | What building needs, where each tool comes from, downloads and their removal. |
+| Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. An Android export can go straight to a connected device (USB debugging, or wireless debugging paired with `adb`): **Send to device** installs the app, or copies the core to `RetroArch/downloads/` for RetroArch's *Install or Restore a Core*. |
+| Build tools | What building needs, where each tool comes from, downloads and their removal. Android's platform tools (`adb`, for Send to device) download here too, or come from the Android SDK. |
 | Log | The game's output and the build tools' output. |
 | About | The launcher's language, updates (below), the installation (version, kit, data folder). |
 

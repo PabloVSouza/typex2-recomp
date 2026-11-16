@@ -159,6 +159,17 @@
     "last": "최근 내보내기",
     "none": "아직 내보낸 항목이 없습니다"
   },
+  "devices": {
+    "send": "기기로 보내기",
+    "sendTo": "{{device}}(으)로 보내기",
+    "sending": "보내는 중…",
+    "installed": "앱이 기기에 설치되었습니다.",
+    "copied": "코어가 기기로 전송되었습니다.",
+    "copiedText": "RetroArch에서: 코어 불러오기 → 코어 설치 또는 복원 → typex2_libretro_android.so.",
+    "needAdb": "보내려면 adb 받기",
+    "none": "보내려면 USB 디버깅을 켠 기기를 연결하세요",
+    "unauthorized": "기기에서 이 컴퓨터를 허용하세요 (USB 디버깅 확인)"
+  },
   "targets": {
     "androidRetroarch": {
       "name": "Android용 RetroArch 코어",
@@ -194,14 +205,16 @@
       "play": "이 컴퓨터에서 플레이",
       "exports": "내보내기",
       "android": "Android 내보내기",
-      "compile": "이 컴퓨터에서 플레이할 게임 컴파일"
+      "compile": "이 컴퓨터에서 플레이할 게임 컴파일",
+      "send": "기기로 내보내기 보내기"
     },
     "hints": {
       "kit": "앱에 포함되어 있습니다. 소스 체크아웃에서는: {{command}}",
       "ccMac": "또는 Apple's Command Line Tools 설치: xcode-select --install",
       "ccWindows": "llvm.org에서 LLVM(clang)을 설치하세요",
       "ccLinux": "배포판 패키지로 clang을 설치하세요",
-      "ndk": "Android Studio → SDK Manager → NDK"
+      "ndk": "Android Studio → SDK Manager → NDK",
+      "adb": "Android Studio → SDK Manager → SDK Tools → Android SDK Platform-Tools"
     },
     "storage": "저장 공간",
     "downloaded": "다운로드한 도구",

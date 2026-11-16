@@ -197,5 +197,7 @@ pub fn tools(kit: Option<&Kit>, data: &Path, ndk_setting: Option<&str>) -> Vec<T
     v.push(Tool { id: "ninja", name: "Ninja", path, source, for_what: "Exports", download: offered("ninja"), hint: "ninja-build.org" });
     let (path, source) = pick(tc::ndk_dir(data), ndk(ndk_setting));
     v.push(Tool { id: "ndk", name: "Android NDK", path, source, for_what: "Android exports", download: offered("ndk"), hint: "Android Studio → SDK Manager → NDK" });
+    let (path, source) = pick(tc::adb_bin(data), crate::device::system_adb());
+    v.push(Tool { id: "adb", name: "Android platform tools (adb)", path, source, for_what: "Sending exports to a device", download: offered("adb"), hint: "Android Studio → SDK Manager → SDK Tools → Platform-Tools" });
     v
 }

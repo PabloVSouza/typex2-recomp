@@ -1,6 +1,7 @@
 //! The launcher: the user's game folders, building them for this computer or another platform
 //! (recomp.rs), the downloaded build tools (toolchain.rs), and playing where a player exists.
 pub mod config;
+pub mod device;
 pub mod games;
 pub mod kit;
 pub mod recomp;
@@ -177,6 +178,29 @@ fn save_update_check(state: State<AppState>, enabled: bool) -> Result<()> {
     })
 }
 
+
+/// Android devices adb sees, or `adb: false` when there is no adb (Build tools downloads it).
+#[tauri::command]
+async fn list_devices(state: State<'_, AppState>) -> Result<Value> {
+    let Some(adb) = device::adb(&state.data) else { return Ok(json!({"adb": false, "devices": []})) };
+    let list = tauri::async_runtime::spawn_blocking(move || device::devices(&adb)).await.map_err(|e| e.to_string())??;
+    Ok(json!({"adb": true, "devices": list}))
+}
+
+/// Sends the last export of `target` to a device: the app installed, or the core copied for RetroArch.
+#[tauri::command]
+async fn send_export(state: State<'_, AppState>, target: String, serial: String) -> Result<String> {
+    let adb = device::adb(&state.data).ok_or("adb is missing: download it in Build tools.")?;
+    let record = recomp::exports(&state.data)
+        .into_iter()
+        .find(|e| e["target"] == target.as_str())
+        .ok_or("Nothing exported for this target yet.")?;
+    let files: Vec<String> = record["files"].as_array().into_iter().flatten().filter_map(|f| f.as_str().map(String::from)).collect();
+    let sent = tauri::async_runtime::spawn_blocking(move || device::send(&adb, &serial, &target, &files))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(sent.to_string())
+}
 fn game_and_exe(config: &Config, id: &str) -> Result<(&'static games::Game, PathBuf)> {
     let entry = config.game(id).ok_or("This game is not in the library.")?;
     let (game, exe) = games::identify(Path::new(&entry.path))?;
@@ -352,6 +376,8 @@ pub fn run() {
             read_pad,
             save_language,
             save_update_check,
+            list_devices,
+            send_export,
             updates::check_release,
             updates::open_release
         ])

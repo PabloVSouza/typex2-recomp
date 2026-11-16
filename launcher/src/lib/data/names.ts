@@ -42,6 +42,7 @@ export function toolUse(t: TFunction, x: Tool): string {
     case "player": case "cc": return t("tools.use.play");
     case "cmake": case "ninja": return t("tools.use.exports");
     case "ndk": return t("tools.use.android");
+    case "adb": return t("tools.use.send");
     default: return x.for_what;
   }
 }
@@ -53,6 +54,7 @@ export function toolHint(t: TFunction, x: Tool, os: string): string {
     case "player": return t("tools.hints.kit", { command: "cmake --build build --target x2-player" });
     case "cc": return os === "macos" ? t("tools.hints.ccMac") : os === "windows" ? t("tools.hints.ccWindows") : t("tools.hints.ccLinux");
     case "ndk": return t("tools.hints.ndk");
+    case "adb": return t("tools.hints.adb");
     default: return x.hint;
   }
 }
@@ -62,6 +64,7 @@ export function packageUse(t: TFunction, p: Package): string {
     case "llvm": return t("tools.use.compile");
     case "cmake": case "ninja": return t("tools.use.exports");
     case "ndk": return t("tools.use.android");
+    case "adb": return t("tools.use.send");
     default: return p.for_what;
   }
 }

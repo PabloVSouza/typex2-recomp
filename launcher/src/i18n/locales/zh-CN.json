@@ -159,6 +159,17 @@
     "last": "最近导出",
     "none": "尚未导出任何内容"
   },
+  "devices": {
+    "send": "发送到设备",
+    "sendTo": "发送到 {{device}}",
+    "sending": "正在发送…",
+    "installed": "应用已安装到设备。",
+    "copied": "核心已发送到设备。",
+    "copiedText": "在 RetroArch 中：加载核心 → 安装或恢复核心 → typex2_libretro_android.so。",
+    "needAdb": "获取 adb 以发送",
+    "none": "连接已开启 USB 调试的设备以发送",
+    "unauthorized": "请在设备上允许这台电脑（USB 调试提示）"
+  },
   "targets": {
     "androidRetroarch": {
       "name": "Android 版 RetroArch 核心",
@@ -194,14 +205,16 @@
       "play": "在本机游玩",
       "exports": "导出",
       "android": "Android 导出",
-      "compile": "编译游戏以在本机游玩"
+      "compile": "编译游戏以在本机游玩",
+      "send": "将导出内容发送到设备"
     },
     "hints": {
       "kit": "应用自带。在源码检出中：{{command}}",
       "ccMac": "或安装 Apple's Command Line Tools：xcode-select --install",
       "ccWindows": "从 llvm.org 安装 LLVM（clang）",
       "ccLinux": "通过发行版的软件包安装 clang",
-      "ndk": "Android Studio → SDK Manager → NDK"
+      "ndk": "Android Studio → SDK Manager → NDK",
+      "adb": "Android Studio → SDK Manager → SDK Tools → Android SDK Platform-Tools"
     },
     "storage": "存储",
     "downloaded": "已下载的工具",

@@ -4,6 +4,7 @@ import { Empty, Row, Section, SectionHeading } from "@/components/common";
 import { Badge, Button } from "@/components/ui";
 import { reveal } from "@/lib";
 import { targetName } from "@/lib/data";
+import { SendToDevice } from "@/pages/export/SendToDevice";
 import { when } from "@/lib";
 import type { AppStateData } from "@/lib";
 
@@ -25,6 +26,7 @@ export function LastExports({ data }: { data: AppStateData }) {
                 description={`${e.games.map((id) => data.catalog.find((g) => g.id === id)?.title ?? id).join(", ")} · ${when(e.built)}`}
               >
                 <Badge variant="secondary">{e.files[0]?.split(/[\\/]/).pop()}</Badge>
+                {e.target.startsWith("android-") && <SendToDevice target={e.target} />}
                 <Button variant="secondary" size="sm" onClick={() => e.files[0] && reveal(e.files[0])}><FolderOpen /> {t("common.show")}</Button>
               </Row>
             );

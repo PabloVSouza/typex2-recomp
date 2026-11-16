@@ -34,7 +34,8 @@ also keeps an unstripped `typex2_libretro_android.so.sym` for the profiler.
 ## The RetroArch core
 
 1. Copy `typex2_libretro_android.so` to `RetroArch/downloads/` on shared
-   storage.
+   storage, or let the launcher do it: Export → Last exports → **Send to
+   device**, with the device connected (USB debugging on).
 2. In RetroArch: *Load Core → Install or Restore a Core*, then pick the file.
    Android only loads cores from RetroArch's own data folder.
 

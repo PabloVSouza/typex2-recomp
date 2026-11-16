@@ -161,6 +161,17 @@
     "last": "Last exports",
     "none": "Nothing exported yet"
   },
+  "devices": {
+    "send": "Send to device",
+    "sendTo": "Send to {{device}}",
+    "sending": "Sending…",
+    "installed": "The app is installed on the device.",
+    "copied": "The core is on the device.",
+    "copiedText": "In RetroArch: Load Core → Install or Restore a Core → typex2_libretro_android.so.",
+    "needAdb": "Get adb to send it",
+    "none": "Connect a device with USB debugging on to send it",
+    "unauthorized": "Allow this computer on the device (USB debugging prompt)"
+  },
   "targets": {
     "androidRetroarch": {
       "name": "RetroArch core for Android",
@@ -196,14 +207,16 @@
       "play": "Playing on this computer",
       "exports": "Exports",
       "android": "Android exports",
-      "compile": "Compiling games to play on this computer"
+      "compile": "Compiling games to play on this computer",
+      "send": "Sending exports to a device"
     },
     "hints": {
       "kit": "Part of this app. In a checkout: {{command}}",
       "ccMac": "Or install Apple's Command Line Tools: xcode-select --install",
       "ccWindows": "Install LLVM (clang) from llvm.org",
       "ccLinux": "Install clang from your distribution's packages",
-      "ndk": "Android Studio → SDK Manager → NDK"
+      "ndk": "Android Studio → SDK Manager → NDK",
+      "adb": "Android Studio → SDK Manager → SDK Tools → Android SDK Platform-Tools"
     },
     "storage": "Storage",
     "downloaded": "Downloaded tools",

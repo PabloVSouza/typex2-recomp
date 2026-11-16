@@ -3,14 +3,16 @@
 //!   cargo run --example cli -- <data dir> library <game dir>
 //!   cargo run --example cli -- <data dir> export <target> <game dir>...
 //!   cargo run --example cli -- <data dir> scan <folder>   (the games the launcher would add; reads only)
+//!   cargo run --example cli -- <data dir> devices          (Android devices adb sees)
+//!   cargo run --example cli -- <data dir> send <android-app|android-retroarch> <serial> <file>
 //! The kit is found as the app finds it (X2_REPO, or the checkout above the working directory).
 use std::path::{Path, PathBuf};
-use typex2_launcher_lib::{games, kit, recomp, toolchain};
+use typex2_launcher_lib::{device, games, kit, recomp, toolchain};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        eprintln!("usage: cli <data dir> tools <id>... | library <game dir> | export <target> <game dir>... | scan <folder>");
+        eprintln!("usage: cli <data dir> tools <id>... | library <game dir> | export <target> <game dir>... | scan <folder> | devices | send <target> <serial> <file>");
         std::process::exit(2);
     }
     let data = PathBuf::from(&args[0]);
@@ -33,6 +35,12 @@ fn main() {
                 println!("{:8} {}", game.id, dir.display());
             }
             Ok(serde_json::Value::Null)
+        }
+        "devices" => device::adb(&data).ok_or_else(|| "no adb".to_string()).and_then(|adb| device::devices(&adb)).map(|d| serde_json::json!(d)),
+        "send" => {
+            let adb = device::adb(&data).expect("no adb");
+            let file = PathBuf::from(&args[4]);
+            device::send(&adb, &args[3], &args[2], &[file.display().to_string()]).map(|s| serde_json::json!(s))
         }
         other => Err(format!("unknown command {other}")),
     };

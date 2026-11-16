@@ -126,8 +126,23 @@ fn ndk() -> Option<Package> {
     pkg!("ndk", "Android NDK", "r30", size, NDK_FOR, url, Sum::Sha1(sum))
 }
 
+
+/// Android platform-tools r37.0.3 (adb), to send exports to a device; SHA-1 from Google's SDK
+/// repository manifest (repository2-3.xml). One build per OS (no Linux arm64 build).
+fn platform_tools() -> Option<Package> {
+    let (url, size, sum) = if cfg!(target_os = "macos") {
+        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-darwin.zip", 16597640, "eca4effbe35f4968139b051bbb16753302a3c33c")
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-linux.zip", 9571024, "e1579b288a7ae4e9bc28dedec6a154d78b3c04ed")
+    } else if cfg!(windows) {
+        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-win.zip", 8188595, "b3fde5239ad89229d5a9178375b81c9887a24172")
+    } else {
+        return None;
+    };
+    pkg!("adb", "Android platform tools (adb)", "37.0.3", size, "Sending exports to a device", url, Sum::Sha1(sum))
+}
 pub fn packages() -> Vec<Package> {
-    [LLVM, cmake(), ninja(), ndk()].into_iter().flatten().collect()
+    [LLVM, cmake(), ninja(), ndk(), platform_tools()].into_iter().flatten().collect()
 }
 
 pub fn root(data: &Path) -> PathBuf {
@@ -183,6 +198,10 @@ pub fn cmake_bin(data: &Path) -> Option<PathBuf> {
 pub fn ninja_bin(data: &Path) -> Option<PathBuf> {
     find_below(&installed(data, "ninja")?, &format!("ninja{}", crate::kit::EXE), 1)
 }
+pub fn adb_bin(data: &Path) -> Option<PathBuf> {
+    find_below(&installed(data, "adb")?, &format!("platform-tools/adb{}", crate::kit::EXE), 1)
+}
+
 
 pub fn ndk_dir(data: &Path) -> Option<PathBuf> {
     let f = find_below(&installed(data, "ndk")?, "build/cmake/android.toolchain.cmake", 3)?;

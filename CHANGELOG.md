@@ -7,14 +7,21 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Launcher:** sends an Android export straight to a connected device: the
+  app installed, or the RetroArch core copied, ready for RetroArch's *Install
+  or Restore a Core*. Android's platform tools (`adb`) download from Build
+  tools when needed.
+- **RetroArch:** a closed game now leaves 1-3 MB behind (was 4-20).
+
 ## 0.1.1 - 2026-11-16
 
 Smoother games, RetroArch Reset, and a launcher that tells you about updates.
 
-**Frame pacing:** every game keeps a steadier 60 fps. The games' own frame
+**Frame pacing:** steadier in every game. The games' own frame
 timers no longer fight the runtime's, and their worker threads no longer
-wake each other for nothing. KOF XIII Climax's fights went from about 50 to
-60 fps on Android; BlazBlue's late frames dropped by half or more.
+wake each other for nothing. BlazBlue's late frames dropped by half or more.
 
 **Android:**
 

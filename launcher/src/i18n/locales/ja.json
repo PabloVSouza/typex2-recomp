@@ -159,6 +159,17 @@
     "last": "最近のエクスポート",
     "none": "まだエクスポートしていません"
   },
+  "devices": {
+    "send": "デバイスに送信",
+    "sendTo": "{{device}} に送信",
+    "sending": "送信中…",
+    "installed": "アプリをデバイスにインストールしました。",
+    "copied": "コアをデバイスに送りました。",
+    "copiedText": "RetroArch で：コアをロード → コアをインストールまたは復元 → typex2_libretro_android.so。",
+    "needAdb": "送信するには adb を入手",
+    "none": "送信するには USB デバッグを有効にしたデバイスを接続してください",
+    "unauthorized": "デバイスでこのコンピューターを許可してください（USB デバッグの確認）"
+  },
   "targets": {
     "androidRetroarch": {
       "name": "Android 用 RetroArch コア",
@@ -194,14 +205,16 @@
       "play": "このコンピュータでのプレイ",
       "exports": "エクスポート",
       "android": "Android 向けエクスポート",
-      "compile": "このコンピュータでプレイするためのコンパイル"
+      "compile": "このコンピュータでプレイするためのコンパイル",
+      "send": "デバイスへのエクスポート送信"
     },
     "hints": {
       "kit": "アプリに同梱。チェックアウトの場合: {{command}}",
       "ccMac": "または Apple の Command Line Tools をインストール: xcode-select --install",
       "ccWindows": "llvm.org から LLVM (clang) をインストールしてください",
       "ccLinux": "ディストリビューションのパッケージから clang をインストールしてください",
-      "ndk": "Android Studio → SDK Manager → NDK"
+      "ndk": "Android Studio → SDK Manager → NDK",
+      "adb": "Android Studio → SDK Manager → SDK Tools → Android SDK Platform-Tools"
     },
     "storage": "ストレージ",
     "downloaded": "ダウンロードしたツール",

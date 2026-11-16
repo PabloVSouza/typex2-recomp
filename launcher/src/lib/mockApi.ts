@@ -53,6 +53,8 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
   if (cmd === "load_state") return structuredClone(state);
   if (cmd === "save_language") state.language = args?.language as string;
   if (cmd === "save_update_check") state.check_updates = args?.enabled as boolean;
+  if (cmd === "list_devices") return { adb: true, devices: [{ serial: "R8YL10WF7EZ", model: "SM X130", state: "device" }, { serial: "192.168.1.20:5555", model: "192.168.1.20:5555", state: "unauthorized" }] };
+  if (cmd === "send_export") return new Promise((done) => setTimeout(() => done(args?.target === "android-app" ? "app" : "core"), 1200));
   // ?update in the preview: a newer release, with notes that must not render HTML or images
   if (cmd === "check_release")
     return new URLSearchParams(window.location.search).has("update")

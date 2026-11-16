@@ -2,22 +2,28 @@
 
 Milestones, newest first. `git log` has the details.
 
-## 2026-11-16: Targeted wakeups (KOF XIII Climax at 60 fps on Android)
+## 2026-11-16: Targeted wakeups; KOF XIII Climax is stage-bound on Android
 
-- **Found:** with every game checked in a real fight on the tablet, KOF XIII
-  Climax ran at 46-54 fps (46-74 late frames per 120) with or without the
-  frame clock. `X2_PROF` showed its 13 job threads in `wait_many` at ~60% of
-  a core each: every wait shared one condition variable, so each SetEvent /
-  ReleaseSemaphore woke every waiting thread to re-check and sleep again.
+- **Found:** in a Climax fight on the tablet, `X2_PROF` showed its 13 job
+  threads in `wait_many` at ~60% of a core each: every wait shared one
+  condition variable, so each SetEvent / ReleaseSemaphore woke every waiting
+  thread to re-check and sleep again.
 - **Fix:** a blocked thread waits on its own condition variable, listed with
   its handles; a change wakes only the threads waiting on that object
-  (`X2_WAKE_ALL=1` restores the old behaviour for comparisons).
-- **Measured in fights after it:** Climax 13-17 late frames per 120 at
-  59.5-60.5 fps (game thread 13.5-14 ms, was ~18); BlazBlue CS 15.2, CT 14.9,
-  KOF '98 UM 14.3, KOF XII 17.2, KOF XIII 14.4, KOF MI 14.6.
-- **SSF4** varies with the stage (game thread 14-15.5 ms of 16.7): 15-28 late
-  frames per 120, about the same with targeted (19.3 average over three
-  fights) and broadcast wakeups (24.7).
+  (`X2_WAKE_ALL=1` restores the old behaviour for comparisons). No game
+  regressed: BlazBlue CS 15.2, CT 14.9, KOF '98 UM 14.3, KOF XII 17.2, KOF
+  XIII 14.4, KOF MI 14.6 late frames per 120 in fights.
+- **Climax is not fixed by it.** A first comparison (46-74 late frames per
+  120 before, 13-17 after) put a heavy stage against the light green one.
+  Climax picks stages at random, and identified by screenshot: the green
+  stage holds 60 fps (13.8-14.5 late per 120); the temple, street, cage and
+  Japanese-temple stages run at about 50 (39-62 late, game thread
+  16.5-18.2 ms) with either kind of wakeup (temple: 61.8 broadcast, 59.1
+  targeted). The 0.1.1 notes claimed otherwise and were corrected.
+- **SSF4** also varies with the stage (game thread 14-15.5 ms): 15-28 late
+  frames per 120, about the same with either kind of wakeup.
+- **Lesson:** games that pick stages at random need the stage identified
+  (screenshot) before two runs are compared.
 
 ## 2026-11-15: The guest's clock advances a frame per Present
 
