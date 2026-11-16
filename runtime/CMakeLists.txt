@@ -387,10 +387,24 @@ function(x2_add_libretro_core)
   endif()
 endfunction()
 
-# x2_add_android_app(): after every x2_add_game, build the launcher (libmain.so,
-# which SDL's activity loads) and the `apk` target: one "Type X2" app holding all
-# games, picked at launch from game.exe (see src/launcher.c).
+# x2_add_android_app(): the Android app's native side. `x2app` builds libmain.so (the launcher,
+# which SDL's activity loads) without games, plus libSDL3.so, into <build>/app/: the release app
+# (launcher/, Tauri) carries them and loads game packs installed at run time. After every
+# x2_add_game, the `apk` target also builds the older all-in-one app holding the games.
 function(x2_add_android_app)
+  if(NOT ANDROID OR NOT X2_STANDALONE)
+    return()
+  endif()
+  add_library(x2app SHARED ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/launcher.c)
+  set_target_properties(x2app PROPERTIES OUTPUT_NAME main LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/app)
+  target_link_libraries(x2app PRIVATE SDL3::SDL3 log android dl)
+  add_custom_command(TARGET x2app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:SDL3::SDL3-shared> ${CMAKE_BINARY_DIR}/app/ VERBATIM)
+  if(CMAKE_STRIP)
+    add_custom_command(TARGET x2app POST_BUILD
+      COMMAND ${CMAKE_STRIP} --strip-unneeded ${CMAKE_BINARY_DIR}/app/libmain.so ${CMAKE_BINARY_DIR}/app/libSDL3.so VERBATIM)
+  endif()
+
   get_property(games GLOBAL PROPERTY X2_ANDROID_GAMES)
   get_property(rows GLOBAL PROPERTY X2_ANDROID_GAME_ROWS)
   if(NOT games)
@@ -419,6 +433,7 @@ function(x2_add_android_app)
   add_library(x2launcher SHARED ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/launcher.c)
   set_target_properties(x2launcher PROPERTIES OUTPUT_NAME main)
   target_include_directories(x2launcher PRIVATE ${CMAKE_BINARY_DIR}/launcher)
+  target_compile_definitions(x2launcher PRIVATE X2_BUILTIN_GAMES)
   target_link_libraries(x2launcher PRIVATE SDL3::SDL3 log android dl)
 
   get_filename_component(sdk ${ANDROID_NDK}/../.. ABSOLUTE)

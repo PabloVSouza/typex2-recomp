@@ -19,7 +19,14 @@
 #include <unistd.h>
 
 #include "game_exe.h"
+#ifdef X2_BUILTIN_GAMES /* an APK holding games (the older exports) */
 #include "x2_games.h" /* generated: x2_games[] = {lib, name, base, size, entry} */
+#else
+struct X2Game {
+    const char *lib, *name;
+    uint32_t base, size, entry;
+};
+#endif
 
 #define LOG(...) __android_log_print(ANDROID_LOG_INFO, "x2", __VA_ARGS__)
 
@@ -143,17 +150,26 @@ static void fail(const char *title, const char *msg) {
 /* ---- game identification ------------------------------------------------ */
 static uint32_t rd32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 
-static const struct X2Game *identify(FILE *f) {
+/* SizeOfImage and ImageBase + AddressOfEntryPoint, as x2recomp and the desktop launcher record them */
+static bool pe_identity(FILE *f, uint32_t *size, uint32_t *entry) {
     uint8_t h[1024];
     size_t n = fread(h, 1, sizeof h, f);
-    if (n < 64 || h[0] != 'M' || h[1] != 'Z') return NULL;
+    if (n < 64 || h[0] != 'M' || h[1] != 'Z') return false;
     uint32_t pe = rd32(h + 0x3c);
-    if (pe + 0x58 > n || memcmp(h + pe, "PE\0\0", 4)) return NULL;
+    if (pe + 0x58 > n || memcmp(h + pe, "PE\0\0", 4)) return false;
     const uint8_t *opt = h + pe + 24;
-    uint32_t entry = rd32(opt + 16), base = rd32(opt + 28), size = rd32(opt + 56);
+    *entry = rd32(opt + 28) + rd32(opt + 16);
+    *size = rd32(opt + 56);
+    return true;
+}
+
+static const struct X2Game *builtin(uint32_t size, uint32_t entry) {
+#ifdef X2_BUILTIN_GAMES
     for (size_t i = 0; i < sizeof x2_games / sizeof x2_games[0]; i++)
-        if (x2_games[i].base == base && x2_games[i].size == size && x2_games[i].entry == base + entry) return &x2_games[i];
-    LOG("unknown game.exe (base %08x size %08x entry %08x)", base, size, base + entry);
+        if (x2_games[i].size == size && x2_games[i].entry == entry) return &x2_games[i];
+#else
+    (void)size, (void)entry;
+#endif
     return NULL;
 }
 
@@ -195,20 +211,30 @@ int main(int argc, char **argv) {
         fail("Type X2: game not found", msg);
         return 1;
     }
-    const struct X2Game *g = identify(f);
+    uint32_t size = 0, entry = 0;
+    bool pe = pe_identity(f, &size, &entry);
     fclose(f);
-    if (!g) {
+    /* a game pack installed by the app (into its own storage: Android loads code only from there
+     * or from the APK), named after the game's identity; else a game packaged in the APK */
+    char pack[1200];
+    const char *internal = SDL_GetAndroidInternalStoragePath();
+    snprintf(pack, sizeof pack, "%s/packs/x2-%08x-%08x.so", internal ? internal : ".", size, entry);
+    const struct X2Game *g = builtin(size, entry);
+    bool from_pack = pe && access(pack, R_OK) == 0;
+    if (!from_pack && !g) {
         char msg[1400];
-        snprintf(msg, sizeof msg, "%s is not a supported game.\nThis build contains:", exe);
-        for (size_t i = 0; i < sizeof x2_games / sizeof x2_games[0]; i++) {
-            strncat(msg, "\n  ", sizeof msg - strlen(msg) - 1);
-            strncat(msg, x2_games[i].name, sizeof msg - strlen(msg) - 1);
-        }
-        fail("Type X2: unsupported game", msg);
+        if (pe)
+            snprintf(msg, sizeof msg,
+                     "No game pack for %s (size %08x, entry %08x).\n\nExport the game's Android pack in "
+                     "the Type X Recomp launcher on your computer, then send it to this device.",
+                     exe, size, entry);
+        else
+            snprintf(msg, sizeof msg, "%s is not a Windows executable.", exe);
+        fail("Type X2: game not installed", msg);
         return 1;
     }
-    LOG("game: %s (%s)", g->name, g->lib);
-    void *lib = dlopen(g->lib, RTLD_NOW | RTLD_LOCAL);
+    LOG("game: %s", from_pack ? pack : g->lib);
+    void *lib = dlopen(from_pack ? pack : g->lib, RTLD_NOW | RTLD_LOCAL);
     if (!lib) {
         fail("Type X2: cannot load game", dlerror());
         return 1;
@@ -218,6 +244,6 @@ int main(int argc, char **argv) {
         fail("Type X2: cannot load game", "x2_game_main not found");
         return 1;
     }
-    char *gargv[] = {(char *)g->lib, dir, NULL};
+    char *gargv[] = {from_pack ? pack : (char *)g->lib, dir, NULL};
     return game_main(2, gargv);
 }
