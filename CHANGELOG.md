@@ -7,28 +7,27 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.1.1 - 2026-11-16
 
-- **Android requires Vulkan 1.3** (most devices from 2022 on, with Android 13
-  or later). OpenGL ES stays only as a development reference and will be
-  removed; it is no longer a supported fallback.
-- **Steadier frame pacing in every game:** the games' own 60 Hz frame
-  limiters no longer beat against the runtime's pacing. Measured on Android in
-  real fights: late frames went from 21-41 to 13-18 per 120 (BlazBlue), the
-  level of RetroArch's own timing jitter. KOF XIII Climax's fights went from
-  about 50 to 60 fps on Android: a signal now wakes only the threads waiting
-  for it, not every waiting thread.
-- **Launcher:** tells you when a new version is out (checks GitHub's
-  releases at start and every six hours; off in About → Updates), with the
-  release notes and a link to the downloads.
-- **KOF XII:** both credit counters show "00" on macOS (the left one showed
-  "0"), and bold text is bold on Android (it came out in the regular weight).
-- **BlazBlue Calamity Trigger, Android:** a shorter pause at fight start (the
-  renderer's part went from 0.25 s to under 0.1 s, and the game's loading
-  frame is faster); loading screens elsewhere benefit too.
-- **RetroArch:** Reset restarts the game (with Vulkan, the default renderer).
-- **KOF Maximum Impact, Android:** fights tested; steadier frame pacing (the game's own
-  frame timer no longer fights the display's).
+Smoother games, RetroArch Reset, and a launcher that tells you about updates.
+
+**Frame pacing:** every game keeps a steadier 60 fps. The games' own frame
+timers no longer fight the runtime's, and their worker threads no longer
+wake each other for nothing. KOF XIII Climax's fights went from about 50 to
+60 fps on Android; BlazBlue's late frames dropped by half or more.
+
+**Android:**
+
+- RetroArch: Reset restarts the game.
+- BlazBlue Calamity Trigger: a shorter pause at fight start.
+- KOF XII: bold text is bold again.
+- Requires Vulkan 1.3 (most devices from 2022 on, with Android 13 or later).
+  OpenGL ES is no longer a supported fallback.
+
+**macOS:** KOF XII's left credit counter shows "00" again.
+
+**Launcher:** tells you when a new version is out, with the release notes
+and a link to the downloads (About → Updates turns it off).
 
 ## 0.1.0 - 2026-11-15
 
