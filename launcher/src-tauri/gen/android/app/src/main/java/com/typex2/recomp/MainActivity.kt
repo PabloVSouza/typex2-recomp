@@ -4,19 +4,34 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    // Edge to edge, the page would sit under the status and navigation bars (the webview gets no
-    // usable safe-area insets): pad the content by them; the window's colour shows behind the bars.
+    // Only a display cutout needs room (the webview gets no usable safe-area insets); the
+    // status and navigation bars are hidden (immersive, as the games are).
     val content = findViewById<View>(android.R.id.content)
     ViewCompat.setOnApplyWindowInsetsListener(content) { v, insets ->
-      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-      v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+      val cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+      v.setPadding(cut.left, cut.top, cut.right, cut.bottom)
       WindowInsetsCompat.CONSUMED
+    }
+    hideSystemBars()
+  }
+
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    if (hasFocus) hideSystemBars() // again after a dialog, the permission screen or a game
+  }
+
+  private fun hideSystemBars() {
+    WindowCompat.getInsetsController(window, window.decorView).apply {
+      systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      hide(WindowInsetsCompat.Type.systemBars())
     }
   }
 }
