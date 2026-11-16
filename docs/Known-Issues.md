@@ -30,9 +30,9 @@ that isn't here? Report it in
   Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
-- **Super Street Fighter IV Arcade Edition:** on slower Android devices the
-  game thread is near its frame budget in fights (14-15.5 ms of 16.7 on the
-  test tablet), so some stages lose frames: 15-28 late per 120 depending on
-  the stage. No link play; the opening
+- **Super Street Fighter IV Arcade Edition:** on slower Android devices some
+  stages still lose frames in fights: 1-7 late per 120 on the test tablet.
+  These come from occasional 20-30 ms frames; the game thread averages
+  12-13.5 ms, and the GPU 10-12.5 ms. No link play; the opening
   movie's English audio track isn't in the game's files
   ([details](Game-SSF4-AE.md#known-issues)).
