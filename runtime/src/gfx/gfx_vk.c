@@ -442,9 +442,37 @@ static void ring_flush(void) {
     cmd_begin();
     st_flush_ns += x2_time_ns() - t0;
 }
+/* A ring that is full: the frame continues in a new ring, and the full one is destroyed once the
+ * GPU is done with this frame. Waiting for the GPU instead (ring_flush) cost BlazBlue CT 76-88 ms
+ * at character select on the tablet. Its memory goes back to the pool, so the next spill finds
+ * room without allocating. X2_RING_SPILL=0: wait, as before. */
+static void ring_spill(void) {
+    static int on = -1;
+    if (on < 0) on = !getenv("X2_RING_SPILL") || atoi(getenv("X2_RING_SPILL")) != 0;
+    if (!on) {
+        ring_flush();
+        return;
+    }
+    u64 t0 = x2_time_ns();
+    st_flushes++;
+    trash((Garbage){0, VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE, fs->ring, fs->ring_mem, true});
+    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size = RING_SIZE;
+    bi.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+               VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    VK_CHECK(vkCreateBuffer(dev, &bi, NULL, &fs->ring));
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(dev, fs->ring, &req);
+    fs->ring_mem = mem_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VK_CHECK(vkBindBufferMemory(dev, fs->ring, blocks[fs->ring_mem.block].mem, fs->ring_mem.off));
+    fs->ring_map = blocks[fs->ring_mem.block].map + fs->ring_mem.off;
+    ring_start();
+    st_flush_ns += x2_time_ns() - t0;
+}
 /* room for `len` bytes now, so that the allocations of one draw never flush midway */
 static void ring_reserve(u64 len) {
-    if ((u64)ring_pos + len > RING_SIZE && len <= RING_SIZE) ring_flush();
+    if ((u64)ring_pos + len > RING_SIZE && len <= RING_SIZE) ring_spill();
 }
 static u32 ssbo_align = 256;
 static u32 ring_alloc(u32 len, u32 align) {
@@ -454,7 +482,7 @@ static u32 ring_alloc(u32 len, u32 align) {
     }
     u32 pos = (ring_pos + align - 1) / align * align;
     if (pos + len > RING_SIZE) {
-        ring_flush();
+        ring_spill();
         pos = (ring_pos + align - 1) / align * align;
     }
     ring_pos = pos + len;

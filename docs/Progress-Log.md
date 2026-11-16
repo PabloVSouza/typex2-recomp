@@ -87,7 +87,7 @@ Milestones, newest first. `git log` has the details.
   A B C) then reached real fights: 59.5-60.5 fps, 13-17 late frames per 120;
   loads of ~1 s at the fight start and 0.3-0.5 s per next team member, mostly
   the game's own.
-- **Left:** a full upload ring waits for the GPU (76-88 ms once, around
+- **Left (fixed 2026-11-16):** a full upload ring waited for the GPU (76-88 ms once, around
   character select); spilling into a second staging buffer would avoid it.
 
 ## 2026-11-15: RetroArch switches games without a restart
