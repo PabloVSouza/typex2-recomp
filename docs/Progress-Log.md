@@ -26,6 +26,15 @@ Milestones, newest first. `git log` has the details.
     Climax (`InterlockedExchangeAdd`, `D3DXVec4Transform`, D3D9 methods).
     They are now dispatched before the table is searched, and `x2_lookup`
     left the profile.
+- **SSF4's remaining late frames** (1-7 per 120 on the tablet), with the new
+  `X2_PROF_SLOW=18`:
+  - In those 18-42 ms frames the game thread waits rather than works: in
+    its `Sleep(0)` spin (`f_00743180`), in Present for the renderer, and
+    on a critical section.
+  - Its audio mixer (TIME_CRITICAL) shares the two fast cores with the
+    game and render threads. Moving it off them (`X2_PRIO=0`) doubled the
+    slow frames (146 vs 63, 93 vs 44 per run), so it stays.
+  - Nothing cheap is left there.
 - **Save states:** contended `EnterCriticalSection` recorded its call chain
   every time. It now does so only once states are used in a run.
 

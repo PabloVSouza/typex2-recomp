@@ -272,6 +272,8 @@ void x2_host_path(const char *guest, char *out, size_t n);
 
 /* platform */
 u64 x2_time_ns(void);
+/* prof.c: a guest frame ended after guest_ms of work (X2_PROF_SLOW reports the slow ones) */
+void x2_prof_frame(double guest_ms);
 /* the guest's clock: real time, advancing at least 1/60 s from one Present to the next */
 u64 x2_guest_ns(void);
 void x2_guest_clock_frame(void); /* called as Present returns */

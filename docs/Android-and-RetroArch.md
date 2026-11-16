@@ -141,6 +141,7 @@ both variants in the same session because the games pick random stages.
 |---|---|
 | `X2_PACELOG=1` | Every 2 s: retro_run intervals, the slowest guest frame ("guest work max"), the slowest replay. |
 | `X2_PROF=1` `X2_PROF_OUT=<file>` | A sampling profile per second and thread. Symbolise the offsets against the `.sym` file. |
+| `X2_PROF_SLOW=<ms>` | With `X2_PROF`: what the game thread did in each frame slower than `<ms>`. |
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per pass. |
 | `X2_CSPROF=1` | Lock contention. |
 

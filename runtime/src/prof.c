@@ -6,11 +6,14 @@
  * Every <seconds> the histogram is appended to X2_PROF_OUT (default
  * $TMPDIR/x2prof.txt) as "== <time> <thread> <samples>" followed by
  * "<module offset> <samples> <outside>" lines, most samples first; symbolize
- * the offsets with the unstripped build (llvm-symbolizer --obj=<file>). */
+ * the offsets with the unstripped build (llvm-symbolizer --obj=<file>).
+ * X2_PROF_SLOW=<ms>: also log the guest thread's samples of each frame whose guest work took
+ * at least <ms> (occasional long frames vanish in the per-second histograms). */
 #define _GNU_SOURCE
 #ifdef _WIN32 /* no sampling profiler on Windows yet */
 #include "core.h"
 void x2_prof_register(const char *name) { (void)name; }
+void x2_prof_frame(double guest_ms) { (void)guest_ms; }
 #else
 #include <dlfcn.h>
 #include <sched.h>
@@ -62,6 +65,73 @@ static u32 hist_total[PROF_THREADS], hist_cpu[PROF_THREADS][16];
 
 static bool in_module(uintptr_t a) { return a >= mod_lo && a < mod_hi; }
 
+/* X2_PROF_SLOW: the guest thread's samples tagged with their frame, and the slow frames */
+static int guest_idx = -1;
+static double slow_ms;
+static atomic_uint prof_frame;
+typedef struct {
+    u32 frame;
+    bool outside;
+    uintptr_t off;
+} GSample;
+#define GRING        (1u << 14)
+static GSample gring[GRING];
+static atomic_uint ghead;
+static struct {
+    u32 frame;
+    float ms;
+} slow_q[64];
+static atomic_uint slow_head;
+static u32 slow_tail;
+void x2_prof_frame(double guest_ms) {
+    if (prof_secs <= 0) return;
+    u32 f = atomic_fetch_add(&prof_frame, 1);
+    if (slow_ms > 0 && guest_ms >= slow_ms) {
+        u32 h = atomic_load(&slow_head);
+        slow_q[h % 64].frame = f;
+        slow_q[h % 64].ms = (float)guest_ms;
+        atomic_store(&slow_head, h + 1); /* the guest thread is the only writer */
+    }
+}
+/* sampler thread: each slow frame's busiest addresses */
+static void report_slow(void) {
+    u32 head = atomic_load(&slow_head);
+    for (; slow_tail != head; slow_tail++) {
+        u32 f = slow_q[slow_tail % 64].frame;
+        struct {
+            uintptr_t off;
+            u32 n, out;
+        } top[24] = {{0}};
+        u32 ntop = 0, total = 0, gh = atomic_load(&ghead);
+        for (u32 k = gh > GRING ? gh - GRING : 0; k != gh; k++) {
+            GSample *s = &gring[k % GRING];
+            if (s->frame != f) continue;
+            total++;
+            u32 j = 0;
+            while (j < ntop && top[j].off != s->off) j++;
+            if (j == ntop && ntop < 24) top[ntop++].off = s->off;
+            if (j < ntop) {
+                top[j].n++;
+                top[j].out += s->outside;
+            }
+        }
+        char line[1024];
+        int len = snprintf(line, sizeof line, "prof: slow frame %u %.1f ms, %u samples:", f, slow_q[slow_tail % 64].ms,
+                           total);
+        for (int r = 0; r < 8; r++) {
+            u32 b = 0;
+            for (u32 j = 1; j < ntop; j++)
+                if (top[j].n > top[b].n) b = j;
+            if (!ntop || !top[b].n) break;
+            len += snprintf(line + len, sizeof line - (size_t)len, " %lx:%u/%u", (unsigned long)top[b].off, top[b].n,
+                            top[b].out);
+            top[b].n = 0;
+            if (len >= (int)sizeof line - 40) break;
+        }
+        x2_log("%s", line);
+    }
+}
+
 static void on_prof(int sig, siginfo_t *si, void *ucv) {
     (void)sig; (void)si;
     u32 n = atomic_load(&nthreads), i = 0;
@@ -108,6 +178,10 @@ static void on_prof(int sig, siginfo_t *si, void *ucv) {
     cpu = sched_getcpu();
 #endif
     ring[h % RING] = (Sample){(u8)i, (u8)(cpu & 15), outside, pc ? pc - mod_lo : 0};
+    if ((int)i == guest_idx && slow_ms > 0) {
+        u32 g = atomic_fetch_add(&ghead, 1);
+        gring[g % GRING] = (GSample){atomic_load(&prof_frame), outside, pc ? pc - mod_lo : 0};
+    }
 }
 
 static void drain(void) {
@@ -175,6 +249,7 @@ static void *sampler(void *arg) {
         clock_gettime(CLOCK_MONOTONIC, &now);
         double t = (double)(now.tv_sec - t0.tv_sec) + (now.tv_nsec - t0.tv_nsec) / 1e9;
         drain();
+        report_slow();
         if (t - last >= prof_secs) {
             report(t);
             last = t;
@@ -207,6 +282,7 @@ void x2_prof_register(const char *name) {
         pthread_mutex_lock(&once);
         if (prof_secs < 0) {
             int s = getenv("X2_PROF") ? atoi(getenv("X2_PROF")) : 0;
+            slow_ms = getenv("X2_PROF_SLOW") ? atof(getenv("X2_PROF_SLOW")) : 0;
             if (s > 0) {
                 Dl_info di;
 #ifdef __linux__
@@ -243,6 +319,7 @@ void x2_prof_register(const char *name) {
     p->tid = (long)gettid();
 #endif
     snprintf(p->name, sizeof p->name, "%s", name);
+    if (!strcmp(name, "x2-guest")) guest_idx = (int)i;
 #ifdef __APPLE__
     p->stk_hi = (uintptr_t)pthread_get_stackaddr_np(p->th);
     p->stk_lo = p->stk_hi - pthread_get_stacksize_np(p->th);

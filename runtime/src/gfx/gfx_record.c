@@ -294,6 +294,7 @@ void gfx_present(void) {
     {
         u64 t = x2_time_ns();
         last_work_ns = guest_wake_ns ? t - guest_wake_ns : 0;
+        x2_prof_frame(last_work_ns / 1e6); /* X2_PROF_SLOW */
         if (guest_wake_ns) {
             __atomic_fetch_add(&guest_work_acc_ns, t - guest_wake_ns, __ATOMIC_RELAXED);
             __atomic_fetch_add(&guest_work_frames, 1, __ATOMIC_RELAXED);

@@ -101,6 +101,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries; Metal: `=1` only, from command buffer times) |
 | `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |
 | `X2_PROF=<secs>` `X2_PROF_OUT=file` | sampling profiler of the runtime's threads (1 ms); offsets resolve against the unstripped `typex2_libretro_android.so.sym` |
+| `X2_PROF_SLOW=<ms>` | with `X2_PROF`: log the guest thread's busiest addresses in each frame whose guest work took at least `<ms>` (occasional long frames) |
 | `X2_CSPROF=1` | critical sections threads wait on longest, with what the owner was doing |
 | `X2_PIPELINE=0` | libretro: strict lockstep instead of one frame in flight (one frame less latency, drops when guest + replay + GPU exceed a frame) |
 | `X2_PS_MEDIUMP=0` | GLES: full-precision pixel shaders (default fp16) |
