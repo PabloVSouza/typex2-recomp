@@ -1,5 +1,5 @@
 //! Android devices connected over USB or wireless debugging (adb), and sending an export to one:
-//! game packs go to the Type X2 app's folder; the RetroArch core to RetroArch's downloads folder, from where
+//! game packs go to TypeX2/packs, where the app picks them up; the core to RetroArch's downloads, from where
 //! RetroArch installs it (Load Core → Install or Restore a Core). adb is the launcher's download
 //! (Build tools), or one found on the system or in the Android SDK.
 use crate::{kit, toolchain};
@@ -14,6 +14,9 @@ const CORE_DIR: &str = "/sdcard/RetroArch/downloads";
 
 /// The Type X2 app (launcher/src-tauri/tauri.android.conf.json).
 const APP_ID: &str = "com.typex2.recomp";
+
+/// Where the app picks up game packs (launcher/src-tauri/src/android.rs `incoming_dir`).
+const PACKS_DIR: &str = "/sdcard/TypeX2/packs";
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Device {
@@ -105,7 +108,7 @@ fn app_package(adb: &Path, serial: &str) -> Result<String> {
         .ok_or_else(|| "The Type X2 app is not on the device: install it from the releases page first.".into())
 }
 
-/// Sends an export's files to the device: the game packs into the app's folder (it installs them
+/// Sends an export's files to the device: the game packs to TypeX2/packs (the app installs them
 /// when it next opens), or the core for RetroArch. Returns what was sent, for the message.
 pub fn send(adb: &Path, serial: &str, target: &str, files: &[String]) -> Result<&'static str> {
     match target {
@@ -114,8 +117,9 @@ pub fn send(adb: &Path, serial: &str, target: &str, files: &[String]) -> Result<
             if packs.is_empty() {
                 return Err("The export has no game packs.".into());
             }
-            let dir = format!("/sdcard/Android/data/{}/files/packs", app_package(adb, serial)?);
-            check(run(adb, &["-s", serial, "shell", "mkdir", "-p", &dir])?, "Preparing the app's packs folder")?;
+            app_package(adb, serial)?; // a clear error when the app is missing
+            let dir = PACKS_DIR;
+            check(run(adb, &["-s", serial, "shell", "mkdir", "-p", dir])?, "Preparing the packs folder")?;
             for p in packs {
                 check(run(adb, &["-s", serial, "push", p, &format!("{dir}/")])?, "Copying a game pack")?;
             }

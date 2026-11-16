@@ -240,7 +240,7 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
   `npx tauri android build --debug --apk --target aarch64` (ANDROID_HOME, NDK_HOME) and
   `adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
   (`com.typex2.recomp.dev`). Packs: `cli send android-packs <serial> build-android/packs/x2-*.so`,
-  or push to `/sdcard/Android/data/<app>/files/packs`; the app installs them when its library loads.
+  or push to `/sdcard/TypeX2/packs`; the app installs them when its library loads.
 * Installing the core: push `build-android/typex2_libretro_android.so` to
   `/storage/emulated/0/RetroArch/downloads/`, then in RetroArch tap
   Load Core → Install or Restore a Core → the file (taps work, key events

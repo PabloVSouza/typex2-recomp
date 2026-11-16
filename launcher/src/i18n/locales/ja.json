@@ -202,7 +202,7 @@
     },
     "androidPacks": {
       "name": "Android アプリ用ゲームパック",
-      "description": "選んだゲームごとに 1 つ、Type X2 アプリ（リリースページから入手）用のパックです。「端末に送信」でインストールされます。または端末の Android/data/com.typex2.recomp/files/packs にコピーしてください。"
+      "description": "選んだゲームごとに 1 つ、Type X2 アプリ（リリースページから入手）用のパックです。「端末に送信」でインストールされます。または端末の TypeX2/packs にコピーしてください。"
     }
   },
   "tools": {

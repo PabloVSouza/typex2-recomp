@@ -204,7 +204,7 @@
     },
     "androidPacks": {
       "name": "Spielpakete für die Android-App",
-      "description": "Ein Paket pro gewähltem Spiel für die Type-X2-App (von der Releases-Seite). „An Gerät senden“ installiert sie; oder kopiere sie auf dem Gerät nach Android/data/com.typex2.recomp/files/packs."
+      "description": "Ein Paket pro gewähltem Spiel für die Type-X2-App (von der Releases-Seite). „An Gerät senden“ installiert sie; oder kopiere sie auf dem Gerät nach TypeX2/packs."
     }
   },
   "tools": {

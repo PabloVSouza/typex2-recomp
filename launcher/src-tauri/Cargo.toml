@@ -25,6 +25,8 @@ semver = "1"
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 ndk-context = "0.1"
+# the update check's root certificates (reqwest's platform verifier needs Java-side setup there)
+webpki-root-certs = "1"
 
 [profile.release]
 opt-level = "s"

@@ -23,8 +23,8 @@ folders and stay.
    game's `x2.env`.
 3. In the launcher on your computer, Export → **Game packs for the Android
    app** with your games, then **Send to device** (USB debugging on). Or
-   copy the `x2-*.so` files to `Android/data/com.typex2.recomp/files/packs`
-   on the device.
+   copy the `x2-*.so` files to `TypeX2/packs` on the
+   device (internal storage).
 4. Open the app again: it installs the packs and lists your games. ES-DE
    launches them as before.
 

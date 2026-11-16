@@ -202,7 +202,7 @@
     },
     "androidPacks": {
       "name": "Android 应用的游戏包",
-      "description": "为 Type X2 应用（从发布页面获取）每个所选游戏生成一个包。“发送到设备”会安装它们；也可以把它们复制到设备的 Android/data/com.typex2.recomp/files/packs。"
+      "description": "为 Type X2 应用（从发布页面获取）每个所选游戏生成一个包。“发送到设备”会安装它们；也可以把它们复制到设备的 TypeX2/packs。"
     }
   },
   "tools": {

@@ -11,7 +11,9 @@ Milestones, newest first. `git log` has the details.
   app holds no game code: `libmain` loads `files/packs/x2-<size>-<entry>.so`,
   named after the game's PE identity, built by the `packs` target (the
   launcher's "Game packs for the Android app" export) and pushed by Send to
-  device into `Android/data/<app>/files/packs`, which the app moves into
+  device into `TypeX2/packs` on shared storage (not `Android/data/<app>`: a
+  folder adb creates there before the app first starts is unreadable to
+  the app, and file managers can't open it), which the app moves into
   private storage. The old all-in-one APK (`tools/android` packaging, a Java
   settings screen tried the same day) is gone.
 - **On Android** (`android.rs`): the library is ES-DE's `ROMs/arcade`

@@ -502,7 +502,7 @@ pub const TARGETS: &[Target] = &[
     Target {
         id: "android-packs",
         name: "Game packs for the Android app",
-        description: "One pack per chosen game for the Type X2 app (from the releases page). Send to device installs them; or copy them to Android/data/com.typex2.recomp/files/packs on the device.",
+        description: "One pack per chosen game for the Type X2 app (from the releases page). Send to device installs them; or copy them to TypeX2/packs on the device.",
         needs: &["x2recomp", "cmake", "ninja", "ndk"],
         android: true,
         cmake_target: "packs",

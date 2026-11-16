@@ -202,7 +202,7 @@
     },
     "androidPacks": {
       "name": "Android 앱용 게임 팩",
-      "description": "선택한 게임마다 하나씩, Type X2 앱(릴리스 페이지에서 받기)용 팩입니다. 기기로 보내기로 설치하거나 기기의 Android/data/com.typex2.recomp/files/packs에 복사하세요."
+      "description": "선택한 게임마다 하나씩, Type X2 앱(릴리스 페이지에서 받기)용 팩입니다. 기기로 보내기로 설치하거나 기기의 TypeX2/packs에 복사하세요."
     }
   },
   "tools": {

@@ -206,7 +206,7 @@
     },
     "androidPacks": {
       "name": "Paquetes de juego para la app de Android",
-      "description": "Un paquete por juego elegido para la app Type X2 (de la página de versiones). Enviar al dispositivo los instala; o cópialos en Android/data/com.typex2.recomp/files/packs del dispositivo."
+      "description": "Un paquete por juego elegido para la app Type X2 (de la página de versiones). Enviar al dispositivo los instala; o cópialos en TypeX2/packs del dispositivo."
     }
   },
   "tools": {

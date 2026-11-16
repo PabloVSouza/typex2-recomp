@@ -29,7 +29,7 @@ const state: AppStateData = {
   version: "0.1.0", os: android ? "android" : "macos", arch: "aarch64", data: "~/Library/Application Support/io.github.typex2-recomp.launcher",
   kit: { source: "~/typex2-recomp", x2recomp: "build/recompiler/x2recomp", player: "build/x2-player", kind: "checkout" },
   can_play: true, catalog, games: [entry("kof13", "ready"), entry("ssf4ae", "none"), entry("bbcs", android ? "none" : "stale"), entry("kof98um", "ready"), other],
-  android: android ? { all_files: false, roms: "/storage/emulated/0/ROMs/arcade", incoming: "/storage/emulated/0/Android/data/com.typex2.recomp/files/packs" } : null,
+  android: android ? { all_files: false, roms: "/storage/emulated/0/ROMs/arcade", incoming: "/storage/emulated/0/TypeX2/packs" } : null,
   ndk: "", jobs: 0, language: "", check_updates: true, job: null, running: null,
   targets: [
     { id: "android-retroarch", name: "RetroArch core for Android", description: "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },

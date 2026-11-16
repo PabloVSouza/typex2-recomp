@@ -1,6 +1,6 @@
 //! The launcher as the Android app. Games live in ES-DE's ROMs folder (`ROMs/arcade/<Game>.x2`),
 //! found on every refresh; their code arrives as game packs built by the launcher on a computer
-//! (the Android pack export) and sent to the app's shared folder (`Android/data/<app>/files/packs`).
+//! (the Android pack export) and sent to `TypeX2/packs` on shared storage.
 //! The app moves them into its private storage, the only place besides the APK Android loads code
 //! from, as `x2-<size>-<entry>.so`: the name `libmain` (runtime/src/launcher.c) looks for. Play
 //! writes the game's settings to its `x2.env` (ES-DE launches read it too) and starts SDL's
@@ -59,13 +59,12 @@ fn packs_dir() -> Result<PathBuf> {
     Ok(dir.ok_or("The app has no files folder.")?.join("packs"))
 }
 
-/// Where packs arrive (`Android/data/<app>/files/packs`): adb and file managers can write there.
-pub fn incoming_dir() -> Result<PathBuf> {
-    let dir = jni(|env, a| {
-        let f = env.call_method(a, "getExternalFilesDir", "(Ljava/lang/String;)Ljava/io/File;", &[JValue::Object(&JObject::null())])?.l()?;
-        file_path(env, f)
-    })?;
-    Ok(dir.ok_or("Shared storage is not available.")?.join("packs"))
+/// Where packs arrive: `TypeX2/packs` on shared storage, where adb (Send to device) and file
+/// managers can write; the app reads it with all-files access. (Not `Android/data/<app>`: file
+/// managers can't open that since Android 11, and a folder adb creates there before the app's
+/// first start is unreadable to the app.)
+pub fn incoming_dir() -> PathBuf {
+    storage().join("TypeX2/packs")
 }
 
 pub fn all_files_access() -> bool {
@@ -119,8 +118,12 @@ pub fn rom_dir() -> PathBuf {
 
 /// Moves packs sent to the shared folder into private storage; returns how many arrived.
 fn import_packs() -> Result<usize> {
-    let (from, to) = (incoming_dir()?, packs_dir()?);
-    let Ok(list) = fs::read_dir(&from) else { return Ok(0) };
+    let (from, to) = (incoming_dir(), packs_dir()?);
+    let list = match fs::read_dir(&from) {
+        Ok(list) => list,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(format!("Reading {}: {e}", from.display())),
+    };
     fs::create_dir_all(&to).map_err(|e| e.to_string())?;
     let mut n = 0;
     for f in list.flatten() {
@@ -201,6 +204,6 @@ pub fn info() -> Value {
     json!({
         "all_files": all_files_access(),
         "roms": rom_dir().join("arcade"),
-        "incoming": incoming_dir().ok(),
+        "incoming": incoming_dir(),
     })
 }

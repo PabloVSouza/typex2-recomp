@@ -54,7 +54,7 @@ computer.
    for the Android app**, with the games you own.
 3. **Send them:** Export → Last exports → **Send to device**, with the device
    connected (USB debugging on). Or copy the `x2-*.so` files to
-   `Android/data/com.typex2.recomp/files/packs` on the device yourself.
+   `TypeX2/packs` on the device's internal storage yourself.
 4. **Open the app.** It installs the packs, finds the games in ES-DE's ROMs
    folder (`ROMs/arcade`, or ES-DE's own ROM directory setting) and lists
    them. Games it can't play yet are listed too, as *Not supported yet*.
