@@ -2,6 +2,22 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-16: Settings screen in the Android app
+
+- **What:** the app's home-screen icon now opens a settings screen
+  (`tools/android/java`, plain Android widgets, its own process): the games
+  found in ES-DE's `ROMs/arcade` and the app's `files/game`, identified by
+  their PE header like `launcher.c` (the table is generated next to
+  `x2_games.h`), each with Play, FPS counter, pad layout and touch pad written
+  to its `x2.env`. ES-DE keeps launching `SDLActivity` directly.
+- **Tested on the tablet:** all eight games listed; settings written and
+  removed with the other lines kept; Play starts the game; playing a second
+  game from the screen while one runs restarts the game process cleanly.
+- **Android 16 details:** apps targeting API 36 get no `onBackPressed`
+  (back is an `OnBackInvokedCallback`), draw edge to edge (the page fits the
+  system bars), and Samsung's DeviceDefault accent hid checked controls (the
+  screen has its own Material theme).
+
 ## 2026-11-16: Targeted wakeups; KOF XIII Climax is stage-bound on Android
 
 - **Found:** in a Climax fight on the tablet, `X2_PROF` showed its 13 job

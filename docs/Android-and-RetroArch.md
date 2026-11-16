@@ -30,6 +30,14 @@ also keeps an unstripped `typex2_libretro_android.so.sym` for the profiler.
 - **What it is:** one app, **Type X2** (`com.typex2.recomp`), holding every
   game. It asks for "All files access" the first time it reads shared
   storage.
+- **Opened from the home screen**, it lists the games it finds in ES-DE's
+  `ROMs/arcade` folder (and in its own `files/game`). Pick one to play it or
+  change its settings: FPS counter, pad layout (the pad default or an
+  8-button stick whose rows start with L1 / L2), and the on-screen touch pad
+  (automatic, always, never). They are saved in the game's `x2.env`; lines
+  the screen doesn't manage stay as they are, and a hand-written `X2_PAD`
+  shows as Custom.
+- **From ES-DE** a game starts straight away, with the same settings.
 
 ## The RetroArch core
 

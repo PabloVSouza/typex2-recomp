@@ -16,6 +16,9 @@ games are recompiled on your computer from your own files.
 - **Launcher:** Log → Report a problem copies a report (version, system,
   games, logs; your home folder hidden) and opens a new GitHub issue for it.
   The Log page no longer goes blank in newer web engines.
+- **Android app:** opened from the home screen, it lists your games and sets
+  each one's FPS counter, pad layout and touch pad, then plays it; no more
+  editing `x2.env` by hand. ES-DE still starts games directly.
 - **RetroArch:** a closed game now leaves 1-3 MB behind (was 4-20).
 
 ## 0.1.1 - 2026-11-16

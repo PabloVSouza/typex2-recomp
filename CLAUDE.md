@@ -82,7 +82,8 @@ gets an entry per milestone. Update them with the README.
 * `runtime/CMakeLists.txt`: one target per `games/*/gen`; the game's label
   is set in the `if(game STREQUAL ...)` chain.
 * `tools/`: `arc`, `kofarc`, `lifttest` (Unicorn differential tests of the
-  lifter), `retro_host`, Android packaging, ES-DE and libretro files.
+  lifter), `retro_host`, Android packaging (`tools/android`: manifest, and
+  `java/` the app's settings screen), ES-DE and libretro files.
 * `launcher/`: the desktop app (Tauri 2, React, Tailwind, shadcn/ui).
   `src-tauri/src/`: `games.rs` (supported games, identified by PE image size +
   entry; add new games there too), `recomp.rs` (build jobs: x2recomp, the game

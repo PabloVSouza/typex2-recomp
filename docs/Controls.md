@@ -35,7 +35,8 @@
 ### `X2_PAD`
 
 `X2_PAD=<pad button>=<cabinet buttons>,...` changes the layout. It goes in the
-environment or in the game folder's `x2.env`.
+environment or in the game folder's `x2.env`. On Android, the app's settings
+screen (open it from the home screen) writes the presets below for you.
 - **Pad buttons:** `south east west north l1 r1 l2 r2 l3 r3`.
 - **Cabinet buttons:**
 

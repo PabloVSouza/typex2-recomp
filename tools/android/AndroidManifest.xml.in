@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One APK per game: SDL's stock activity loads libSDL3.so and libmain.so (the game).
+<!-- One APK for every game: SDL's stock activity loads libSDL3.so and libmain.so (the launcher, which runs the game).
      Game data goes in /sdcard/Android/data/@X2_APP_ID@/files/game (no storage permission needed). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="@X2_APP_ID@"
@@ -34,7 +34,15 @@
             android:launchMode="singleInstance"
             android:alwaysRetainTaskState="true"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
-            android:preferMinimalPostProcessing="true">
+            android:preferMinimalPostProcessing="true" />
+        <!-- the home-screen entry: the games found and their settings (x2.env), Play starts
+             SDLActivity, which ES-DE launches directly -->
+        <activity
+            android:name="com.typex2.recomp.SettingsActivity"
+            android:process=":settings"
+            android:label="@X2_APP_LABEL@"
+            android:exported="true"
+            android:theme="@style/Settings">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

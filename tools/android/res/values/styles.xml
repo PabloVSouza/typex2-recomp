@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- the settings screen: Material dark with a visible accent (some vendors' DeviceDefault
+       accent is close to the background, which hides checked switches and radio buttons) -->
+  <style name="Settings" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:colorAccent">#F5A524</item>
+    <item name="android:colorBackground">#1B1E3E</item>
+    <item name="android:windowBackground">@color/ic_launcher_background</item>
+  </style>
+</resources>
