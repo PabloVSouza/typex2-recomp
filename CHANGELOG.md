@@ -7,7 +7,9 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.2.1 - 2026-11-16
+
+The license, and two fixes for the Android app.
 
 - **License:** the project is now GPL-3.0-or-later. The libraries the builds
   include are listed with their licenses in THIRD-PARTY.md.
