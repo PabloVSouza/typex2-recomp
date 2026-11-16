@@ -11,7 +11,7 @@ that isn't here? Report it in
 - **Linux and Windows:** playing games there is untested: development
   happens on a Mac. Reports are welcome, working or not.
 - **RetroArch:** no save states, rewind or run-ahead.
-- **RetroArch, switching games:** a closed game leaves 5-20 MB behind until
+- **RetroArch, switching games:** a closed game leaves 1-3 MB behind until
   RetroArch quits.
 
 ## Games

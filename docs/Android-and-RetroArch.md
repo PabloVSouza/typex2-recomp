@@ -51,8 +51,8 @@ Settings and limits:
   Menu → Restart) restarts the game with Vulkan; with OpenGL it isn't
   supported.
 - **Switching games.** Close a game (Quick Menu → Close Content) and load
-  another, no restart needed. A closed game gives back most of its memory;
-  some 5-20 MB stays until RetroArch quits. Launched from ES-DE, RetroArch
+  another, no restart needed. A closed game gives back almost all its memory;
+  1-3 MB stays until RetroArch quits. Launched from ES-DE, RetroArch
   quits when the game closes (as it does with Settings → User Interface →
   "Quit on Close Content").
 - **Latency.** One frame in flight: the game computes frame N+1 while

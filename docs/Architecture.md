@@ -72,7 +72,7 @@ HLE functions follow one pattern:
   frame N+1 while RetroArch shows frame N.
 - **Ending a session.** Guest threads can't be torn down. On libretro unload
   they park at their next import call; the guest space is remapped
-  inaccessible (pages freed), and so are the large heap blocks on ELF
+  inaccessible (pages freed), and so are the heap blocks of 4 KB and up on ELF
   platforms (`heap.c`, the core linked with `--wrap=malloc,...`). A parked
   thread that touches them faults and stays parked.
 - **Switching games.** The runtime's state is global, so each game after the

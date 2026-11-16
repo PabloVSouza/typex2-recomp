@@ -10,7 +10,8 @@
  * buffer copies, decoders, shader caches), are mapped one by one: at unload
  * (x2_heap_release) their pages go back to the system and their addresses
  * stay reserved and inaccessible, so a thread touching them faults and is
- * parked. Small blocks come from the system allocator and stay.
+ * parked. Medium blocks (4 KB to 256 KB) come from size-class chunks released the same
+ * way; blocks under 4 KB come from the system allocator and stay.
  *
  * Every block has a 16-byte trailer just before the pointer; strdup, strndup
  * and vasprintf are wrapped too, so whatever this library frees came from
@@ -55,8 +56,74 @@ static size_t page(void) {
     return ps;
 }
 
+/* Medium blocks (4 KB up to a big block) come from size classes of powers of two, carved out of
+ * 4 MB chunks this instance maps: freed blocks are reused, and the chunks are released with the
+ * big blocks. (They were most of what a closed game left behind: 17 of SSF4's 20 MB.) */
+enum { MID = 0x58324834, MID_MIN_LOG = 12, MID_CLASSES = 7, CHUNK = 4 << 20, MAX_CHUNKS = 1024 };
+typedef struct {
+    pthread_mutex_t mu;
+    void *free; /* freed blocks, linked through their first word */
+    uint8_t *cur, *end;
+} MidClass;
+static MidClass mids[MID_CLASSES] = {{PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}, {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+                                     {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}, {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+                                     {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}, {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0},
+                                     {PTHREAD_MUTEX_INITIALIZER, 0, 0, 0}};
+static uint8_t *chunks[MAX_CHUNKS];
+static atomic_uint nchunks;
+static atomic_size_t mid_live;
+
+static void *mid_alloc(size_t n) {
+    size_t total = n + sizeof(Tail);
+    uint32_t c = 0;
+    while (((size_t)1 << (MID_MIN_LOG + c)) < total) c++;
+    if (c >= MID_CLASSES) return NULL;
+    size_t sz = (size_t)1 << (MID_MIN_LOG + c);
+    MidClass *m = &mids[c];
+    pthread_mutex_lock(&m->mu);
+    uint8_t *b = m->free;
+    if (b) {
+        m->free = *(void **)b;
+    } else {
+        if (!m->cur || m->cur + sz > m->end) {
+            uint32_t k = atomic_fetch_add(&nchunks, 1);
+            uint8_t *ch = k < MAX_CHUNKS ? mmap(NULL, CHUNK, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)
+                                         : MAP_FAILED;
+            if (ch == MAP_FAILED) { /* out of chunk slots: the system allocator */
+                if (k >= MAX_CHUNKS) atomic_fetch_sub(&nchunks, 1);
+                pthread_mutex_unlock(&m->mu);
+                return NULL;
+            }
+            chunks[k] = ch;
+            m->cur = ch;
+            m->end = ch + CHUNK;
+        }
+        b = m->cur;
+        m->cur += sz;
+    }
+    pthread_mutex_unlock(&m->mu);
+    *(Tail *)b = (Tail){MID, c, n};
+    mid_live += sz;
+    return b + sizeof(Tail);
+}
+static void mid_free(Tail *t) {
+    MidClass *m = &mids[t->align];
+    mid_live -= (size_t)1 << (MID_MIN_LOG + t->align);
+    t->magic = 0;
+    pthread_mutex_lock(&m->mu);
+    *(void **)t = m->free;
+    m->free = t;
+    pthread_mutex_unlock(&m->mu);
+}
+
 static void *alloc(size_t n, size_t align) {
     if (align < 16) align = 16;
+    static int mids_on = -1; /* X2_HEAP_MID=0: medium blocks from the system allocator (A/B) */
+    if (mids_on < 0) mids_on = !getenv("X2_HEAP_MID") || atoi(getenv("X2_HEAP_MID")) != 0;
+    if (mids_on && align == 16 && n + sizeof(Tail) > ((size_t)1 << MID_MIN_LOG) && n < BIG_MIN) {
+        void *p = mid_alloc(n);
+        if (p) return p;
+    }
     if (n >= BIG_MIN) {
         size_t head = (sizeof(Big) + sizeof(Tail) + align - 1) / align * align;
         size_t map = (head + n + page() - 1) / page() * page();
@@ -120,6 +187,7 @@ void __wrap_free(void *p) {
         munmap(b->base, b->map);
         return;
     }
+    case MID: mid_free(t); return;
     default: /* not ours: a frontend or system allocation */
         fprintf(stderr, "[x2] heap: free of a block not allocated here (%p)\n", p);
         __real_free(p);
@@ -142,7 +210,18 @@ void *__wrap_realloc(void *p, size_t n) {
         return NULL;
     }
     Tail *t = tail_of(p);
-    if (t->magic == SMALL && n < BIG_MIN) {
+    if (t->magic == MID) { /* in place while it fits its class, else moved (align holds the class) */
+        if (n + sizeof(Tail) <= ((size_t)1 << (MID_MIN_LOG + t->align))) {
+            t->size = n;
+            return p;
+        }
+        void *q = alloc(n, 16);
+        if (!q) return NULL;
+        memcpy(q, p, t->size < n ? t->size : n);
+        mid_free(t);
+        return q;
+    }
+    if (t->magic == SMALL && n + sizeof(Tail) <= ((size_t)1 << MID_MIN_LOG)) { /* stays small */
         size_t old = t->size;
         Tail *r = __real_realloc(t, sizeof(Tail) + n);
         if (!r) return NULL;
@@ -241,6 +320,13 @@ void x2_heap_release(void) {
     bigs = NULL;
     big_live = 0;
     pthread_mutex_unlock(&big_mu);
-    fprintf(stderr, "[x2] heap: released %zu blocks (%zu MB); %zu MB in small blocks stays\n", n, mb,
-            (size_t)small_live >> 20);
+    uint32_t nc = atomic_load(&nchunks);
+    if (nc > MAX_CHUNKS) nc = MAX_CHUNKS;
+    for (uint32_t i = 0; i < nc; i++) /* medium blocks: their chunks whole */
+        if (chunks[i])
+            mmap(chunks[i], CHUNK, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED, -1, 0);
+    fprintf(stderr,
+            "[x2] heap: released %zu big blocks (%zu MB) and %u chunks of medium ones (%zu MB in use); %zu MB in small "
+            "blocks stays\n",
+            n, mb, nc, (size_t)mid_live >> 20, (size_t)small_live >> 20);
 }
