@@ -1,11 +1,15 @@
 # Launcher
 
-The launcher is a desktop app for macOS, Linux and Windows. It turns the games
-you own into native builds, without a terminal:
+The launcher is a desktop app for macOS, Linux and Windows, and the Type X2
+app on Android. On a computer it turns the games you own into native builds,
+without a terminal:
 
 - **for this computer**, to play them from the launcher;
-- **for other platforms**: the RetroArch core for Android, the Android app,
-  or the RetroArch core for this computer.
+- **for other platforms**: the RetroArch core for Android, game packs for
+  the Android app, or the RetroArch core for this computer.
+
+On Android it plays them: the library comes from ES-DE's ROMs folder and each
+game's code from its pack ([Android and RetroArch](Android-and-RetroArch.md#the-app)).
 
 It is a Tauri app (Rust back end, React front end) in `launcher/`.
 
@@ -13,9 +17,9 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 
 | Page | |
 |---|---|
-| Library | Add game folders, or scan a folder that holds several (searched 4 levels deep; hidden folders skipped; each game's first copy counts). A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. |
+| Library | Add game folders, or scan a folder that holds several (searched 4 levels deep; hidden folders skipped; each game's first copy counts). A game is recognised from its `game.exe` / `launcher.exe` (PE image size and entry point), so the folder's name does not matter. Games not supported yet are listed too, under their folder's name, as *Not supported yet*. |
 | Game | Build or rebuild for this computer, Play / Stop, display options (full screen, vsync, FPS counter, render scale), the controller layout (presets per game, or remapped button by button: Assign, then press the controller button; saved as an `X2_PAD` line), log detail and extra `X2_*` switches. |
-| Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. An Android export can go straight to a connected device (USB debugging, or wireless debugging paired with `adb`): **Send to device** installs the app, or copies the core to `RetroArch/downloads/` for RetroArch's *Install or Restore a Core*. |
+| Export | Pick a target and games; the result lands in the launcher's `exports/<target>/` folder. An Android export can go straight to a connected device (USB debugging, or wireless debugging paired with `adb`): **Send to device** puts game packs in the Type X2 app's folder (it installs them when it opens), or copies the core to `RetroArch/downloads/` for RetroArch's *Install or Restore a Core*. |
 | Build tools | What building needs, where each tool comes from, downloads and their removal. Android's platform tools (`adb`, for Send to device) download here too, or come from the Android SDK. |
 | Log | The game's output and the build tools' output. **Report a problem** copies a report (launcher version, system, each game's build state, the last 200 lines of both logs; home folders shown as `~`) and opens a new GitHub issue to paste it into. |
 | About | The launcher's language, updates (below), the installation (version, kit, data folder). |
@@ -80,7 +84,7 @@ stays in the launcher's data folder, apart from the exports the user makes.
 - **Linux:** untested.
 - **Windows:** untested, and there is no `x2-player` yet, so Windows can
   export but not play.
-- **Android app export:** needs the Android SDK's build tools next to the NDK.
+- **Android:** the app is built in CI with Tauri (`launcher/src-tauri/gen/android`); on the device it hides Export and Build tools, and the game page shows the pack instead of the build.
 
 ## Developing
 

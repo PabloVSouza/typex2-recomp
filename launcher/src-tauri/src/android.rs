@@ -6,7 +6,7 @@
 //! writes the game's settings to its `x2.env` (ES-DE launches read it too) and starts SDL's
 //! activity, which runs the game in its own process.
 use crate::config::{Config, GameEntry, GameSettings};
-use crate::games::{self, Game};
+use crate::games;
 use jni::objects::{JObject, JString, JValue};
 use jni::{JNIEnv, JavaVM};
 use serde_json::{json, Value};
@@ -117,10 +117,6 @@ pub fn rom_dir() -> PathBuf {
     set.map(PathBuf::from).unwrap_or_else(|| root.join("ROMs"))
 }
 
-pub fn pack_name(game: &Game) -> String {
-    format!("x2-{:08x}-{:08x}.so", game.size, game.entry)
-}
-
 /// Moves packs sent to the shared folder into private storage; returns how many arrived.
 fn import_packs() -> Result<usize> {
     let (from, to) = (incoming_dir()?, packs_dir()?);
@@ -172,7 +168,7 @@ pub fn sync(config: &mut Config) -> bool {
 /// The game's pack, in the shape of the desktop's library status: "ready" when installed.
 pub fn pack_status(id: &str) -> Value {
     let Some(game) = games::by_id(id) else { return json!({"state": "none", "built": null}) };
-    let meta = packs_dir().ok().and_then(|d| fs::metadata(d.join(pack_name(game))).ok());
+    let meta = packs_dir().ok().and_then(|d| fs::metadata(d.join(game.pack_name())).ok());
     match meta {
         Some(m) => {
             let built = m.modified().ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
@@ -184,7 +180,7 @@ pub fn pack_status(id: &str) -> Value {
 
 pub fn delete_pack(id: &str) -> Result<()> {
     let game = games::by_id(id).ok_or("Unknown game.")?;
-    let p = packs_dir()?.join(pack_name(game));
+    let p = packs_dir()?.join(game.pack_name());
     if p.exists() {
         fs::remove_file(&p).map_err(|e| e.to_string())?;
     }

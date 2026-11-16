@@ -1,5 +1,5 @@
 //! Android devices connected over USB or wireless debugging (adb), and sending an export to one:
-//! the app is installed; the RetroArch core is copied to RetroArch's downloads folder, from where
+//! game packs go to the Type X2 app's folder; the RetroArch core to RetroArch's downloads folder, from where
 //! RetroArch installs it (Load Core → Install or Restore a Core). adb is the launcher's download
 //! (Build tools), or one found on the system or in the Android SDK.
 use crate::{kit, toolchain};
@@ -11,6 +11,9 @@ type Result<T> = std::result::Result<T, String>;
 
 /// Where the core goes on the device: RetroArch installs cores from here.
 const CORE_DIR: &str = "/sdcard/RetroArch/downloads";
+
+/// The Type X2 app (launcher/src-tauri/tauri.android.conf.json).
+const APP_ID: &str = "com.typex2.recomp";
 
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Device {
@@ -92,18 +95,34 @@ fn check(out: Output, what: &str) -> Result<()> {
     Err(format!("{what}: {last}"))
 }
 
-/// Sends an export's file to the device: installs the app, or copies the core for RetroArch.
-/// Returns where it went, for the message.
+/// The Type X2 app on the device: the release app, else a development build (`.dev`).
+fn app_package(adb: &Path, serial: &str) -> Result<String> {
+    let out = run(adb, &["-s", serial, "shell", "pm", "list", "packages", APP_ID])?;
+    let listed: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().filter_map(|l| l.trim().strip_prefix("package:").map(str::to_string)).collect();
+    [APP_ID.to_string(), format!("{APP_ID}.dev")]
+        .into_iter()
+        .find(|p| listed.contains(p))
+        .ok_or_else(|| "The Type X2 app is not on the device: install it from the releases page first.".into())
+}
+
+/// Sends an export's files to the device: the game packs into the app's folder (it installs them
+/// when it next opens), or the core for RetroArch. Returns what was sent, for the message.
 pub fn send(adb: &Path, serial: &str, target: &str, files: &[String]) -> Result<&'static str> {
-    let find = |ext: &str| files.iter().find(|f| f.ends_with(ext)).ok_or_else(|| format!("The export has no {ext} file."));
     match target {
-        "android-app" => {
-            let apk = find(".apk")?;
-            check(run(adb, &["-s", serial, "install", "-r", apk])?, "Installing the app")?;
-            Ok("app")
+        "android-packs" => {
+            let packs: Vec<&String> = files.iter().filter(|f| f.ends_with(".so")).collect();
+            if packs.is_empty() {
+                return Err("The export has no game packs.".into());
+            }
+            let dir = format!("/sdcard/Android/data/{}/files/packs", app_package(adb, serial)?);
+            check(run(adb, &["-s", serial, "shell", "mkdir", "-p", &dir])?, "Preparing the app's packs folder")?;
+            for p in packs {
+                check(run(adb, &["-s", serial, "push", p, &format!("{dir}/")])?, "Copying a game pack")?;
+            }
+            Ok("packs")
         }
         "android-retroarch" => {
-            let so = find(".so")?;
+            let so = files.iter().find(|f| f.ends_with(".so")).ok_or("The export has no .so file.")?;
             check(run(adb, &["-s", serial, "shell", "mkdir", "-p", CORE_DIR])?, "Preparing RetroArch's downloads folder")?;
             check(run(adb, &["-s", serial, "push", so, &format!("{CORE_DIR}/")])?, "Copying the core")?;
             Ok("core")

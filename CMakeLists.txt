@@ -80,6 +80,6 @@ foreach(gen ${X2_GAME_GENS})
   endif()
 endforeach()
 if(ANDROID)
-  x2_add_android_app() # launcher + `apk` target (all games in one app)
+  x2_add_android_app() # `x2app` (the app's libmain + SDL) and `packs` (one per game)
 endif()
 x2_add_libretro_core() # typex2_libretro: every game in one RetroArch core

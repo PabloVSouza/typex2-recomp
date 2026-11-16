@@ -11,8 +11,10 @@ Static recompilation of Taito Type X and Type X2 arcade games (x86 Windows XP PC
 native code for macOS and Android: `x2recomp` lifts `game.exe` (or `launcher.exe`) to C, the C
 runtime provides memory, threads, Win32 / D3D9 / D3DX / DirectSound /
 DirectShow, a JVS I/O board and renderers (Metal by default on macOS, Vulkan on
-Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Front ends: a standalone app
-(SDL3, launched by ES-DE) and a libretro core holding every game.
+Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Front ends: a standalone SDL3 player
+(macOS; on Android inside the Type X2 app, the launcher built with Tauri, which also ES-DE
+launches) and a libretro core holding every game. The Android app holds no game code: each
+game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 
 | Game | `games/<id>` | State |
 |---|---|---|
@@ -82,9 +84,12 @@ gets an entry per milestone. Update them with the README.
 * `runtime/CMakeLists.txt`: one target per `games/*/gen`; the game's label
   is set in the `if(game STREQUAL ...)` chain.
 * `tools/`: `arc`, `kofarc`, `lifttest` (Unicorn differential tests of the
-  lifter), `retro_host`, Android packaging (`tools/android`: manifest, and
-  `java/` the app's settings screen), ES-DE and libretro files.
-* `launcher/`: the desktop app (Tauri 2, React, Tailwind, shadcn/ui).
+  lifter), `retro_host`, the FFmpeg cross-build (`tools/android`), ES-DE and libretro files.
+* `launcher/`: the desktop app and the Android app (Tauri 2, React, Tailwind, shadcn/ui).
+  Android: `src-tauri/gen/android` (committed; Tauri rewrites `app/build.gradle.kts` on each
+  build, so our Gradle settings live in the root `build.gradle.kts`: SDL's activity and the
+  runtime's `x2app` output from `build-android/app`, `.dev` debug builds, release signing),
+  `src-tauri/src/android.rs` (ROMs folder library, packs, `x2.env`, Play through JNI).
   `src-tauri/src/`: `games.rs` (supported games, identified by PE image size +
   entry; add new games there too), `recomp.rs` (build jobs: x2recomp, the game
   library for `x2-player`, CMake exports), `toolchain.rs` (pinned tool
@@ -231,6 +236,11 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
 
 * adb is over Wi-Fi (wireless debugging); the port changes, ask the user
   for `ip:port` when `adb devices` is empty.
+* The app: `cmake --build build-android --target x2app packs`, then in `launcher/`
+  `npx tauri android build --debug --apk --target aarch64` (ANDROID_HOME, NDK_HOME) and
+  `adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+  (`com.typex2.recomp.dev`). Packs: `cli send android-packs <serial> build-android/packs/x2-*.so`,
+  or push to `/sdcard/Android/data/<app>/files/packs`; the app installs them when its library loads.
 * Installing the core: push `build-android/typex2_libretro_android.so` to
   `/storage/emulated/0/RetroArch/downloads/`, then in RetroArch tap
   Load Core → Install or Restore a Core → the file (taps work, key events

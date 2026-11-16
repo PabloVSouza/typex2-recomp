@@ -183,25 +183,26 @@
     "send": "デバイスに送信",
     "sendTo": "{{device}} に送信",
     "sending": "送信中…",
-    "installed": "アプリをデバイスにインストールしました。",
     "copied": "コアをデバイスに送りました。",
     "copiedText": "RetroArch で：コアをロード → コアをインストールまたは復元 → typex2_libretro_android.so。",
     "needAdb": "送信するには adb を入手",
     "none": "送信するには USB デバッグを有効にしたデバイスを接続してください",
-    "unauthorized": "デバイスでこのコンピューターを許可してください（USB デバッグの確認）"
+    "unauthorized": "デバイスでこのコンピューターを許可してください（USB デバッグの確認）",
+    "packsSent": "ゲームパックを端末に送りました。",
+    "packsSentText": "Type X2 アプリを開くとインストールされます。"
   },
   "targets": {
     "androidRetroarch": {
       "name": "Android 用 RetroArch コア",
       "description": "選択したゲームを含む typex2_libretro_android.so。デバイスの RetroArch/downloads/ にコピーし、Load Core → Install or Restore a Core を選択してください。"
     },
-    "androidApp": {
-      "name": "Android アプリ",
-      "description": "typex2.apk: 選択したゲームを含む単体アプリ (ES-DE から起動可能)。NDK と同じ場所に Android SDK のビルドツールが必要です。"
-    },
     "hostRetroarch": {
       "name": "このコンピュータ用 RetroArch コア",
       "description": "このコンピュータの RetroArch 用 libretro コア (選択したゲームを含む)。typex2_libretro.info と一緒に RetroArch の cores フォルダにコピーしてください。"
+    },
+    "androidPacks": {
+      "name": "Android アプリ用ゲームパック",
+      "description": "選んだゲームごとに 1 つ、Type X2 アプリ（リリースページから入手）用のパックです。「端末に送信」でインストールされます。または端末の Android/data/com.typex2.recomp/files/packs にコピーしてください。"
     }
   },
   "tools": {

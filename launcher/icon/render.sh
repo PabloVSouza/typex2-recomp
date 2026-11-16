@@ -24,6 +24,6 @@ for d in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
     ffmpeg -loglevel error -y -i "$T/fg.ppm" -vf scale=${d#*:}:${d#*:}:flags=neighbor android/mipmap-${d%%:*}/ic_launcher_foreground.png
 done
 # Android's adaptive icon: the icon's own navy behind it (not white), and the same set for the
-# standalone app's APK (tools/android/res, compiled by tools/android/package.cmake)
+# Android app (launcher/src-tauri/gen/android, whose splash screen shows it too)
 sed -i.bak 's/#FFFFFF/#1B1E3E/' android/values/ic_launcher_background.xml && rm -f android/values/ic_launcher_background.xml.bak
-rm -rf "$D/../../tools/android/res" && cp -R android "$D/../../tools/android/res"
+cp -R android/. "$D/../src-tauri/gen/android/app/src/main/res/"

@@ -2,7 +2,8 @@
 
 ## Building
 
-You need the NDK and the SDK build-tools; Gradle isn't used.
+The runtime needs the NDK; the app (the launcher, built with Tauri) also needs
+the SDK, a JDK and Rust's `aarch64-linux-android` target.
 
 ```sh
 git clone -b release-3.4.20 --depth 1 https://github.com/libsdl-org/SDL.git third_party/SDL
@@ -10,34 +11,62 @@ git clone -b n7.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git third_party/ffmp
 tools/android/build_ffmpeg.sh third_party/ffmpeg third_party/ffmpeg-android
 cmake -S . -B build-android -G Ninja -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
       -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33
-cmake --build build-android --target apk typex2_libretro
+cmake --build build-android --target x2app packs typex2_libretro
+# the app: its game side comes from build-android/app (X2_APP_NATIVE to use another folder)
+cd launcher && ANDROID_HOME=... NDK_HOME=$ANDROID_NDK npx tauri android build --apk --target aarch64 [--debug]
 ```
 
-Name both targets: the default target doesn't rebuild the core. The build
-also keeps an unstripped `typex2_libretro_android.so.sym` for the profiler.
+- **Targets.**
+  - `x2app`: the app's game side, without games: `libmain.so`, `libSDL3.so`
+    and SDL's Java activity, in `build-android/app`.
+  - `packs`: one game pack per game, `build-android/packs/x2-<size>-<entry>.so`.
+  - `typex2_libretro`: the core. Name it: the default target doesn't rebuild
+    it. The build also keeps an unstripped `typex2_libretro_android.so.sym`
+    for the profiler.
+- **The Android project** is `launcher/src-tauri/gen/android`. Tauri rewrites
+  its `app/build.gradle.kts` on every build, so the app's own Gradle settings
+  live in the root `build.gradle.kts`.
+- **Debug builds** are `com.typex2.recomp.dev`, installed next to the release
+  app. Release builds are signed when `X2_KEYSTORE` and `X2_KEYSTORE_PASSWORD`
+  are set (CI).
 
 ## Games on the device
 
 - **Folders.** Each game lives in its own folder named `<Game>.x2`, for
   example `ROMs/arcade/The King of Fighters XIII.x2/game.exe`.
 - **`x2.env`.** A file in the game folder holds `KEY=VALUE` lines. These set
-  `X2_*` switches, such as a pad layout or `X2_FPS=1`.
+  `X2_*` switches, such as a pad layout or `X2_FPS=1`. The app writes it from
+  each game's settings.
 - **Logs** go to logcat with the tag `x2`.
 
-## The standalone app
+## The app
 
-- **Install:** `adb install -r build-android/typex2.apk`.
-- **What it is:** one app, **Type X2** (`com.typex2.recomp`), holding every
-  game. It asks for "All files access" the first time it reads shared
-  storage.
-- **Opened from the home screen**, it lists the games it finds in ES-DE's
-  `ROMs/arcade` folder (and in its own `files/game`). Pick one to play it or
-  change its settings: FPS counter, pad layout (the pad default or an
-  8-button stick whose rows start with L1 / L2), and the on-screen touch pad
-  (automatic, always, never). They are saved in the game's `x2.env`; lines
-  the screen doesn't manage stay as they are, and a hand-written `X2_PAD`
-  shows as Custom.
-- **From ES-DE** a game starts straight away, with the same settings.
+**Type X2** (`com.typex2.recomp`) is the launcher, built for Android. It
+carries no game code: each game's code comes as a **game pack**, built on a
+computer.
+
+1. **Install the app** from the releases page (`typex2-android.apk`). On
+   first start, allow "All files access": the app reads the ROMs folder and
+   writes each game's `x2.env`.
+2. **Make the packs** on a computer: in the launcher, Export → **Game packs
+   for the Android app**, with the games you own.
+3. **Send them:** Export → Last exports → **Send to device**, with the device
+   connected (USB debugging on). Or copy the `x2-*.so` files to
+   `Android/data/com.typex2.recomp/files/packs` on the device yourself.
+4. **Open the app.** It installs the packs, finds the games in ES-DE's ROMs
+   folder (`ROMs/arcade`, or ES-DE's own ROM directory setting) and lists
+   them. Games it can't play yet are listed too, as *Not supported yet*.
+
+- **A game's page:** Play, the FPS counter, the render scale, the on-screen
+  touch pad (automatic, always, never), the pad layout and extra `X2_*`
+  switches. The settings go into the game's `x2.env`.
+- **From ES-DE** a game starts straight away, with the same settings: ES-DE
+  launches the app's game activity (`es_find_rules.xml`).
+- **How a game runs:** in its own process, in SDL's activity. `libmain`
+  identifies the game from its executable and loads its pack from the app's
+  private storage, the only place besides the APK Android loads code from.
+- **Updating a game** after a runtime fix means sending a new pack, not
+  reinstalling the app.
 
 ## The RetroArch core
 
@@ -53,7 +82,7 @@ Settings and limits:
   `vulkan` driver by itself while "Allow driver switching" (Settings →
   Drivers) is on, the default. The OpenGL ES renderer (`X2_RENDERER=gl`) is
   a development reference that will be removed, not a supported fallback.
-  The standalone app uses Vulkan too.
+  The app uses Vulkan too.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
 - **Missing features.** No save states, rewind or run-ahead. Reset (Quick

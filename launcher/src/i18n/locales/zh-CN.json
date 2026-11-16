@@ -183,25 +183,26 @@
     "send": "发送到设备",
     "sendTo": "发送到 {{device}}",
     "sending": "正在发送…",
-    "installed": "应用已安装到设备。",
     "copied": "核心已发送到设备。",
     "copiedText": "在 RetroArch 中：加载核心 → 安装或恢复核心 → typex2_libretro_android.so。",
     "needAdb": "获取 adb 以发送",
     "none": "连接已开启 USB 调试的设备以发送",
-    "unauthorized": "请在设备上允许这台电脑（USB 调试提示）"
+    "unauthorized": "请在设备上允许这台电脑（USB 调试提示）",
+    "packsSent": "游戏包已在设备上。",
+    "packsSentText": "打开 Type X2 应用即可安装。"
   },
   "targets": {
     "androidRetroarch": {
       "name": "Android 版 RetroArch 核心",
       "description": "包含所选游戏的 typex2_libretro_android.so。将其复制到设备的 RetroArch/downloads/，然后执行 Load Core → Install or Restore a Core。"
     },
-    "androidApp": {
-      "name": "Android 应用",
-      "description": "typex2.apk：包含所选游戏的独立应用（可由 ES-DE 启动）。需要在 NDK 旁安装 Android SDK 的构建工具。"
-    },
     "hostRetroarch": {
       "name": "本机 RetroArch 核心",
       "description": "适用于本机 RetroArch 的 libretro 核心，包含所选游戏。将它和 typex2_libretro.info 复制到 RetroArch 的 cores 文件夹。"
+    },
+    "androidPacks": {
+      "name": "Android 应用的游戏包",
+      "description": "为 Type X2 应用（从发布页面获取）每个所选游戏生成一个包。“发送到设备”会安装它们；也可以把它们复制到设备的 Android/data/com.typex2.recomp/files/packs。"
     }
   },
   "tools": {

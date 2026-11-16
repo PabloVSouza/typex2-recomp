@@ -8,7 +8,7 @@ import { useDevices } from "@/hooks";
 import { api, errorText } from "@/lib";
 import { useUi } from "@/stores";
 
-/** An Android export sent to a connected device over adb: the app installed, the core copied. */
+/** An Android export sent to a connected device over adb: game packs to the Type X2 app, the core for RetroArch. */
 export function SendToDevice({ target }: { target: string }) {
   const { t } = useTranslation();
   const go = useUi((s) => s.go);
@@ -17,7 +17,9 @@ export function SendToDevice({ target }: { target: string }) {
   const send = useMutation({
     mutationFn: (serial: string) => api.sendExport(target, serial),
     onSuccess: (sent) =>
-      sent === "app" ? toast.success(t("devices.installed")) : toast.success(t("devices.copied"), { description: t("devices.copiedText") }),
+      sent === "packs"
+        ? toast.success(t("devices.packsSent"), { description: t("devices.packsSentText") })
+        : toast.success(t("devices.copied"), { description: t("devices.copiedText") }),
     onError: (e) => toast.error(errorText(e)),
   });
   if (!data) return null;

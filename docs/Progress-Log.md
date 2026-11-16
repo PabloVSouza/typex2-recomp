@@ -2,21 +2,28 @@
 
 Milestones, newest first. `git log` has the details.
 
-## 2026-11-16: Settings screen in the Android app
+## 2026-11-16: The launcher is the Android app; game packs
 
-- **What:** the app's home-screen icon now opens a settings screen
-  (`tools/android/java`, plain Android widgets, its own process): the games
-  found in ES-DE's `ROMs/arcade` and the app's `files/game`, identified by
-  their PE header like `launcher.c` (the table is generated next to
-  `x2_games.h`), each with Play, FPS counter, pad layout and touch pad written
-  to its `x2.env`. ES-DE keeps launching `SDLActivity` directly.
-- **Tested on the tablet:** all eight games listed; settings written and
-  removed with the other lines kept; Play starts the game; playing a second
-  game from the screen while one runs restarts the game process cleanly.
-- **Android 16 details:** apps targeting API 36 get no `onBackPressed`
-  (back is an `OnBackInvokedCallback`), draw edge to edge (the page fits the
-  system bars), and Samsung's DeviceDefault accent hid checked controls (the
-  screen has its own Material theme).
+- **What:** the Android app is the launcher built with Tauri
+  (`launcher/src-tauri/gen/android`, package `com.typex2.recomp`, debug
+  builds `.dev`). SDL's activity runs games in a `:game` process with
+  `libmain.so` and `libSDL3.so` from the new game-less `x2app` target. The
+  app holds no game code: `libmain` loads `files/packs/x2-<size>-<entry>.so`,
+  named after the game's PE identity, built by the `packs` target (the
+  launcher's "Game packs for the Android app" export) and pushed by Send to
+  device into `Android/data/<app>/files/packs`, which the app moves into
+  private storage. The old all-in-one APK (`tools/android` packaging, a Java
+  settings screen tried the same day) is gone.
+- **On Android** (`android.rs`): the library is ES-DE's `ROMs/arcade`
+  (existing `x2.env` lines become the settings), Play writes `x2.env` and
+  starts the game activity through JNI, Export and Build tools are hidden,
+  and the window is immersive with our icon on the splash.
+- **Feasibility first:** a game library dlopened from the app's files
+  directory (writable, not the APK) runs KOF XII at 60 fps on Android 16.
+- **Tested on the tablet:** all eight games found; KOF XII played from the
+  app and from an ES-DE-style intent; its `x2.env` written unchanged.
+- **Unsupported games** are listed by folder name (`other-<size>-<entry>`
+  ids), on both platforms.
 
 ## 2026-11-16: Targeted wakeups; KOF XIII Climax is stage-bound on Android
 

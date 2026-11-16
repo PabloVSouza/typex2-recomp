@@ -1,6 +1,5 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "com.typex2.recomp",
-  "productName": "Type X2",
-  "bundle": { "android": { "minSdkVersion": 33 } }
+  "productName": "Type X2"
 }

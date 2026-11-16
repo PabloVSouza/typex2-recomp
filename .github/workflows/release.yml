@@ -1,6 +1,7 @@
 # Launcher releases: push a tag v<version> to build the launcher for macOS, Linux and
 # Windows, each carrying its kit (x2recomp, x2-player, their libraries and the runtime
-# sources, see launcher/scripts/stage-kit.sh), into a draft GitHub release.
+# sources, see launcher/scripts/stage-kit.sh), and the Android app (typex2-android.apk), into a
+# draft GitHub release.
 # Releases carry this project's code only: no game files, no recompiled game code.
 name: Release
 
@@ -138,8 +139,55 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" launcher/src-tauri/target/release/bundle/msi/*.msi \
             launcher/src-tauri/target/release/bundle/nsis/*.exe --clobber
 
+  android:
+    # the Type X2 app: the launcher for Android with the runtime's game side (libmain, SDL),
+    # no game code (games come as packs exported on a computer); signed with the project's key
+    needs: draft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: The signing key
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          test -n "$ANDROID_KEYSTORE" || { echo "Set the ANDROID_KEYSTORE secret (base64 of the release keystore)"; exit 1; }
+          echo "$ANDROID_KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+      - name: Packages
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: The game side (libmain, SDL)
+        run: |
+          cmake -S . -B build-android -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DX2_LIBRETRO=OFF
+          cmake --build build-android --target x2app
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Build the app
+        env:
+          X2_RELEASE_TAG: ${{ github.ref_name }} # the version the update check compares (updates.rs)
+          X2_KEYSTORE: ${{ runner.temp }}/release.keystore
+          X2_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        working-directory: launcher
+        run: |
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          npm ci
+          npx tauri android build --apk --target aarch64
+          cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk "$RUNNER_TEMP/typex2-android.apk"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/typex2-android.apk" --clobber
+
   publish:
-    needs: [macos, linux, windows]
+    needs: [macos, linux, windows, android]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

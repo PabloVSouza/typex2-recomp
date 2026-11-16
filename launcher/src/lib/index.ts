@@ -5,3 +5,4 @@ export * from "@/lib/queryClient";
 export * from "@/lib/types";
 export * from "@/lib/utils";
 export * from "@/lib/report";
+export * from "@/lib/gamepad";

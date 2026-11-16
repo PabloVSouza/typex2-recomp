@@ -3,7 +3,8 @@ import { RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Button } from "@/components/ui";
-import { api } from "@/lib";
+import { api, readGamepadButton } from "@/lib";
+import { useAppState } from "@/hooks";
 import { actionsFor, assign, buttonLabel, isDefault, layoutOf, padOf, PAD_BUTTONS, resetAction, type PadButton } from "@/lib/data";
 import { errorText } from "@/lib";
 import { ActionRow } from "@/pages/game/ActionRow";
@@ -16,11 +17,13 @@ export function LayoutEditor({ game, pad, onChange }: { game: string; pad: strin
   const defaults = layoutOf(game, "");
   const actions = actionsFor(game);
   const [waiting, setWaiting] = useState<string | null>(null);
+  // Android has no x2-player to read the controller: the page reads it
+  const android = !!useAppState().data?.android;
 
   const press = async (keys: string) => {
     setWaiting(keys);
     try {
-      const button = await api.readPad();
+      const button = await (android ? readGamepadButton() : api.readPad());
       if (button) onChange(padOf(assign(layout, button as PadButton, keys)));
     } catch (error) {
       toast.error(t("controls.readFailed"), { description: errorText(error) });

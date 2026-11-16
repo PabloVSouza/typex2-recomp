@@ -23,7 +23,7 @@ game that belongs here? Please open an issue.
 
 Platforms:
 - **macOS**: the standalone SDL3 executable (`build/x2-<id>`).
-- **Android app**: the standalone `com.typex2.recomp` app, launched by ES-DE.
+- **Android app**: the Type X2 app (`com.typex2.recomp`, the launcher on Android) playing game packs, also launched by ES-DE.
 - **RetroArch**: the `typex2_libretro` core.
 
 Results come from the two [test devices](Hardware.md#test-devices): a Mac

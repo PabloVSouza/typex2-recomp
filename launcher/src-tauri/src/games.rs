@@ -55,6 +55,13 @@ pub const GAMES: &[Game] = &[
     Game { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", size: 0x1c3b000, entry: 0x79aba1, layouts: KOF },
 ];
 
+impl Game {
+    /// Its pack for the Android app (runtime/CMakeLists.txt `packs`, runtime/src/launcher.c).
+    pub fn pack_name(&self) -> String {
+        format!("x2-{:08x}-{:08x}.so", self.size, self.entry)
+    }
+}
+
 pub fn by_id(id: &str) -> Option<&'static Game> {
     GAMES.iter().find(|g| g.id == id)
 }

@@ -2,7 +2,7 @@
 
 ```
 game.exe ──x2recomp──► games/<id>/gen/*.c ──clang──► x2gen_<id> (objects) ─┬─► x2-<id> (desktop executable)
-                                                                           ├─► libx2_<id>.so (Android app)
+                                                                           ├─► x2-<size>-<entry>.so (game pack for the Android app)
 runtime/ (C): memory, threads, Win32/D3D9/DSound/DirectShow,               └─► typex2_libretro (all games)
               JVS I/O, GL renderer; SDL3 or libretro platform layer
 ```

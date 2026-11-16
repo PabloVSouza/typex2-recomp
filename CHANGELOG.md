@@ -7,20 +7,27 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## 0.1.2 - 2026-11-16
+## Unreleased
 
-A settings screen in the Android app, and sending exports to your device.
+The launcher becomes the Android app, and games' code travels as packs.
 
+- **Android app:** the Type X2 app is now the launcher itself, with its
+  library, game pages and settings, and comes from the releases page. It
+  carries no game code: export **game packs** in the launcher on your
+  computer and send them to the device. A new pack (after a runtime fix, or
+  another game) needs no new app. The app finds your games in ES-DE's ROMs
+  folder, writes each game's settings to its `x2.env` (ES-DE launches use
+  them), and runs full screen. Uninstall the old Type X2 app first: the new
+  one is signed with another key.
+- **Launcher:** games not supported yet are listed too, under their
+  folder's name, as *Not supported yet*. The "Also supported" list is gone.
 - **Launcher:** sends an Android export straight to a connected device: the
-  app installed, or the RetroArch core copied, ready for RetroArch's *Install
-  or Restore a Core*. Android's platform tools (`adb`) download from Build
-  tools when needed.
+  game packs to the app, or the RetroArch core to RetroArch's downloads, ready
+  for *Install or Restore a Core*. Android's platform tools (`adb`) download
+  from Build tools when needed.
 - **Launcher:** Log → Report a problem copies a report (version, system,
   games, logs; your home folder hidden) and opens a new GitHub issue for it.
   The Log page no longer goes blank in newer web engines.
-- **Android app:** opened from the home screen, it lists your games and sets
-  each one's FPS counter, pad layout and touch pad, then plays it; no more
-  editing `x2.env` by hand. ES-DE still starts games directly.
 - **RetroArch:** a closed game now leaves 1-3 MB behind (was 4-20).
 - **Android (Vulkan):** BlazBlue Calamity Trigger no longer stalls briefly at
   character select while textures upload.

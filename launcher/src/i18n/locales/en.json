@@ -185,25 +185,26 @@
     "send": "Send to device",
     "sendTo": "Send to {{device}}",
     "sending": "Sending…",
-    "installed": "The app is installed on the device.",
     "copied": "The core is on the device.",
     "copiedText": "In RetroArch: Load Core → Install or Restore a Core → typex2_libretro_android.so.",
     "needAdb": "Get adb to send it",
     "none": "Connect a device with USB debugging on to send it",
-    "unauthorized": "Allow this computer on the device (USB debugging prompt)"
+    "unauthorized": "Allow this computer on the device (USB debugging prompt)",
+    "packsSent": "The game packs are on the device.",
+    "packsSentText": "Open the Type X2 app: it installs them."
   },
   "targets": {
     "androidRetroarch": {
       "name": "RetroArch core for Android",
       "description": "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core."
     },
-    "androidApp": {
-      "name": "Android app",
-      "description": "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK."
-    },
     "hostRetroarch": {
       "name": "RetroArch core for this computer",
       "description": "The libretro core for RetroArch on this computer, with the chosen games. Copy it and typex2_libretro.info into RetroArch's cores folder."
+    },
+    "androidPacks": {
+      "name": "Game packs for the Android app",
+      "description": "One pack per chosen game for the Type X2 app (from the releases page). Send to device installs them; or copy them to Android/data/com.typex2.recomp/files/packs on the device."
     }
   },
   "tools": {

@@ -16,7 +16,7 @@ export function layoutName(t: TFunction, l: Layout): string {
 export function targetName(t: TFunction, x: Target): string {
   switch (x.id) {
     case "android-retroarch": return t("targets.androidRetroarch.name");
-    case "android-app": return t("targets.androidApp.name");
+    case "android-packs": return t("targets.androidPacks.name");
     case "host-retroarch": return t("targets.hostRetroarch.name");
     default: return x.name;
   }
@@ -25,7 +25,7 @@ export function targetName(t: TFunction, x: Target): string {
 export function targetDescription(t: TFunction, x: Target): string {
   switch (x.id) {
     case "android-retroarch": return t("targets.androidRetroarch.description");
-    case "android-app": return t("targets.androidApp.description");
+    case "android-packs": return t("targets.androidPacks.description");
     case "host-retroarch": return t("targets.hostRetroarch.description");
     default: return x.description;
   }

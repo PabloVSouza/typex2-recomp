@@ -500,12 +500,12 @@ pub const TARGETS: &[Target] = &[
         standalone: false,
     },
     Target {
-        id: "android-app",
-        name: "Android app",
-        description: "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK.",
+        id: "android-packs",
+        name: "Game packs for the Android app",
+        description: "One pack per chosen game for the Type X2 app (from the releases page). Send to device installs them; or copy them to Android/data/com.typex2.recomp/files/packs on the device.",
         needs: &["x2recomp", "cmake", "ninja", "ndk"],
         android: true,
-        cmake_target: "apk",
+        cmake_target: "packs",
         standalone: true,
     },
     Target {
@@ -600,7 +600,7 @@ pub fn export(ctx: &Ctx, data: &Path, kit: &Kit, target: &Target, games: &[(&'st
 
     let outputs: Vec<(PathBuf, String)> = match target.id {
         "android-retroarch" => vec![(build.join("typex2_libretro_android.so"), "typex2_libretro_android.so".into())],
-        "android-app" => vec![(build.join("typex2.apk"), "typex2.apk".into())],
+        "android-packs" => games.iter().map(|(g, _)| (build.join("packs").join(g.pack_name()), g.pack_name())).collect(),
         _ => vec![
             (build.join(LIBRETRO_HOST), LIBRETRO_HOST.into()),
             (kit.source.join("tools/libretro/typex2_libretro.info"), "typex2_libretro.info".into()),

@@ -33,7 +33,7 @@ const state: AppStateData = {
   ndk: "", jobs: 0, language: "", check_updates: true, job: null, running: null,
   targets: [
     { id: "android-retroarch", name: "RetroArch core for Android", description: "typex2_libretro_android.so with the chosen games. Copy it to RetroArch/downloads/ on the device, then Load Core → Install or Restore a Core.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
-    { id: "android-app", name: "Android app", description: "typex2.apk: the standalone app (ES-DE can launch it) with the chosen games. Needs the Android SDK's build tools next to the NDK.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
+    { id: "android-packs", name: "Game packs for the Android app", description: "One pack per chosen game for the Type X2 app.", needs: ["x2recomp", "cmake", "ninja", "ndk"] },
     { id: "host-retroarch", name: "RetroArch core for this computer", description: "The libretro core for RetroArch on this computer, with the chosen games.", needs: ["x2recomp", "cmake", "ninja", "cc"] },
   ],
   exports: [{ target: "android-retroarch", games: ["kof13", "kof98um"], files: ["exports/android-retroarch/typex2_libretro_android.so"], built: 1763040000 }],
@@ -60,7 +60,7 @@ export async function mockInvoke(cmd: string, args?: Record<string, unknown>): P
   if (cmd === "allow_all_files" && state.android) state.android.all_files = true;
   if (cmd === "save_update_check") state.check_updates = args?.enabled as boolean;
   if (cmd === "list_devices") return { adb: true, devices: [{ serial: "R8YL10WF7EZ", model: "SM X130", state: "device" }, { serial: "192.168.1.20:5555", model: "192.168.1.20:5555", state: "unauthorized" }] };
-  if (cmd === "send_export") return new Promise((done) => setTimeout(() => done(args?.target === "android-app" ? "app" : "core"), 1200));
+  if (cmd === "send_export") return new Promise((done) => setTimeout(() => done(args?.target === "android-packs" ? "packs" : "core"), 1200));
   // ?update in the preview: a newer release, with notes that must not render HTML or images
   if (cmd === "check_release")
     return new URLSearchParams(window.location.search).has("update")

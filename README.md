@@ -69,8 +69,9 @@ Type X / X2 game, including the ones not supported yet:
 3. **Play or export:**
    - On a Mac, press Play: the launcher recompiles the game the first time
      (a few minutes), then starts it.
-   - For Android, export the **RetroArch core** or the **Android app** with
-     the games you choose, then install it on the device:
+   - For Android, install the **Type X2 app** from the releases page and
+     export **game packs** for it, or export the **RetroArch core**, with
+     the games you choose; Send to device puts either on the device:
      [Android and RetroArch](docs/Android-and-RetroArch.md).
 
 The launcher downloads the build tools it needs (clang, CMake, Ninja, the
