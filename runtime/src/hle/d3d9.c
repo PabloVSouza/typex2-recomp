@@ -1178,7 +1178,7 @@ static void fill_caps(u32 p) {
     WR32(p + 16, 0x000003A0);             /* Caps3 */
     WR32(p + 20, 0x8000000F);             /* PresentationIntervals */
     WR32(p + 28, 0x001BBEF0);             /* DevCaps: HWTRANSFORMANDLIGHT, PUREDEVICE, ... */
-    WR32(p + 32, 0x000EFFF2);             /* PrimitiveMiscCaps */
+    WR32(p + 32, 0x000EEFF2);             /* PrimitiveMiscCaps (without NULLREFERENCE) */
     WR32(p + 36, 0x07732191);             /* RasterCaps incl. SCISSORTEST */
     for (u32 o = 40; o <= 52; o += 4) WR32(p + o, 0x000000FF);    /* Z/blend/alpha cmp caps */
     WR32(p + 44, 0x00003FFF);
@@ -1239,12 +1239,31 @@ static void A_GetAdapterIdentifier(X2Cpu *c) {
     WR32(p + 1068, 0x02E1);
     RET(D3D_OK);
 }
-static void A_GetAdapterModeCount(X2Cpu *c) { RET(2); }
+/* the display modes: 640x480, 1280x720 (Samurai Shodown EoD's HD mode needs it), and the
+ * current one (1280x768, the Type X2's panel, until a device sets another) */
+static u32 adapter_modes(u32 (*m)[2]) {
+    u32 n = 0;
+    m[n][0] = 640, m[n++][1] = 480;
+    m[n][0] = 1280, m[n++][1] = 720;
+    if (!(g_width == 640 && g_height == 480) && !(g_width == 1280 && g_height == 720))
+        m[n][0] = g_width, m[n++][1] = g_height;
+    return n;
+}
+static void A_GetAdapterModeCount(X2Cpu *c) {
+    u32 m[3][2];
+    RET(adapter_modes(m));
+}
 static void A_EnumAdapterModes(X2Cpu *c) {
-    u32 p = ARG(4);
-    u32 w = ARG(3) == 0 ? 640 : g_width, h = ARG(3) == 0 ? 480 : g_height;
-    WR32(p, w); WR32(p + 4, h); WR32(p + 8, 60); WR32(p + 12, D3DFMT_X8R8G8B8);
-    RET(ARG(3) < 2 ? D3D_OK : D3DERR_INVALIDCALL);
+    u32 p = ARG(4), m[3][2], n = adapter_modes(m), i = ARG(3);
+    if (i >= n) {
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    WR32(p, m[i][0]);
+    WR32(p + 4, m[i][1]);
+    WR32(p + 8, 60);
+    WR32(p + 12, D3DFMT_X8R8G8B8);
+    RET(D3D_OK);
 }
 static void A_GetAdapterDisplayMode(X2Cpu *c) {
     u32 p = ARG(2);
@@ -1267,7 +1286,15 @@ static void A_CheckDeviceMultiSampleType(X2Cpu *c) {
     if (ARG(5) != 0) x2_log("d3d9: multisample type %u requested: not available", ARG(5));
     RET(ARG(5) == 0 ? D3D_OK : D3DERR_NOTAVAILABLE);
 }
-static void A_GetDeviceCaps(X2Cpu *c) { fill_caps(ARG(3)); RET(D3D_OK); }
+/* only the HAL device: REF and SW are not installed (D3DERR_NOTAVAILABLE) */
+static void A_GetDeviceCaps(X2Cpu *c) {
+    if (ARG(2) != 1) {
+        RET(0x8876086Au);
+        return;
+    }
+    fill_caps(ARG(3));
+    RET(D3D_OK);
+}
 static void A_GetAdapterMonitor(X2Cpu *c) { RET(0x00010001); }
 static void A_CreateDevice(X2Cpu *c) {
     u32 hwnd = ARG(3), pp = ARG(5), out = ARG(6);
@@ -1386,6 +1413,64 @@ u32 x2_d3d9_texture_levels(u32 tex) {
     return t ? t->levels : 0;
 }
 
+/* ---- swap chain: the device's one implicit chain (its back buffer, its present) ---- */
+typedef struct {
+    X2ComObj com;
+    Device *dev; /* second, like every resource (Res_GetDevice) */
+} SwapChain;
+static void swap_destroy(X2ComObj *o) {
+    SwapChain *s = (SwapChain *)o;
+    s->dev->com.refs--;
+    free(s);
+}
+static void D_GetNumberOfSwapChains(X2Cpu *c) { RET(1); }
+static void D_GetSwapChain(X2Cpu *c) {
+    DEV;
+    if (ARG(1) != 0) {
+        WR32(ARG(2), 0);
+        RET(D3DERR_INVALIDCALL);
+        return;
+    }
+    SwapChain *s = calloc(1, sizeof *s);
+    s->dev = d;
+    d->com.refs++; /* the chain holds the device */
+    s->com.destroy = swap_destroy;
+    WR32(ARG(2), x2_com_wrap(&s->com, vt_swap, "IDirect3DSwapChain9"));
+    RET(D3D_OK);
+}
+static void SC_Present(X2Cpu *c) {
+    SwapChain *s = COM_THIS(SwapChain);
+    extern void x2_ddraw_compose(GfxId backbuffer);
+    x2_ddraw_compose(surface_tex(s->dev->backbuffer));
+    gfx_present();
+    RET(D3D_OK);
+}
+static void SC_GetBackBuffer(X2Cpu *c) { /* (index, type, **surface) */
+    SwapChain *s = COM_THIS(SwapChain);
+    x2_com_get(s->dev->backbuffer)->refs++;
+    WR32(ARG(3), s->dev->backbuffer);
+    RET(D3D_OK);
+}
+static void SC_GetRasterStatus(X2Cpu *c) {
+    u32 p = ARG(1);
+    u64 t = x2_time_ns() % 16666667ull;
+    WR32(p, t > 15500000ull);
+    WR32(p + 4, (u32)(t * g_height / 16666667ull));
+    RET(D3D_OK);
+}
+static void SC_GetDisplayMode(X2Cpu *c) {
+    u32 p = ARG(1);
+    WR32(p, g_width);
+    WR32(p + 4, g_height);
+    WR32(p + 8, 60);
+    WR32(p + 12, D3DFMT_X8R8G8B8);
+    RET(D3D_OK);
+}
+static void SC_GetPresentParameters(X2Cpu *c) {
+    SwapChain *s = COM_THIS(SwapChain);
+    memcpy(X2P(ARG(1)), s->dev->present_params, 56);
+    RET(D3D_OK);
+}
 /* ---- vtables ------------------------------------------------------------- */
 #define M(name, fn, n) {#name, fn, n}
 #define U(name, n) {#name, NULL, n}
@@ -1410,54 +1495,122 @@ static void init_vtables(void) {
 
     static const X2Method dev[] = {
         IUNKNOWN,
-        M(TestCooperativeLevel, D_TestCooperativeLevel, 1), M(GetAvailableTextureMem, D_GetAvailableTextureMem, 1),
-        M(EvictManagedResources, Res_Nop, 1), M(GetDirect3D, D_GetDirect3D, 2), M(GetDeviceCaps, D_GetDeviceCaps, 2),
-        M(GetDisplayMode, D_GetDisplayMode, 3), M(GetCreationParameters, D_GetCreationParameters, 2),
-        M(SetCursorProperties, Res_Nop, 4), U(SetCursorPosition, 4), M(ShowCursor, D_ShowCursor, 2),
-        U(CreateAdditionalSwapChain, 3), U(GetSwapChain, 3), U(GetNumberOfSwapChains, 1), M(Reset, D_Reset, 2),
-        M(Present, D_Present, 5), M(GetBackBuffer, D_GetBackBuffer, 5), M(GetRasterStatus, D_GetRasterStatus, 3),
-        U(SetDialogBoxMode, 2), M(SetGammaRamp, D_SetGammaRamp, 4), U(GetGammaRamp, 3),
-        M(CreateTexture, D_CreateTexture, 9), U(CreateVolumeTexture, 10), M(CreateCubeTexture, D_CreateCubeTexture, 8),
-        M(CreateVertexBuffer, D_CreateVertexBuffer, 7), M(CreateIndexBuffer, D_CreateIndexBuffer, 7),
-        M(CreateRenderTarget, D_CreateRenderTarget, 9), M(CreateDepthStencilSurface, D_CreateDepthStencilSurface, 9),
-        M(UpdateSurface, D_UpdateSurface, 5), M(UpdateTexture, D_UpdateTexture, 3),
-        M(GetRenderTargetData, D_GetRenderTargetData, 3), U(GetFrontBufferData, 3), M(StretchRect, D_StretchRect, 6),
-        M(ColorFill, D_ColorFill, 4), M(CreateOffscreenPlainSurface, D_CreateOffscreenPlainSurface, 7),
-        M(SetRenderTarget, D_SetRenderTarget, 3), M(GetRenderTarget, D_GetRenderTarget, 3),
-        M(SetDepthStencilSurface, D_SetDepthStencilSurface, 2), M(GetDepthStencilSurface, D_GetDepthStencilSurface, 2),
-        M(BeginScene, D_BeginScene, 1), M(EndScene, D_EndScene, 1), M(Clear, D_Clear, 7),
-        M(SetTransform, D_SetTransform, 3), M(GetTransform, D_GetTransform, 3), U(MultiplyTransform, 3),
-        M(SetViewport, D_SetViewport, 2), M(GetViewport, D_GetViewport, 2), M(SetMaterial, Res_Nop, 2),
-        U(GetMaterial, 2), M(SetLight, Res_Nop, 3), U(GetLight, 3), M(LightEnable, Res_Nop, 3),
-        U(GetLightEnable, 3), M(SetClipPlane, Res_Nop, 3), U(GetClipPlane, 3),
-        M(SetRenderState, D_SetRenderState, 3), M(GetRenderState, D_GetRenderState, 3),
-        M(CreateStateBlock, D_CreateStateBlock, 3), U(BeginStateBlock, 1), U(EndStateBlock, 2),
-        U(SetClipStatus, 2), U(GetClipStatus, 2), M(GetTexture, D_GetTexture, 3), M(SetTexture, D_SetTexture, 3),
-        M(GetTextureStageState, D_GetTextureStageState, 4), M(SetTextureStageState, D_SetTextureStageState, 4),
-        M(GetSamplerState, D_GetSamplerState, 4), M(SetSamplerState, D_SetSamplerState, 4),
-        M(ValidateDevice, D_ValidateDevice, 2), U(SetPaletteEntries, 3), U(GetPaletteEntries, 3),
-        U(SetCurrentTexturePalette, 2), U(GetCurrentTexturePalette, 2), M(SetScissorRect, D_SetScissorRect, 2),
-        M(GetScissorRect, D_GetScissorRect, 2), M(SetSoftwareVertexProcessing, D_SetSoftwareVertexProcessing, 2),
-        M(GetSoftwareVertexProcessing, Res_Zero, 1), M(SetNPatchMode, Res_Nop, 2), U(GetNPatchMode, 1),
-        M(DrawPrimitive, D_DrawPrimitive, 4), M(DrawIndexedPrimitive, D_DrawIndexedPrimitive, 7),
-        M(DrawPrimitiveUP, D_DrawPrimitiveUP, 5), M(DrawIndexedPrimitiveUP, D_DrawIndexedPrimitiveUP, 9),
-        U(ProcessVertices, 7), M(CreateVertexDeclaration, D_CreateVertexDeclaration, 3),
-        M(SetVertexDeclaration, D_SetVertexDeclaration, 2), M(GetVertexDeclaration, D_GetVertexDeclaration, 2),
-        M(SetFVF, D_SetFVF, 2), M(GetFVF, D_GetFVF, 2), M(CreateVertexShader, D_CreateVertexShader, 3),
-        M(SetVertexShader, D_SetVertexShader, 2), M(GetVertexShader, D_GetVertexShader, 2),
+        M(TestCooperativeLevel, D_TestCooperativeLevel, 1),
+        M(GetAvailableTextureMem, D_GetAvailableTextureMem, 1),
+        M(EvictManagedResources, Res_Nop, 1),
+        M(GetDirect3D, D_GetDirect3D, 2),
+        M(GetDeviceCaps, D_GetDeviceCaps, 2),
+        M(GetDisplayMode, D_GetDisplayMode, 3),
+        M(GetCreationParameters, D_GetCreationParameters, 2),
+        M(SetCursorProperties, Res_Nop, 4),
+        U(SetCursorPosition, 4),
+        M(ShowCursor, D_ShowCursor, 2),
+        U(CreateAdditionalSwapChain, 3),
+        M(GetSwapChain, D_GetSwapChain, 3),
+        M(GetNumberOfSwapChains, D_GetNumberOfSwapChains, 1),
+        M(Reset, D_Reset, 2),
+        M(Present, D_Present, 5),
+        M(GetBackBuffer, D_GetBackBuffer, 5),
+        M(GetRasterStatus, D_GetRasterStatus, 3),
+        U(SetDialogBoxMode, 2),
+        M(SetGammaRamp, D_SetGammaRamp, 4),
+        U(GetGammaRamp, 3),
+        M(CreateTexture, D_CreateTexture, 9),
+        U(CreateVolumeTexture, 10),
+        M(CreateCubeTexture, D_CreateCubeTexture, 8),
+        M(CreateVertexBuffer, D_CreateVertexBuffer, 7),
+        M(CreateIndexBuffer, D_CreateIndexBuffer, 7),
+        M(CreateRenderTarget, D_CreateRenderTarget, 9),
+        M(CreateDepthStencilSurface, D_CreateDepthStencilSurface, 9),
+        M(UpdateSurface, D_UpdateSurface, 5),
+        M(UpdateTexture, D_UpdateTexture, 3),
+        M(GetRenderTargetData, D_GetRenderTargetData, 3),
+        U(GetFrontBufferData, 3),
+        M(StretchRect, D_StretchRect, 6),
+        M(ColorFill, D_ColorFill, 4),
+        M(CreateOffscreenPlainSurface, D_CreateOffscreenPlainSurface, 7),
+        M(SetRenderTarget, D_SetRenderTarget, 3),
+        M(GetRenderTarget, D_GetRenderTarget, 3),
+        M(SetDepthStencilSurface, D_SetDepthStencilSurface, 2),
+        M(GetDepthStencilSurface, D_GetDepthStencilSurface, 2),
+        M(BeginScene, D_BeginScene, 1),
+        M(EndScene, D_EndScene, 1),
+        M(Clear, D_Clear, 7),
+        M(SetTransform, D_SetTransform, 3),
+        M(GetTransform, D_GetTransform, 3),
+        U(MultiplyTransform, 3),
+        M(SetViewport, D_SetViewport, 2),
+        M(GetViewport, D_GetViewport, 2),
+        M(SetMaterial, Res_Nop, 2),
+        U(GetMaterial, 2),
+        M(SetLight, Res_Nop, 3),
+        U(GetLight, 3),
+        M(LightEnable, Res_Nop, 3),
+        U(GetLightEnable, 3),
+        M(SetClipPlane, Res_Nop, 3),
+        U(GetClipPlane, 3),
+        M(SetRenderState, D_SetRenderState, 3),
+        M(GetRenderState, D_GetRenderState, 3),
+        M(CreateStateBlock, D_CreateStateBlock, 3),
+        U(BeginStateBlock, 1),
+        U(EndStateBlock, 2),
+        U(SetClipStatus, 2),
+        U(GetClipStatus, 2),
+        M(GetTexture, D_GetTexture, 3),
+        M(SetTexture, D_SetTexture, 3),
+        M(GetTextureStageState, D_GetTextureStageState, 4),
+        M(SetTextureStageState, D_SetTextureStageState, 4),
+        M(GetSamplerState, D_GetSamplerState, 4),
+        M(SetSamplerState, D_SetSamplerState, 4),
+        M(ValidateDevice, D_ValidateDevice, 2),
+        U(SetPaletteEntries, 3),
+        U(GetPaletteEntries, 3),
+        U(SetCurrentTexturePalette, 2),
+        U(GetCurrentTexturePalette, 2),
+        M(SetScissorRect, D_SetScissorRect, 2),
+        M(GetScissorRect, D_GetScissorRect, 2),
+        M(SetSoftwareVertexProcessing, D_SetSoftwareVertexProcessing, 2),
+        M(GetSoftwareVertexProcessing, Res_Zero, 1),
+        M(SetNPatchMode, Res_Nop, 2),
+        U(GetNPatchMode, 1),
+        M(DrawPrimitive, D_DrawPrimitive, 4),
+        M(DrawIndexedPrimitive, D_DrawIndexedPrimitive, 7),
+        M(DrawPrimitiveUP, D_DrawPrimitiveUP, 5),
+        M(DrawIndexedPrimitiveUP, D_DrawIndexedPrimitiveUP, 9),
+        U(ProcessVertices, 7),
+        M(CreateVertexDeclaration, D_CreateVertexDeclaration, 3),
+        M(SetVertexDeclaration, D_SetVertexDeclaration, 2),
+        M(GetVertexDeclaration, D_GetVertexDeclaration, 2),
+        M(SetFVF, D_SetFVF, 2),
+        M(GetFVF, D_GetFVF, 2),
+        M(CreateVertexShader, D_CreateVertexShader, 3),
+        M(SetVertexShader, D_SetVertexShader, 2),
+        M(GetVertexShader, D_GetVertexShader, 2),
         M(SetVertexShaderConstantF, D_SetVertexShaderConstantF, 4),
         M(GetVertexShaderConstantF, D_GetVertexShaderConstantF, 4),
-        M(SetVertexShaderConstantI, D_SetVertexShaderConstantI, 4), U(GetVertexShaderConstantI, 4),
-        M(SetVertexShaderConstantB, D_SetVertexShaderConstantB, 4), U(GetVertexShaderConstantB, 4),
-        M(SetStreamSource, D_SetStreamSource, 5), M(GetStreamSource, D_GetStreamSource, 5),
-        M(SetStreamSourceFreq, D_SetStreamSourceFreq, 3), U(GetStreamSourceFreq, 3), M(SetIndices, D_SetIndices, 2),
-        M(GetIndices, D_GetIndices, 2), M(CreatePixelShader, D_CreatePixelShader, 3),
-        M(SetPixelShader, D_SetPixelShader, 2), M(GetPixelShader, D_GetPixelShader, 2),
+        M(SetVertexShaderConstantI, D_SetVertexShaderConstantI, 4),
+        U(GetVertexShaderConstantI, 4),
+        M(SetVertexShaderConstantB, D_SetVertexShaderConstantB, 4),
+        U(GetVertexShaderConstantB, 4),
+        M(SetStreamSource, D_SetStreamSource, 5),
+        M(GetStreamSource, D_GetStreamSource, 5),
+        M(SetStreamSourceFreq, D_SetStreamSourceFreq, 3),
+        U(GetStreamSourceFreq, 3),
+        M(SetIndices, D_SetIndices, 2),
+        M(GetIndices, D_GetIndices, 2),
+        M(CreatePixelShader, D_CreatePixelShader, 3),
+        M(SetPixelShader, D_SetPixelShader, 2),
+        M(GetPixelShader, D_GetPixelShader, 2),
         M(SetPixelShaderConstantF, D_SetPixelShaderConstantF, 4),
         M(GetPixelShaderConstantF, D_GetPixelShaderConstantF, 4),
-        M(SetPixelShaderConstantI, D_SetPixelShaderConstantI, 4), U(GetPixelShaderConstantI, 4),
-        M(SetPixelShaderConstantB, D_SetPixelShaderConstantB, 4), U(GetPixelShaderConstantB, 4),
-        U(DrawRectPatch, 4), U(DrawTriPatch, 4), U(DeletePatch, 2), M(CreateQuery, D_CreateQuery, 3),
+        M(SetPixelShaderConstantI, D_SetPixelShaderConstantI, 4),
+        U(GetPixelShaderConstantI, 4),
+        M(SetPixelShaderConstantB, D_SetPixelShaderConstantB, 4),
+        U(GetPixelShaderConstantB, 4),
+        U(DrawRectPatch, 4),
+        U(DrawTriPatch, 4),
+        U(DeletePatch, 2),
+        M(CreateQuery, D_CreateQuery, 3),
     };
     _Static_assert(sizeof dev / sizeof *dev == 119, "IDirect3DDevice9 has 119 methods");
     vt_device = x2_com_vtable("IDirect3DDevice9", dev, sizeof dev / sizeof *dev);
@@ -1503,7 +1656,17 @@ static void init_vtables(void) {
     vt_query = x2_com_vtable("IDirect3DQuery9", q, 8);
     static const X2Method sb[] = {IUNKNOWN, M(GetDevice, Res_GetDevice, 2), U(Capture, 1), U(Apply, 1)};
     vt_sb = x2_com_vtable("IDirect3DStateBlock9", sb, 6);
-    (void)vt_swap;
+    static const X2Method swap[] = {
+        IUNKNOWN,
+        M(Present, SC_Present, 6),
+        U(GetFrontBufferData, 2),
+        M(GetBackBuffer, SC_GetBackBuffer, 4),
+        M(GetRasterStatus, SC_GetRasterStatus, 2),
+        M(GetDisplayMode, SC_GetDisplayMode, 2),
+        M(GetDevice, Res_GetDevice, 2),
+        M(GetPresentParameters, SC_GetPresentParameters, 2),
+    };
+    vt_swap = x2_com_vtable("IDirect3DSwapChain9", swap, 10);
 }
 
 const X2Hle x2_hle_d3d9[] = {

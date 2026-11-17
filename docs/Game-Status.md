@@ -42,6 +42,7 @@ Mali-G57 MC2) for Android.
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | Fights at 60 fps (scripted) | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |
 | The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | Attract mode, 60 fps (not played yet) | Fights at 60 fps (scripted) | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
+| Samurai Shodown: Edge of Destiny | Type X2 | 2008 | `sse` | Boots: fights run, 3D scene too dark | not built yet | not built yet | [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
@@ -68,7 +69,7 @@ for KOF '98 UM).
 | **The King of Fighters XIII** | 2010 | **Playable** |
 | **The King of Fighters XIII Climax** | 2012 | **Playable** |
 | Music Gun Gun! 2 | 2011 | Not started |
-| Samurai Spirits Sen | 2008 | Not started |
+| Samurai Shodown: Edge of Destiny (Samurai Spirits Sen) | 2008 | Boots |
 | Senko no Ronde Duo - Dis-United Order | 2009 | Not started |
 | Sonic Blast Heroes | 2011 | Not started |
 | Street Fighter IV | 2008 | Not started |

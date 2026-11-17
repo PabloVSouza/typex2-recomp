@@ -395,7 +395,22 @@ u32 x2_ttx_pipe_read(u32 h, u8 *dst, u32 n) {
     return n;
 }
 
+/* the registry is empty: keys are not found (ERROR_FILE_NOT_FOUND), and
+ * enumerations end at once (ERROR_NO_MORE_ITEMS) */
+static void RegOpenKeyExA(X2Cpu *c) {
+    if (ARG(4)) WR32(ARG(4), 0);
+    RET(2);
+}
+static void RegQueryValueExA(X2Cpu *c) { RET(2); }
+static void RegEnumKeyExA(X2Cpu *c) { RET(259); }
+static void RegCloseKey(X2Cpu *c) { RET(0); }
+
 const X2Hle x2_hle_advapi32[] = {
+    {"RegOpenKeyExA", RegOpenKeyExA, 5},
+    {"RegQueryValueExA", RegQueryValueExA, 6},
+    {"RegEnumKeyExA", RegEnumKeyExA, 8},
+    {"RegEnumValueA", RegEnumKeyExA, 8},
+    {"RegCloseKey", RegCloseKey, 1},
     {"CryptAcquireContextA", CryptAcquireContextA, 5},
     {"CryptAcquireContextW", CryptAcquireContextW, 5},
     {"CryptReleaseContext", CryptReleaseContext, 2},

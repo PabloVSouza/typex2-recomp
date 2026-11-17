@@ -629,13 +629,36 @@ static NSDictionary *vt_macros(u32 vtkey) {
     }
     return m.count ? m : nil;
 }
-static id<MTLFunction> ps_function(MShader *s, bool atest) {
+/* shadow: the samplers bound to depth textures (shadow maps, compiled as depth2d: X2_SHADOW<n>);
+ * those variants live in vvar, keyed shadow << 1 | atest */
+static id<MTLFunction> ps_function(MShader *s, bool atest, u32 shadow) {
     u64 t0 = x2_time_ns();
     compile_init();
     compile_need(s);
-    if (!s->fn[atest]) s->fn[atest] = compile_fn(s, atest ? @{@"X2_ATEST" : @1} : nil);
+    if (!shadow) {
+        if (!s->fn[atest]) s->fn[atest] = compile_fn(s, atest ? @{@"X2_ATEST" : @1} : nil);
+        st_compile_ns += x2_time_ns() - t0;
+        return s->fn[atest];
+    }
+    u32 key = shadow << 1 | atest;
+    for (u32 i = 0; i < s->nvvar; i++)
+        if (s->vvar[i].key == key) {
+            st_compile_ns += x2_time_ns() - t0;
+            return s->vvar[i].fn;
+        }
+    NSMutableDictionary *m = [NSMutableDictionary dictionaryWithObject:@1 forKey:@"X2_SHADOW_ANY"];
+    if (atest) m[@"X2_ATEST"] = @1;
+    for (int i = 0; i < 16; i++)
+        if (shadow & (1u << i)) m[[NSString stringWithFormat:@"X2_SHADOW%d", i]] = @1;
+    id<MTLFunction> f = compile_fn(s, m);
+    static bool told;
+    if (!told) x2_log("metal: a pixel shader samples a depth texture: compiled as a shadow map compare");
+    told = true;
+    if (!f) s->ok = true; /* the plain variant still works: the draw reads the depth as black */
+    s->vvar = realloc(s->vvar, (s->nvvar + 1) * sizeof *s->vvar);
+    s->vvar[s->nvvar++] = (struct VsVar){key, f};
     st_compile_ns += x2_time_ns() - t0;
-    return s->fn[atest];
+    return f;
 }
 /* vtkey: 2 bits per input register, 1 = int4, 2 = uint4 (integer vertex formats) */
 static id<MTLFunction> vs_function(MShader *s, u32 vtkey) {
@@ -704,6 +727,7 @@ static MTLVertexFormat vertex_format(u8 type, u32 *vt, bool *bgra) {
 /* ---- pipelines and states -------------------------------------------------------- */
 typedef struct {
     u32 vs, ps, atest, vtkey;
+    u32 shadow; /* pixel samplers reading a depth texture as a shadow map */
     u8 afmt[16], abuf[16];
     u16 aoff[16];
     u32 stride[10];
@@ -760,7 +784,7 @@ static id<MTLRenderPipelineState> get_pipeline(const PipeKey *k, MShader *vs, MS
     e->next = pipes[h];
     pipes[h] = e;
     u64 t0 = x2_time_ns(), c0 = st_compile_ns;
-    id<MTLFunction> vf = vs_function(vs, k->vtkey), pf = ps_function(ps, k->atest);
+    id<MTLFunction> vf = vs_function(vs, k->vtkey), pf = ps_function(ps, k->atest, k->shadow);
     if (!vf || !pf) return nil;
     MTLRenderPipelineDescriptor *d = [[MTLRenderPipelineDescriptor alloc] init];
     d.vertexFunction = vf;
@@ -875,9 +899,11 @@ static MTLSamplerAddressMode address(u32 a) {
     default: return MTLSamplerAddressModeRepeat;
     }
 }
-static id<MTLSamplerState> get_sampler(const u32 *ss) {
+/* cmp: a shadow map sampler (reference <= stored depth passes, filtered as D3D9 hardware shadows) */
+static id<MTLSamplerState> get_sampler(const u32 *ss, bool cmp) {
     u32 mag = ss[5], min = ss[6], mip = ss[7];
-    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13;
+    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13 |
+              (u32)cmp << 15;
     u32 border = ss[4];
     for (SampEnt *e = samps; e; e = e->next)
         if (e->key == key && e->border == border) return e->s;
@@ -894,6 +920,7 @@ static id<MTLSamplerState> get_sampler(const u32 *ss) {
     d.mipFilter = mip == 0   ? MTLSamplerMipFilterNotMipmapped
                   : mip == 1 ? MTLSamplerMipFilterNearest
                              : MTLSamplerMipFilterLinear;
+    if (cmp) d.compareFunction = MTLCompareFunctionLessEqual;
     SampEnt *e = calloc(1, sizeof *e);
     e->key = key;
     e->border = border;
@@ -1142,6 +1169,11 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     pk.vs = vs->serial;
     pk.ps = ps->serial;
     pk.atest = st->rs[15] && st->rs[25] != 8 ? 1 : 0;
+    for (int i = 0; i < 16; i++) { /* depth textures on 2D samplers: shadow maps */
+        if (!(ps->info.samplers_used & (1u << i)) || ps->info.samp_type[i] != 2) continue;
+        MTex *tx = tex_get(st->tex[i]);
+        if (tx && tx->depth && tx->tex) pk.shadow |= 1u << i;
+    }
     u32 bgra_mask = 0;
     bool streamed[GFX_MAX_STREAMS] = {0};
     id<MTLBuffer> sbuf[GFX_MAX_STREAMS] = {nil};
@@ -1306,10 +1338,10 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
                                                                                           : ty == 4 ? 2
                                                                                                     : 0];
             if (tx) tx->used = cur_serial;
-            id<MTLSamplerState> sm = get_sampler(st->samp[i]);
+            id<MTLSamplerState> sm = get_sampler(st->samp[i], pass_i && (pk.shadow & (1u << i)));
             if (drawlog)
                 x2_log("  %s s%d: tex %u (%ux%u fmt %u%s) -> %ux%u type %d", pass_i ? "ps" : "vs", i, st->tex[i],
-                       tx ? tx->w : 0, tx ? tx->h : 0, tx ? tx->fmt : 0, mt == tx->tex ? "" : ", black", (u32)mt.width,
+                       tx ? tx->w : 0, tx ? tx->h : 0, tx ? tx->fmt : 0, tx && mt == tx->tex ? "" : ", black", (u32)mt.width,
                        (u32)mt.height, ty);
             if (pass_i) {
                 [enc setFragmentTexture:mt atIndex:i];

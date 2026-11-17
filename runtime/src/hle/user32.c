@@ -431,8 +431,55 @@ static void CharUpperA(X2Cpu *c) {         /* a character in the low word, or a 
     for (u32 p = a; RD8(p); p++) WR8(p, (u8)toupper(RD8(p)));
     RET(a);
 }
+/* one window, full screen and without decorations: placement, text and hot keys
+ * are accepted and ignored; nothing else is on the desktop */
+static void ReturnTrue(X2Cpu *c) { RET(1); }
+static void ReturnZero(X2Cpu *c) { RET(0); }
+static void InflateRect(X2Cpu *c) {
+    u32 r = ARG(0);
+    WR32(r, RD32(r) - ARG(1));
+    WR32(r + 4, RD32(r + 4) - ARG(2));
+    WR32(r + 8, RD32(r + 8) + ARG(1));
+    WR32(r + 12, RD32(r + 12) + ARG(2));
+    RET(1);
+}
+static void GetWindowTextA(X2Cpu *c) { /* (hwnd, buf, max): empty */
+    if (ARG(1) && (int)ARG(2) > 0) WR8(ARG(1), 0);
+    RET(0);
+}
+static void GetWindowPlacement(X2Cpu *c) { /* WINDOWPLACEMENT: length, flags, showCmd, 2 points, rect */
+    u32 p = ARG(1);
+    memset(X2P(p + 4), 0, 40);
+    WR32(p + 8, 1); /* SW_SHOWNORMAL */
+    WR32(p + 36, window_w);
+    WR32(p + 40, window_h);
+    RET(1);
+}
+static void SendMessageA(X2Cpu *c) { /* to our own window: straight to its procedure */
+    RET(ARG(0) == HWND_MAIN ? call_wndproc(c, ARG(0), ARG(1), ARG(2), ARG(3)) : 0);
+}
 
 const X2Hle x2_hle_user32[] = {
+    {"ScreenToClient", ReturnTrue, 2},
+    {"InflateRect", InflateRect, 3},
+    {"TranslateAcceleratorA", ReturnZero, 3},
+    {"GetWindowTextA", GetWindowTextA, 3},
+    {"GetClassNameA", GetWindowTextA, 3},
+    {"IsWindowVisible", ReturnTrue, 1},
+    {"GetWindowPlacement", GetWindowPlacement, 2},
+    {"SetWindowPlacement", ReturnTrue, 2},
+    {"EnumWindows", ReturnTrue, 2},
+    {"RegisterHotKey", ReturnTrue, 4},
+    {"UnregisterHotKey", ReturnTrue, 2},
+    {"SetWindowTextA", ReturnTrue, 2},
+    {"GetIconInfo", ReturnZero, 2},
+    {"ReleaseDC", ReturnTrue, 2},
+    {"DestroyMenu", ReturnTrue, 1},
+    {"UnregisterClassA", ReturnTrue, 2},
+    {"SendMessageA", SendMessageA, 4},
+    {"GetClassLongA", ReturnZero, 2},
+    {"ClipCursor", ReturnTrue, 1},
+    {"SetMenu", ReturnTrue, 2},
     {"RegisterClassExA", RegisterClassExA, 1},
     {"CreateWindowExA", CreateWindowExA, 12},
     {"DestroyWindow", DestroyWindow, 1},

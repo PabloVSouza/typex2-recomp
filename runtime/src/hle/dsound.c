@@ -190,14 +190,15 @@ static void B_QueryInterface(X2Cpu *c) {
     BUF;
     u32 iid = RD32(ARG(1));
     if (iid == 0xb0210783u) { /* IID_IDirectSoundNotify {b0210783-89cd-11d0-af08-00a0c925cd16} */
+        /* another face of the buffer: it shares the buffer's reference count (N_AddRef,
+         * N_Release), so it lives exactly as long as the buffer and can be handed out again */
         if (!b->notify_obj) {
-            /* the notify object shares the buffer's host struct via a tiny wrapper */
             X2ComObj *n = calloc(1, sizeof(X2ComObj) + sizeof(Buf *));
             *(Buf **)(n + 1) = b;
+            n->immortal = true;
             b->notify_obj = x2_com_wrap(n, vt_notify, "IDirectSoundNotify");
-        } else {
-            x2_com_get(b->notify_obj)->refs++;
         }
+        b->com.refs++;
         WR32(ARG(2), b->notify_obj);
         RET(DS_OK);
         return;
@@ -314,6 +315,13 @@ static void B_SetFrequency(X2Cpu *c) {
 }
 static void B_Restore(X2Cpu *c) { RET(DS_OK); }
 
+/* IDirectSoundNotify's IUnknown is the buffer's: `this` becomes the buffer (a stdcall
+ * argument slot belongs to the callee) */
+static void N_to_buffer(X2Cpu *c) { WR32(c->esp + 4, (*(Buf **)(x2_com_get(ARG(0)) + 1))->com.guest); }
+static void N_QueryInterface(X2Cpu *c) { N_to_buffer(c), B_QueryInterface(c); }
+static void N_AddRef(X2Cpu *c) { N_to_buffer(c), x2_com_AddRef(c); }
+static void N_Release(X2Cpu *c) { N_to_buffer(c), x2_com_Release(c); }
+
 static void N_SetNotificationPositions(X2Cpu *c) {
     Buf *b = *(Buf **)(x2_com_get(ARG(0)) + 1);
     u32 n = ARG(1), p = ARG(2);
@@ -413,8 +421,10 @@ u32 x2_dsound_create(void) {
         };
         vt_buf = x2_com_vtable("IDirectSoundBuffer8", buf, sizeof buf / sizeof *buf);
         static const X2Method nt[] = {
-            M(QueryInterface, x2_com_QueryInterface_self, 3), M(AddRef, x2_com_AddRef, 1),
-            M(Release, x2_com_Release, 1), M(SetNotificationPositions, N_SetNotificationPositions, 3),
+            M(QueryInterface, N_QueryInterface, 3),
+            M(AddRef, N_AddRef, 1),
+            M(Release, N_Release, 1),
+            M(SetNotificationPositions, N_SetNotificationPositions, 3),
         };
         vt_notify = x2_com_vtable("IDirectSoundNotify", nt, 4);
         pthread_t t;

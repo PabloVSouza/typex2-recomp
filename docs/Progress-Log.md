@@ -2,6 +2,31 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-17: Samurai Shodown: Edge of Destiny boots
+
+- **New game:** `games/sse`, from `game.exe`. Attract mode, movies, coin,
+  character select, story screens and fights run on macOS at 60 fps.
+- **HD mode:** system switch bit 0 of the I/O board selects the HD monitor
+  (1280×720) at start-up. The `game.exe` copies around have the JVS start-up
+  call and its wait NOPed, so the switches were read before any poll; a
+  `kPatches` entry restores them, and the emulated board sets the bit for
+  this game. 1280×720 is now among the display modes.
+- **D3DX meshes:** a binary `.X` reader and `ID3DXMesh`
+  (`hle/d3dx_mesh.c`); 38 meshes load at start-up.
+- **Fixes shared with other games:** `PrimitiveMiscCaps` no longer claims
+  `NULLREFERENCE` (DXUT-style enumerations dropped the device); REF and SW
+  devices are not available; `joyGetNumDevs` returns 16 as on Windows;
+  `IDirectSoundNotify` shares its buffer's reference count (the game's
+  re-query returned a freed object, which crashed into a texture); device
+  swap chains. Every other game's attract mode checked; the shader
+  translator's GLSL, ESSL and Vulkan output are byte-identical on all 774
+  dumped shaders, MSL compiles.
+- **Shadow maps (Metal):** a depth texture on a 2D sampler is read as
+  NVIDIA hardware does, as a filtered compare of z (z/w) with the stored
+  depth: a `depth2d` shader variant and a compare sampler.
+- **Open:** the fight's main 3D pass is nearly black (vertex colours and
+  constants look sane; the cause is still to find).
+
 ## 2026-11-17: Save states tested in RetroArch on Android
 
 - **Tested** on the tablet, BlazBlue CT's attract fight: save 343-370 MB,

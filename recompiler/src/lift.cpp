@@ -332,6 +332,13 @@ const BytePatch kPatches[] = {
      "8b157006c10083c2018915"
      "7006c100e96fffffff",
      0xf, "e900000000"},
+    // Samurai Shodown: Edge of Destiny, a game.exe whose JVS start-up was taken out (0x401171
+    // in main): the call that sets up the I/O board's polling (0x4a1de0) and the wait for its
+    // first reply became NOPs. main then reads the board's switches before any poll, and
+    // system switch bit 0 (the cabinet's HD monitor setting) reads 0: the game runs in SD,
+    // 640x480. The original call and wait come back, as in the game's launcher.exe.
+    {"Samurai Shodown EoD JVS start-up", "e8ca0b0a0085c074f7909090909090e8bb0b0a0083f80190906a00e82f0c0a00", 9,
+     "e8610c0a0090e8bb0b0a0083f80175f6"},
     // KOF XIII owner settings defaults (0x43faf0, run once before the saved settings are read
     // over them): the language (0x77503c, read by Lua's OwnerSettingLanguage; 0 Japanese,
     // 1 English(US)) defaults to English instead of Japanese. The two zero stores at 0x43fb01

@@ -292,8 +292,19 @@ static void GetDeviceCaps(X2Cpu *c) {
 }
 static void GetStockObject(X2Cpu *c) { RET(0x00040000u + ARG(0)); }
 
+/* memory DCs and bitmap queries (icon / cursor handling for a window D3D covers):
+ * a DC handle, and no bitmap data */
+static void CreateCompatibleDC(X2Cpu *c) { RET(0x00050050u); }
+static void DeleteDC(X2Cpu *c) { RET(1); }
+static void GetObjectA(X2Cpu *c) { RET(0); }
+static void GetDIBits(X2Cpu *c) { RET(0); }
+
 const X2Hle x2_hle_gdi32[] = {
     {"GetDeviceCaps", GetDeviceCaps, 2},
+    {"CreateCompatibleDC", CreateCompatibleDC, 1},
+    {"DeleteDC", DeleteDC, 1},
+    {"GetObjectA", GetObjectA, 3},
+    {"GetDIBits", GetDIBits, 7},
     {"SetBkColor", SetBkColor, 2},
     {"SetTextColor", SetTextColor, 2},
     {"TextOutA", TextOutA, 5},

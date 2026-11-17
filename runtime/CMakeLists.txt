@@ -62,6 +62,7 @@ add_library(x2rt_common OBJECT
   src/hle/ddraw.c
   src/hle/d3dx9.c
   src/hle/d3dx_effect.c
+  src/hle/d3dx_mesh.c
   src/gfx/fx.c
   src/gfx/ffp.c
   src/hle/advapi32.c
@@ -288,6 +289,8 @@ function(x2_add_game target gen_dir)
     set(label "The King of Fighters '98 Ultimate Match")
   elseif(game STREQUAL "kofmira")
     set(label "The King of Fighters Maximum Impact Regulation A")
+  elseif(game STREQUAL "sse")
+    set(label "Samurai Shodown: Edge of Destiny")
   endif()
   set_property(GLOBAL APPEND PROPERTY X2_GAMES_BUILT ${game})
   set_property(GLOBAL PROPERTY X2_GAME_LABEL_${game} "${label}")

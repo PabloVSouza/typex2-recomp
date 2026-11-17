@@ -132,7 +132,35 @@ static void GetIpAddrTable(X2Cpu *c) {
     RET(0);
 }
 
+/* GetAdaptersInfo(IP_ADAPTER_INFO *, ULONG *size): the same adapter, one 640-byte record */
+static void GetAdaptersInfo(X2Cpu *c) {
+    u32 a = ARG(0), psize = ARG(1), need = 640;
+    if (!psize) {
+        RET(87);
+        return;
+    }
+    if (!a || RD32(psize) < need) {
+        WR32(psize, need);
+        RET(111); /* ERROR_BUFFER_OVERFLOW */
+        return;
+    }
+    memset(X2P(a), 0, need);
+    WR32(a + 4, 1); /* ComboIndex */
+    snprintf(GSTR(a + 8), 260, "{00000000-0000-0000-0000-000000000001}");
+    snprintf(GSTR(a + 268), 132, "Ethernet");
+    WR32(a + 400, 6); /* AddressLength */
+    memcpy(X2P(a + 404), mac, 6);
+    WR32(a + 412, 1); /* Index */
+    WR32(a + 416, 6); /* MIB_IF_TYPE_ETHERNET */
+    snprintf(GSTR(a + 432), 16, "192.168.1.2");
+    snprintf(GSTR(a + 448), 16, "255.255.255.0");
+    snprintf(GSTR(a + 472), 16, "0.0.0.0");
+    snprintf(GSTR(a + 488), 16, "0.0.0.0");
+    RET(0);
+}
+
 const X2Hle x2_hle_iphlpapi[] = {
+    {"GetAdaptersInfo", GetAdaptersInfo, 2},
     {"GetIfTable", GetIfTable, 3},
     {"GetIfEntry", GetIfEntry, 1},
     {"GetIpAddrTable", GetIpAddrTable, 3},

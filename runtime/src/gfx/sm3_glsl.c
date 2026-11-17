@@ -46,6 +46,7 @@ enum {
 
 typedef struct {
     bool pixel;
+    bool shadow_ok; /* MSL: 2D samples as x2_t2d / x2_t2dp, which also read depth textures as shadow maps */
     int major, minor;
     const uint32_t *tok;
     uint32_t n, pos;
@@ -483,6 +484,10 @@ static void translate_ins(Ctx *c) {
                 SRC(b, rb);
                 SRC(e, re);
                 snprintf(expr, sizeof expr, "textureGrad(%s,(%s)%s,(%s)%s,(%s)%s)", samp, a, coord, b, coord, e, coord);
+            } else if (c->shadow_ok && ty == 2 && control <= 1) {
+                /* the whole coordinate: bound to a depth texture, z (z/w) is the reference depth of
+                 * a shadow map compare (D3D9 on NVIDIA hardware) */
+                snprintf(expr, sizeof expr, "%s(%s,(%s))", control == 1 ? "x2_t2dp" : "x2_t2d", samp, a);
             } else if (control == 1) { /* texldp */
                 snprintf(expr, sizeof expr, "texture(%s,(%s)%s/(%s).w)", samp, a, coord, a);
             } else if (control == 2) { /* texldb */
@@ -563,6 +568,18 @@ const char *const sh_msl_prelude =
     "gradientcube(x, y)); }\n"
     "inline float4 x2_texg(texture3d<float> t, sampler s, float3 uv, float3 x, float3 y) { return t.sample(s, uv, "
     "gradient3d(x, y)); }\n"
+    /* 2D samples with the whole coordinate (x2_t2d, x2_t2dp: projected). A depth texture bound
+     * there (X2_SHADOW<n>: the sampler's texture type is depth2d) is a shadow map, as D3D9 on
+     * NVIDIA hardware: z (z/w) compared with the stored depth through the compare sampler */
+    "#define x2_t2d(s, c) x2_t2d_(s##_t, s##_s, c)\n"
+    "#define x2_t2dp(s, c) x2_t2dp_(s##_t, s##_s, c)\n"
+    "inline float4 x2_t2d_(texture2d<float> t, sampler s, float4 c) { return t.sample(s, c.xy); }\n"
+    "inline float4 x2_t2dp_(texture2d<float> t, sampler s, float4 c) { return t.sample(s, c.xy / c.w); }\n"
+    "#ifdef X2_SHADOW_ANY\n"
+    "inline float4 x2_t2d_(depth2d<float> t, sampler s, float4 c) { return float4(t.sample_compare(s, c.xy, c.z)); }\n"
+    "inline float4 x2_t2dp_(depth2d<float> t, sampler s, float4 c) { return float4(t.sample_compare(s, c.xy / c.w, "
+    "c.z / c.w)); }\n"
+    "#endif\n"
     "#define clamp x2_clamp\n"
     "#define inversesqrt rsqrt\n"
     "#define dFdx dfdx\n"
@@ -590,23 +607,26 @@ const char *const sh_msl_prelude =
     "#define X2_HP\n";
 
 /* Drops the prelude's sampling overloads the shader cannot call: those of texture types it does not
- * declare, and textureLod / textureGrad when the body has none. Apple's compiler instantiates every
+ * declare, and textureLod / textureGrad / x2_t2d / x2_t2dp when the body has none. Apple's compiler instantiates every
  * overload's sample() template, about 300 ms of a 450 ms compile when all nine are present. */
 void sh_msl_prune(char *msl) {
     const char *end = strstr(msl, "#define X2_HP\n");
     if (!end) return;
     const char *body = end;
     bool lod = strstr(body, "textureLod(") != NULL, grad = strstr(body, "textureGrad(") != NULL;
+    bool t2d = strstr(body, "x2_t2d(") != NULL, t2dp = strstr(body, "x2_t2dp(") != NULL;
     static const char *const types[] = {"texture2d<float>", "texturecube<float>", "texture3d<float>"};
     bool has[3];
     for (int i = 0; i < 3; i++) has[i] = strstr(body, types[i]) != NULL;
     char *p = msl;
-    while ((p = strstr(p, "inline float4 x2_tex")) && p < body) {
+    while ((p = strstr(p, "inline float4 x2_t")) && p < body) {
         char *nl = strstr(p, "}\n");
         if (!nl) return;
         nl += 2;
         bool keep = !(strncmp(p, "inline float4 x2_texl(", 22) == 0 && !lod) &&
-                    !(strncmp(p, "inline float4 x2_texg(", 22) == 0 && !grad);
+                    !(strncmp(p, "inline float4 x2_texg(", 22) == 0 && !grad) &&
+                    !(strncmp(p, "inline float4 x2_t2d_(", 22) == 0 && !t2d) &&
+                    !(strncmp(p, "inline float4 x2_t2dp_(", 23) == 0 && !t2dp);
         for (int i = 0; i < 3 && keep; i++)
             if (!has[i] && strstr(p, types[i]) && strstr(p, types[i]) < nl) keep = false;
         if (keep) {
@@ -774,9 +794,18 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
     size_t pl = 0;
     for (int i = 0; i < 16; i++) {
         if (!(info->samplers_used & (1u << i))) continue;
-        pl += (size_t)snprintf(
-            params + pl, sizeof params - pl, ", %s %s%d_t [[texture(%d)]], sampler %s%d_s [[sampler(%d)]]",
-            msl_tex_type(c->samp_type[i]), c->pixel ? "s" : "vs_s", i, i, c->pixel ? "s" : "vs_s", i, i);
+        char ty[32];
+        snprintf(ty, sizeof ty, "%s", msl_tex_type(c->samp_type[i]));
+        if (c->pixel && c->samp_type[i] == 2) { /* a shadow map in the X2_SHADOW<n> variant */
+            sf(s,
+               "#ifdef X2_SHADOW%d\n#define X2_T2D_%d depth2d<float>\n#else\n#define X2_T2D_%d "
+               "texture2d<float>\n#endif\n",
+               i, i, i);
+            snprintf(ty, sizeof ty, "X2_T2D_%d", i);
+        }
+        pl += (size_t)snprintf(params + pl, sizeof params - pl,
+                               ", %s %s%d_t [[texture(%d)]], sampler %s%d_s [[sampler(%d)]]", ty,
+                               c->pixel ? "s" : "vs_s", i, i, c->pixel ? "s" : "vs_s", i, i);
     }
     if (c->pixel) {
         sf(s, "struct X2PsU { float4 c[224]; int4 i[16]; int b[16]; int alpha_func; float alpha_ref; };\n"
@@ -950,6 +979,7 @@ bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out,
     c->n = n;
     uint32_t ver = tok[0];
     c->pixel = (ver >> 16) == 0xFFFF;
+    c->shadow_ok = target == SH_MSL; /* Vulkan: not yet */
     c->major = (int)((ver >> 8) & 0xFF);
     c->minor = (int)(ver & 0xFF);
     info->pixel = c->pixel;

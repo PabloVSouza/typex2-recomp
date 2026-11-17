@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Samurai Shodown: Edge of Destiny** (in progress, not in the launcher
+  yet): recompiles and runs on macOS in its HD mode, from attract mode to
+  fights, but the 3D scene of a fight still renders nearly black. See its
+  [page](docs/Game-Samurai-Shodown-EoD.md).
+
 ## 0.3.1 - 2026-11-17
 
 Faster on Android, and Load State fixed in RetroArch.

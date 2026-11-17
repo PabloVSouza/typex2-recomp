@@ -29,6 +29,10 @@ static u16 player_switches[2];       /* see jvs.h bit layout */
 static u16 coins[2];
 static bool coin_prev[2];
 
+/* system switch bits a cabinet sets once with its hardware: Samurai Shodown: Edge of
+ * Destiny reads bit 0 at start-up as its HD monitor setting (1280x720; SD is 640x480) */
+static u8 cabinet_switches(void) { return x2_game && x2_game->id && !strcmp(x2_game->id, "sse") ? 0x01 : 0; }
+
 void jvs_set_inputs(u8 system, u16 p1, u16 p2, bool coin1, bool coin2) {
     pthread_mutex_lock(&jvs_lock);
     sys_switches = system;
@@ -115,7 +119,7 @@ static void handle(const u8 *d, u32 n) {
             case 0x20: { /* read switches: players, bytes per player */
                 u8 np = d[i++], nb = d[i++];
                 out[o++] = 0x01;
-                out[o++] = sys_switches;
+                out[o++] = sys_switches | cabinet_switches();
                 for (u8 p = 0; p < np; p++)
                     for (u8 b = 0; b < nb; b++) {
                         u16 v = p < 2 ? player_switches[p] : 0;

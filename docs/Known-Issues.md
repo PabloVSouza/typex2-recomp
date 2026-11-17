@@ -30,6 +30,9 @@ that isn't here? Report it in
   Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
+- **Samurai Shodown: Edge of Destiny** (in progress, not in the launcher
+  yet): its fights run, but the 3D scene renders nearly black
+  ([details](Game-Samurai-Shodown-EoD.md#known-issues)).
 - **Super Street Fighter IV Arcade Edition:** on slower Android devices some
   stages still lose frames in fights: 1-7 late per 120 on the test tablet.
   These come from occasional 20-30 ms frames; the game thread averages

@@ -42,6 +42,12 @@ static u32 make_xbuf(u32 size) {
     b->com.destroy = xbuf_destroy;
     return x2_com_wrap(&b->com, vt_xbuf, "ID3DXBuffer");
 }
+/* for d3dx_mesh.c: a buffer of size bytes, its data address in *data */
+u32 x2_d3dx_buffer(u32 size, u32 *data) {
+    u32 b = make_xbuf(size);
+    *data = ((XBuf *)x2_com_get(b))->data;
+    return b;
+}
 
 /* ---- shaders -------------------------------------------------------------- */
 #define X2HL_TAG 0x4C484258u /* 'XBHL' little-endian marker inside the comment */
@@ -322,6 +328,139 @@ static void D3DXVec3TransformCoord(X2Cpu *c) {
     RET(ARG(0));
 }
 
+static void D3DXMatrixRotationAxis(X2Cpu *c) {
+    float v[3], a = ARGF(2), m[16];
+    memcpy(v, X2P(ARG(1)), 12);
+    float l = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (l > 0) v[0] /= l, v[1] /= l, v[2] /= l;
+    float s = sinf(a / 2), q[4] = {v[0] * s, v[1] * s, v[2] * s, cosf(a / 2)};
+    quat_mat(m, q);
+    put_mat(c, m);
+}
+static void D3DXMatrixLookAtRH(X2Cpu *c) {
+    float eye[3], at[3], up[3], x[3], y[3], z[3];
+    memcpy(eye, X2P(ARG(1)), 12);
+    memcpy(at, X2P(ARG(2)), 12);
+    memcpy(up, X2P(ARG(3)), 12);
+    for (int i = 0; i < 3; i++) z[i] = eye[i] - at[i];
+    float l = sqrtf(z[0] * z[0] + z[1] * z[1] + z[2] * z[2]);
+    for (int i = 0; i < 3; i++) z[i] /= l;
+    x[0] = up[1] * z[2] - up[2] * z[1], x[1] = up[2] * z[0] - up[0] * z[2], x[2] = up[0] * z[1] - up[1] * z[0];
+    l = sqrtf(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
+    for (int i = 0; i < 3; i++) x[i] /= l;
+    y[0] = z[1] * x[2] - z[2] * x[1], y[1] = z[2] * x[0] - z[0] * x[2], y[2] = z[0] * x[1] - z[1] * x[0];
+    float m[16] = {x[0],
+                   y[0],
+                   z[0],
+                   0,
+                   x[1],
+                   y[1],
+                   z[1],
+                   0,
+                   x[2],
+                   y[2],
+                   z[2],
+                   0,
+                   -(x[0] * eye[0] + x[1] * eye[1] + x[2] * eye[2]),
+                   -(y[0] * eye[0] + y[1] * eye[1] + y[2] * eye[2]),
+                   -(z[0] * eye[0] + z[1] * eye[1] + z[2] * eye[2]),
+                   1};
+    put_mat(c, m);
+}
+static void D3DXMatrixPerspectiveFovRH(X2Cpu *c) {
+    float fovy = ARGF(1), aspect = ARGF(2), zn = ARGF(3), zf = ARGF(4);
+    float ys = 1 / tanf(fovy / 2), m[16] = {0};
+    m[0] = ys / aspect, m[5] = ys, m[10] = zf / (zn - zf), m[11] = -1, m[14] = zn * zf / (zn - zf);
+    put_mat(c, m);
+}
+static void D3DXMatrixOrthoLH(X2Cpu *c) {
+    float w = ARGF(1), h = ARGF(2), zn = ARGF(3), zf = ARGF(4), m[16];
+    identity(m);
+    m[0] = 2 / w, m[5] = 2 / h, m[10] = 1 / (zf - zn), m[14] = zn / (zn - zf);
+    put_mat(c, m);
+}
+static void D3DXMatrixTranspose(X2Cpu *c) {
+    float a[16], m[16];
+    memcpy(a, X2P(ARG(1)), 64);
+    for (int r = 0; r < 4; r++)
+        for (int k = 0; k < 4; k++) m[r * 4 + k] = a[k * 4 + r];
+    put_mat(c, m);
+}
+/* D3DXMatrixAffineTransformation(out, scaling, rotationcenter, rotation, translation):
+ * scale * (-center) * rotation * center * translation; NULL pointers are skipped */
+static void D3DXMatrixAffineTransformation(X2Cpu *c) {
+    float s = ARGF(1), m[16], r[16];
+    identity(m);
+    m[0] = m[5] = m[10] = s;
+    if (ARG(3)) {
+        float q[4], ctr[3] = {0, 0, 0};
+        memcpy(q, X2P(ARG(3)), 16);
+        if (ARG(2)) memcpy(ctr, X2P(ARG(2)), 12);
+        for (int i = 0; i < 3; i++) m[12 + i] -= ctr[i];
+        quat_mat(r, q);
+        mat_mul(m, m, r);
+        for (int i = 0; i < 3; i++) m[12 + i] += ctr[i];
+    }
+    if (ARG(4)) {
+        float t[3];
+        memcpy(t, X2P(ARG(4)), 12);
+        for (int i = 0; i < 3; i++) m[12 + i] += t[i];
+    }
+    put_mat(c, m);
+}
+/* (x, y, z, 1) * m, all four components */
+static void D3DXVec3Transform(X2Cpu *c) {
+    float v[3], m[16], o[4];
+    memcpy(v, X2P(ARG(1)), 12);
+    memcpy(m, X2P(ARG(2)), 64);
+    for (int k = 0; k < 4; k++) o[k] = v[0] * m[k] + v[1] * m[4 + k] + v[2] * m[8 + k] + m[12 + k];
+    memcpy(X2P(ARG(0)), o, 16);
+    RET(ARG(0));
+}
+/* (x, y, z, 0) * m */
+static void D3DXVec3TransformNormal(X2Cpu *c) {
+    float v[3], m[16], o[3];
+    memcpy(v, X2P(ARG(1)), 12);
+    memcpy(m, X2P(ARG(2)), 64);
+    for (int k = 0; k < 3; k++) o[k] = v[0] * m[k] + v[1] * m[4 + k] + v[2] * m[8 + k];
+    memcpy(X2P(ARG(0)), o, 12);
+    RET(ARG(0));
+}
+/* D3DXVec3Hermite(out, v1, t1, v2, t2, s) */
+static void D3DXVec3Hermite(X2Cpu *c) {
+    float a[3], ta[3], b[3], tb[3], s = ARGF(5), o[3];
+    memcpy(a, X2P(ARG(1)), 12);
+    memcpy(ta, X2P(ARG(2)), 12);
+    memcpy(b, X2P(ARG(3)), 12);
+    memcpy(tb, X2P(ARG(4)), 12);
+    float s2 = s * s, s3 = s2 * s;
+    float h1 = 2 * s3 - 3 * s2 + 1, h2 = s3 - 2 * s2 + s, h3 = -2 * s3 + 3 * s2, h4 = s3 - s2;
+    for (int i = 0; i < 3; i++) o[i] = h1 * a[i] + h2 * ta[i] + h3 * b[i] + h4 * tb[i];
+    memcpy(X2P(ARG(0)), o, 12);
+    RET(ARG(0));
+}
+/* conjugate divided by the squared norm */
+static void D3DXQuaternionInverse(X2Cpu *c) {
+    float q[4];
+    memcpy(q, X2P(ARG(1)), 16);
+    float n = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (n > 0) q[0] = -q[0] / n, q[1] = -q[1] / n, q[2] = -q[2] / n, q[3] = q[3] / n;
+    memcpy(X2P(ARG(0)), q, 16);
+    RET(ARG(0));
+}
+/* D3DX order: out = q1 * q2 means the rotation q1 followed by q2 (q2 q1 in Hamilton terms) */
+static void D3DXQuaternionMultiply(X2Cpu *c) {
+    float a[4], b[4], o[4];
+    memcpy(a, X2P(ARG(1)), 16);
+    memcpy(b, X2P(ARG(2)), 16);
+    o[0] = b[3] * a[0] + b[0] * a[3] + b[1] * a[2] - b[2] * a[1];
+    o[1] = b[3] * a[1] - b[0] * a[2] + b[1] * a[3] + b[2] * a[0];
+    o[2] = b[3] * a[2] + b[0] * a[1] - b[1] * a[0] + b[2] * a[3];
+    o[3] = b[3] * a[3] - b[0] * a[0] - b[1] * a[1] - b[2] * a[2];
+    memcpy(X2P(ARG(0)), o, 16);
+    RET(ARG(0));
+}
+
 /* ---- surfaces / pixel conversion ------------------------------------------ */
 bool x2_d3d9_surface_info(u32 g, u32 *fmt, u32 *w, u32 *h, u32 *mem, u32 *pitch);
 void x2_d3d9_surface_upload(u32 g, u32 x, u32 y, u32 w, u32 h);
@@ -386,8 +525,14 @@ static void px_write(u32 f, u8 *p, u32 c) {
  * if the format pair is unsupported. */
 bool x2_blit(u32 dfmt, u8 *dst, u32 dpitch, u32 dw, u32 dh, u32 sfmt, const u8 *src, u32 spitch, u32 sw, u32 sh,
              u32 colorkey) {
+    u32 bpp = fmt_bpp(dfmt);
+    if (dfmt == sfmt && dw == sw && dh == sh && colorkey && !bpp) {
+        static bool told; /* a key on compressed data would need a decode and re-encode */
+        if (!told) x2_log("d3dx9: colour key %08x ignored on a compressed texture", colorkey);
+        told = true;
+        colorkey = 0;
+    }
     if (dfmt == sfmt && dw == sw && dh == sh && !colorkey) {
-        u32 bpp = fmt_bpp(dfmt);
         u32 row = bpp ? dw * bpp : (dfmt == 0x31545844u ? 8 : 16) * ((dw + 3) / 4);
         u32 rows = bpp ? dh : (dh + 3) / 4;
         for (u32 y = 0; y < rows; y++) memcpy(dst + y * dpitch, src + y * spitch, row);
@@ -740,6 +885,74 @@ static void D3DXSaveSurfaceToFileA(X2Cpu *c) {
     RET(0);
 }
 
+/* (pDevice, pSrcData, SrcDataSize, ppTexture): the Ex form with every default */
+static void D3DXCreateTextureFromFileInMemory(X2Cpu *c) {
+    RET(create_from_memory(ARG(0), X2P(ARG(1)), ARG(2), D3DX_DEFAULT, D3DX_DEFAULT, D3DX_DEFAULT, 0, 0, 1 /* MANAGED */,
+                           0, 0, ARG(3)));
+}
+/* (pDevice, pSrcData, SrcDataSize, ppCubeTexture) */
+static void D3DXCreateCubeTextureFromFileInMemory(X2Cpu *c) {
+    u32 dev = ARG(0), data = ARG(1), size = ARG(2), out = ARG(3), save = c->esp;
+    const u32 args[14] = {dev, data, size, D3DX_DEFAULT, D3DX_DEFAULT, 0, 0, 1, D3DX_DEFAULT, D3DX_DEFAULT,
+                          0,   0,    0,    out};
+    c->esp -= 4 * 16;
+    for (u32 i = 0; i < 14; i++) WR32(c->esp + 4 + 4 * i, args[i]);
+    D3DXCreateCubeTextureFromFileInMemoryEx(c);
+    c->esp = save;
+}
+
+/* D3DXFillTexture(texture, fn, data): fn(out vec4, texcoord vec2, texelsize vec2, data)
+ * for the centre of every texel of every level; out is (r, g, b, a) in 0..1 */
+static void D3DXFillTexture(X2Cpu *c) {
+    u32 tex = ARG(0), fn = ARG(1), data = ARG(2);
+    static u32 scratch; /* out[4], coord[2], size[2] */
+    if (!scratch) scratch = x2_galloc(32);
+    u32 levels = x2_d3d9_texture_levels(tex);
+    for (u32 l = 0; l < levels; l++) {
+        u32 surf = x2_d3d9_texture_level(tex, l);
+        u32 sf, w, h, mem, pitch;
+        if (!x2_d3d9_surface_info(surf, &sf, &w, &h, &mem, &pitch)) continue;
+        u32 bpp = fmt_bpp(sf);
+        if (!bpp) {
+            x2_log("d3dx9: D3DXFillTexture: format %u not supported", sf);
+            RET(0x8876086Cu);
+            return;
+        }
+        WRF32(scratch + 24, 1.0f / (float)w);
+        WRF32(scratch + 28, 1.0f / (float)h);
+        for (u32 y = 0; y < h; y++)
+            for (u32 x = 0; x < w; x++) {
+                WRF32(scratch + 16, ((float)x + 0.5f) / (float)w);
+                WRF32(scratch + 20, ((float)y + 0.5f) / (float)h);
+                memset(X2P(scratch), 0, 16);
+                x2_guest_call(c, fn, 4, scratch, scratch + 16, scratch + 24, data);
+                u32 px = 0;
+                for (int k = 0; k < 4; k++) {
+                    float v = RDF32(scratch + 4 * (u32)k);
+                    v = v < 0 ? 0 : v > 1 ? 1 : v;
+                    u32 b = (u32)(v * 255.0f + 0.5f);
+                    px |= b << (k == 3 ? 24 : 16 - 8 * k); /* r g b a -> ARGB */
+                }
+                px_write(sf, X2P(mem + y * pitch + x * bpp), px);
+            }
+        x2_d3d9_surface_upload(surf, 0, 0, w, h);
+    }
+    RET(0);
+}
+
+/* D3DXFrameFind(root, name): depth-first over children and siblings */
+static u32 frame_find(u32 f, const char *name, int depth) {
+    for (; f && depth < 256; f = RD32(f + 0x48)) { /* pFrameSibling */
+        u32 n = RD32(f);
+        if (n ? name && !strcmp(GSTR(n), name) : !name) return f;
+        u32 r = frame_find(RD32(f + 0x4c), name, depth + 1); /* pFrameFirstChild */
+        if (r) return r;
+    }
+    return 0;
+}
+void x2_d3dx_load_mesh_x(X2Cpu *c); /* d3dx_mesh.c */
+static void D3DXFrameFind(X2Cpu *c) { RET(frame_find(ARG(0), ARG(1) ? GSTR(ARG(1)) : NULL, 0)); }
+
 /* ---- effects --------------------------------------------------------------- */
 static void D3DXCreateEffectPool(X2Cpu *c) {
     X2ComObj *o = calloc(1, sizeof *o);
@@ -758,10 +971,52 @@ static void D3DXCreateEffectPool(X2Cpu *c) {
 /* compiled effects: d3dx_effect.c */
 void x2_d3dx_create_effect(X2Cpu *c);
 static void D3DXCreateEffect(X2Cpu *c) { x2_d3dx_create_effect(c); }
+/* (pDevice, pSrcFile, defines, include, flags, pool, ppEffect, ppErrors): a compiled
+ * effect file (.fxo), read into guest memory and handed to D3DXCreateEffect */
+static void D3DXCreateEffectFromFileA(X2Cpu *c) {
+    char hp[1024];
+    x2_host_path(GSTR(ARG(1)), hp, sizeof hp);
+    FILE *f = fopen(hp, "rb");
+    if (!f) {
+        x2_log("d3dx9: D3DXCreateEffectFromFileA(\"%s\"): file not found", GSTR(ARG(1)));
+        if (ARG(7)) WR32(ARG(7), 0);
+        RET(0x88760B59u);
+        return;
+    }
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    u32 data = x2_galloc((u32)n + 4); /* kept: the effect may point into it */
+    size_t got = fread(X2P(data), 1, (size_t)n, f);
+    fclose(f);
+    const u32 args[9] = {ARG(0), data, (u32)got, ARG(2), ARG(3), ARG(4), ARG(5), ARG(6), ARG(7)};
+    u32 save = c->esp;
+    c->esp -= 4 * 11;
+    for (u32 i = 0; i < 9; i++) WR32(c->esp + 4 + 4 * i, args[i]);
+    x2_d3dx_create_effect(c);
+    c->esp = save;
+}
 
 const X2Hle x2_hle_d3dx9[] = {
     {"D3DXMatrixRotationX", D3DXMatrixRotationX, 2},
     {"D3DXMatrixRotationY", D3DXMatrixRotationY, 2},
+    {"D3DXMatrixRotationAxis", D3DXMatrixRotationAxis, 3},
+    {"D3DXMatrixLookAtRH", D3DXMatrixLookAtRH, 4},
+    {"D3DXMatrixPerspectiveFovRH", D3DXMatrixPerspectiveFovRH, 5},
+    {"D3DXMatrixOrthoLH", D3DXMatrixOrthoLH, 5},
+    {"D3DXMatrixTranspose", D3DXMatrixTranspose, 2},
+    {"D3DXMatrixAffineTransformation", D3DXMatrixAffineTransformation, 5},
+    {"D3DXVec3Transform", D3DXVec3Transform, 3},
+    {"D3DXVec3TransformNormal", D3DXVec3TransformNormal, 3},
+    {"D3DXVec3Hermite", D3DXVec3Hermite, 6},
+    {"D3DXQuaternionInverse", D3DXQuaternionInverse, 2},
+    {"D3DXQuaternionMultiply", D3DXQuaternionMultiply, 3},
+    {"D3DXCreateTextureFromFileInMemory", D3DXCreateTextureFromFileInMemory, 4},
+    {"D3DXCreateCubeTextureFromFileInMemory", D3DXCreateCubeTextureFromFileInMemory, 4},
+    {"D3DXFillTexture", D3DXFillTexture, 3},
+    {"D3DXFrameFind", D3DXFrameFind, 2},
+    {"D3DXLoadMeshFromXInMemory", x2_d3dx_load_mesh_x, 9},
+    {"D3DXCreateEffectFromFileA", D3DXCreateEffectFromFileA, 8},
     {"D3DXMatrixRotationQuaternion", D3DXMatrixRotationQuaternion, 2},
     {"D3DXMatrixRotationYawPitchRoll", D3DXMatrixRotationYawPitchRoll, 4},
     {"D3DXQuaternionSlerp", D3DXQuaternionSlerp, 4},

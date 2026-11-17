@@ -287,7 +287,8 @@ static void GetProcessAffinityMask(X2Cpu *c) {
     RET(1);
 }
 static void FindResourceA(X2Cpu *c) { RET(0); } /* no resources: callers fall back */
-static void joyGetNumDevs(X2Cpu *c) { RET(0); } /* inputs come from the JVS board */
+/* the joysticks the driver supports, attached or not (16 on Windows XP); inputs come from the JVS board */
+static void joyGetNumDevs(X2Cpu *c) { RET(16); }
 static void lstrcpyA(X2Cpu *c) {
     u32 d = ARG(0), s = ARG(1);
     for (u32 i = 0;; i++) {
