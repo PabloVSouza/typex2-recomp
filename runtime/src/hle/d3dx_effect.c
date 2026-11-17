@@ -20,6 +20,12 @@
 enum {
     DEV_SetTransform = 44,
     DEV_SetRenderState = 57,
+    DEV_GetRenderState = 58,
+    DEV_GetTexture = 64,
+    DEV_GetTextureStageState = 66,
+    DEV_GetSamplerState = 68,
+    DEV_GetVertexShader = 93,
+    DEV_GetPixelShader = 108,
     DEV_SetTexture = 65,
     DEV_SetTextureStageState = 67,
     DEV_SetSamplerState = 69,
@@ -62,6 +68,14 @@ typedef struct {
     float *pres_in;
     u32 npres_in;
     X2Cpu *cpu; /* caller's CPU for device calls */
+    /* Begin to End: the device states the passes changed, with the values they had before
+     * (D3DX restores them at End unless Begin had D3DXFX_DONOTSAVESTATE) */
+    u32 save_flags; /* 1 save nothing, 2 not the shaders, 4 not the sampler states; ~0 outside */
+    struct SavedState {
+        u8 kind;
+        u32 a, b, value; /* stage / state, type, previous value (texture, shader: a reference) */
+    } *saved;
+    u32 nsaved, capsaved;
 } Effect;
 
 static u32 vt_effect;
@@ -218,6 +232,59 @@ static FxParam *element(FxParam *p, u32 i) {
 
 /* ---- applying states ------------------------------------------------------------------- */
 static void upload_shader_constants(Effect *e, FxShader *s);
+/* ---- state saved for End ------------------------------------------------------------- */
+enum { SV_RS = 1, SV_TSS, SV_SAMP, SV_TEX, SV_VS, SV_PS };
+enum { FX_DONOTSAVESTATE = 1, FX_DONOTSAVESHADERSTATE = 2, FX_DONOTSAVESAMPLERSTATE = 4 };
+/* before a pass changes a device state for the first time since Begin: its current value */
+static void save_prev(Effect *e, u8 kind, u32 a, u32 b) {
+    u32 f = e->save_flags;
+    if (f == ~0u || (f & FX_DONOTSAVESTATE)) return;
+    if ((kind == SV_VS || kind == SV_PS) && (f & FX_DONOTSAVESHADERSTATE)) return;
+    if (kind == SV_SAMP && (f & FX_DONOTSAVESAMPLERSTATE)) return;
+    for (u32 i = 0; i < e->nsaved; i++)
+        if (e->saved[i].kind == kind && e->saved[i].a == a && e->saved[i].b == b) return;
+    static u32 out; /* the getters' result (guest memory) */
+    if (!out) out = x2_galloc(4);
+    WR32(out, 0);
+    switch (kind) {
+    case SV_RS: dev_call(e, DEV_GetRenderState, 2, a, out, 0, 0); break;
+    case SV_TSS: dev_call(e, DEV_GetTextureStageState, 3, a, b, out, 0); break;
+    case SV_SAMP: dev_call(e, DEV_GetSamplerState, 3, a, b, out, 0); break;
+    case SV_TEX: dev_call(e, DEV_GetTexture, 2, a, out, 0, 0); break; /* adds a reference */
+    case SV_VS: dev_call(e, DEV_GetVertexShader, 1, out, 0, 0, 0); break;
+    case SV_PS: dev_call(e, DEV_GetPixelShader, 1, out, 0, 0, 0); break;
+    default: return;
+    }
+    if (e->nsaved == e->capsaved) {
+        u32 cap = e->capsaved ? e->capsaved * 2 : 32;
+        struct SavedState *n = realloc(e->saved, cap * sizeof *n);
+        if (!n) return;
+        e->saved = n;
+        e->capsaved = cap;
+    }
+    e->saved[e->nsaved++] = (struct SavedState){kind, a, b, RD32(out)};
+}
+static void guest_release(Effect *e, u32 obj) {
+    if (obj) x2_guest_call(e->cpu, RD32(RD32(obj) + 8), 1, obj);
+}
+/* End: the saved values back, newest first */
+static void restore_state(Effect *e) {
+    for (u32 i = e->nsaved; i-- > 0;) {
+        struct SavedState *s = &e->saved[i];
+        switch (s->kind) {
+        case SV_RS: dev_call(e, DEV_SetRenderState, 2, s->a, s->value, 0, 0); break;
+        case SV_TSS: dev_call(e, DEV_SetTextureStageState, 3, s->a, s->b, s->value, 0); break;
+        case SV_SAMP: dev_call(e, DEV_SetSamplerState, 3, s->a, s->b, s->value, 0); break;
+        case SV_TEX: dev_call(e, DEV_SetTexture, 2, s->a, s->value, 0, 0); break;
+        case SV_VS: dev_call(e, DEV_SetVertexShader, 1, s->value, 0, 0, 0); break;
+        case SV_PS: dev_call(e, DEV_SetPixelShader, 1, s->value, 0, 0, 0); break;
+        default: break;
+        }
+        if (s->kind == SV_TEX || s->kind == SV_VS || s->kind == SV_PS) guest_release(e, s->value);
+    }
+    e->nsaved = 0;
+}
+
 static void apply_states(Effect *e, FxState *st, u32 n, int stage_override);
 
 static void set_stage_texture(Effect *e, u32 stage, const FxParam *tex) {
@@ -286,9 +353,18 @@ static void apply_states(Effect *e, FxState *states, u32 n, int stage_override) 
         if (v->value && v->bytes >= 4) memcpy(&raw, v->value, 4);
         u32 stage = stage_override >= 0 ? (u32)stage_override : st->index;
         switch (info.kind) {
-        case FXOP_RENDER: dev_call(e, DEV_SetRenderState, 2, info.value, raw, 0, 0); break;
-        case FXOP_TSS: dev_call(e, DEV_SetTextureStageState, 3, st->index, info.value, raw, 0); break;
-        case FXOP_SAMPLER_STATE: dev_call(e, DEV_SetSamplerState, 3, stage, info.value, raw, 0); break;
+        case FXOP_RENDER:
+            save_prev(e, SV_RS, info.value, 0);
+            dev_call(e, DEV_SetRenderState, 2, info.value, raw, 0, 0);
+            break;
+        case FXOP_TSS:
+            save_prev(e, SV_TSS, st->index, info.value);
+            dev_call(e, DEV_SetTextureStageState, 3, st->index, info.value, raw, 0);
+            break;
+        case FXOP_SAMPLER_STATE:
+            save_prev(e, SV_SAMP, stage, info.value);
+            dev_call(e, DEV_SetSamplerState, 3, stage, info.value, raw, 0);
+            break;
         case FXOP_TEXTURE:
             if (raw && raw < 0x10000) {
                 static int once;
@@ -297,6 +373,7 @@ static void apply_states(Effect *e, FxState *states, u32 n, int stage_override) 
                            st->kind, st->param && st->param->name ? st->param->name : "-",
                            st->ref_name ? st->ref_name : "-", raw, v->bytes, v->type);
             }
+            save_prev(e, SV_TEX, stage, 0);
             set_stage_texture(e, stage, v);
             break;
         case FXOP_FVF: dev_call(e, DEV_SetFVF, 1, raw, 0, 0, 0); break;
@@ -312,6 +389,7 @@ static void apply_states(Effect *e, FxState *states, u32 n, int stage_override) 
             bool pixel = info.kind == FXOP_PS;
             u32 id = v->object_id;
             u32 sh = v->cls == FXC_OBJECT ? shader_object(e, id, pixel) : 0;
+            save_prev(e, pixel ? SV_PS : SV_VS, 0, 0);
             dev_call(e, pixel ? DEV_SetPixelShader : DEV_SetVertexShader, 1, sh, 0, 0, 0);
             FxShader *s = sh ? fx_object_shader(e->fx, id) : NULL;
             if (pixel)
@@ -804,11 +882,8 @@ static void E_Begin(X2Cpu *c) {
         return;
     }
     if (ARG(1)) WR32(ARG(1), e->tech->npasses);
-    static bool logged;
-    if (!logged && !(ARG(2) & 1)) {
-        logged = true;
-        x2_log("d3dx9: effect Begin flags %x: device state is not saved / restored", ARG(2));
-    }
+    e->save_flags = ARG(2); /* D3DXFX_DONOTSAVE*: what End must not restore */
+    e->nsaved = 0;
     RET(0);
 }
 static void E_BeginPass(X2Cpu *c) {
@@ -839,6 +914,8 @@ static void E_EndPass(X2Cpu *c) {
 static void E_End(X2Cpu *c) {
     EFF;
     e->pass = NULL;
+    restore_state(e);
+    e->save_flags = ~0u;
     RET(0);
 }
 static void E_GetDevice(X2Cpu *c) {
@@ -864,6 +941,7 @@ static void effect_destroy(X2ComObj *o) {
     free(e->shader);
     free(e->code);
     free(e->pres_in);
+    free(e->saved); /* references still held (no End) are dropped with the effect */
     free(e);
 }
 
@@ -977,6 +1055,7 @@ void x2_d3dx_create_effect(X2Cpu *c) {
     e->shader = calloc(fx->nobjects ? fx->nobjects : 1, sizeof *e->shader);
     e->code = calloc(fx->nobjects ? fx->nobjects : 1, sizeof *e->code);
     e->scratch = x2_galloc(SCRATCH_BYTES);
+    e->save_flags = ~0u; /* outside Begin / End */
     assign_handles(e);
     e->com.destroy = effect_destroy;
     WR32(out, x2_com_wrap(&e->com, effect_vtable(), "ID3DXEffect"));

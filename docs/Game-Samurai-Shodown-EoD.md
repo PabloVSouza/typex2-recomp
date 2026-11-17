@@ -3,11 +3,11 @@
 Samurai Shodown: Edge of Destiny (サムライスピリッツ閃, *Samurai Spirits
 Sen*), SNK Playmore, 2008, Taito Type X2. `games/sse`.
 
-**Status: boots** (macOS). Attract mode with its movies, coin and start,
-character select, the story screens and fights all run, in the game's HD
-mode (1280×720) at 60 fps. The 3D scene of a fight renders far too dark (see
-[Known issues](#known-issues)), so it is not playable yet. Not on Android
-yet.
+**Status: fights run** (macOS, scripted input). Attract mode with its
+movies, coin and start, character select, the story screens and fights all
+run in the game's HD mode (1280×720) at 60 fps, with the stages, the
+toon-shaded fighters and their shadows rendered. Not played by hand yet, and
+not in the launcher or on Android yet.
 
 ## Files
 
@@ -27,9 +27,22 @@ the SD versions).
   reply replaced with NOPs, so `main` read the switches before any poll and
   the game always ran in SD. The recompiler puts the original instructions
   back when it recognises those bytes (`kPatches` in `lift.cpp`).
-- **`.X` meshes.** `D3DXLoadMeshFromXInMemory` reads binary `.X` files
-  (templates, normals, texture coordinates, vertex colours, materials,
-  `DeclData`) into an `ID3DXMesh` (`hle/d3dx_mesh.c`).
+- **`.X` meshes.** The stages are `.X` meshes: `D3DXLoadMeshFromXInMemory`
+  reads binary `.X` files (templates, normals, texture coordinates, vertex
+  colours, materials, `DeclData`) into an `ID3DXMesh` whose `DrawSubset` the
+  game calls (`hle/d3dx_mesh.c`).
+- **Effect state.** `ID3DXEffect::Begin` without `D3DXFX_DONOTSAVESTATE`
+  saves the device states the passes change, and `End` restores them, as
+  D3DX does.
+- **D3D9 shader maths.** The fighters' shader adds a point light whose
+  1/range is infinite when there is none; the hardware's `cmp` picks the
+  other side without arithmetic, but the translation blended both sides, and
+  inf × 0 made the fighters black. `cmp` / `cnd` now select (`mix` with a
+  boolean vector), and `pow(0, 0)` is 1 as on D3D9 hardware.
+- **Shadow maps.** The fighters' shadows sample a depth texture, which on the
+  Type X2's NVIDIA GPU returns a filtered depth comparison. Metal does the
+  same (`sample_compare` in a shader variant per sampler bound to a depth
+  texture). Vulkan does not yet.
 - **Direct3D enumeration.** The game's DXUT-style enumeration drops a device
   whose caps have `D3DPMISCCAPS_NULLREFERENCE`; the caps no longer set it,
   and only the HAL device exists.
@@ -41,10 +54,6 @@ the SD versions).
   being freed and handed out again.
 - **Swap chains.** `GetSwapChain` / `GetNumberOfSwapChains`: the device's one
   chain.
-- **Shadow maps.** The fight scene samples a depth texture, which on the
-  Type X2's NVIDIA GPU returns a filtered depth comparison. Metal does the
-  same (`sample_compare` in a shader variant per sampler bound to a depth
-  texture). Vulkan does not yet.
 - Smaller HLE: an empty registry (keys not found), `GetAdaptersInfo`, window
   placement and hot keys, memory DCs, D3DX maths (`D3DXMatrixLookAtRH`,
   `D3DXMatrixPerspectiveFovRH`, `D3DXMatrixAffineTransformation`,
@@ -56,10 +65,10 @@ this `game.exe` does not run.
 
 ## Known issues
 
-- **The 3D scene of a fight is nearly black.** The stage and characters
-  draw, but the main pass's result is very dark; the HUD, the 2D screens and
-  the movies look right. Under investigation.
+- **Not played by hand yet;** the button layout (`X2_PAD` line) is not
+  worked out yet.
+- **Android:** not built yet. Its shadows need the Vulkan renderer's shadow
+  map sampling, which does not exist yet.
 - **Frame pacing:** the game's own limiter measures its frame from
   `Present`'s return and sleeps the rest of 1/60 s, so a frame takes a
   little over 16.7 ms (about one late frame in 120).
-- The button layout (`X2_PAD` line) is not worked out yet.

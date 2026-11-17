@@ -452,7 +452,13 @@ static void translate_ins(Ctx *c) {
             assign(c, &d, expr);
             break;
         }
-        case 32: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(pow(abs((%s).x),(%s).x))", a, b); assign(c, &d, expr); break;
+        case 32: /* pow: |a|^b, with 0^0 = 1 as on D3D9 hardware (exp2(0 * log2(0)) is NaN on today's GPUs) */
+            DST();
+            SRC(a, ra);
+            SRC(b, rb);
+            snprintf(expr, sizeof expr, "vec4((%s).x==0.0 ? 1.0 : pow(abs((%s).x),(%s).x))", b, a, b);
+            assign(c, &d, expr);
+            break;
         case 33: DST(); SRC(a, ra); SRC(b, rb); snprintf(expr, sizeof expr, "vec4(cross((%s).xyz,(%s).xyz),0.0)", a, b); assign(c, &d, expr); break;
         case 34: DST(); SRC(a, ra); if (len >= 3) { c->pos += (uint32_t)len - 2; } snprintf(expr, sizeof expr, "sign(%s)", a); assign(c, &d, expr); break;
         case 35: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "abs(%s)", a); assign(c, &d, expr); break;
@@ -463,8 +469,24 @@ static void translate_ins(Ctx *c) {
             snprintf(expr, sizeof expr, "vec4(cos((%s).x),sin((%s).x),0.0,0.0)", a, a);
             assign(c, &d, expr);
             break;
-        case 80: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "mix(%s,%s,vec4(greaterThan(%s,vec4(0.5))))", e, b, a); assign(c, &d, expr); break;
-        case 88: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "mix(%s,%s,vec4(greaterThanEqual(%s,vec4(0.0))))", e, b, a); assign(c, &d, expr); break;
+        /* cnd / cmp select, as the hardware does: mix() with a boolean vector picks a component
+         * without arithmetic, so an infinite or NaN source on the side not taken stays out */
+        case 80:
+            DST();
+            SRC(a, ra);
+            SRC(b, rb);
+            SRC(e, re);
+            snprintf(expr, sizeof expr, "mix(%s,%s,greaterThan(%s,vec4(0.5)))", e, b, a);
+            assign(c, &d, expr);
+            break;
+        case 88:
+            DST();
+            SRC(a, ra);
+            SRC(b, rb);
+            SRC(e, re);
+            snprintf(expr, sizeof expr, "mix(%s,%s,greaterThanEqual(%s,vec4(0.0)))", e, b, a);
+            assign(c, &d, expr);
+            break;
         case 90: DST(); SRC(a, ra); SRC(b, rb); SRC(e, re); snprintf(expr, sizeof expr, "vec4(dot((%s).xy,(%s).xy)+(%s).x)", a, b, e); assign(c, &d, expr); break;
         case 91: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "dFdx(%s)", a); assign(c, &d, expr); break;
         case 92: DST(); SRC(a, ra); snprintf(expr, sizeof expr, "dFdy(%s)", a); assign(c, &d, expr); break;
@@ -553,6 +575,9 @@ const char *const sh_msl_prelude =
     "template<typename T> inline auto lessThan(T a, T b) { return a < b; }\n"
     "template<typename T> inline auto greaterThan(T a, T b) { return a > b; }\n"
     "template<typename T> inline auto greaterThanEqual(T a, T b) { return a >= b; }\n"
+    /* mix() with a boolean vector selects (GLSL); a template so a scalar weight still means lerp */
+    "template<typename B, typename = enable_if_t<is_same<B, bool4>::value>> inline float4 mix(float4 a, float4 b, B c) "
+    "{ return select(a, b, c); }\n"
     "inline float4 x2_tex(texture2d<float> t, sampler s, float2 uv) { return t.sample(s, uv); }\n"
     "inline float4 x2_tex(texturecube<float> t, sampler s, float3 uv) { return t.sample(s, uv); }\n"
     "inline float4 x2_tex(texture3d<float> t, sampler s, float3 uv) { return t.sample(s, uv); }\n"

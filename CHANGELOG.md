@@ -11,7 +11,7 @@ games are recompiled on your computer from your own files.
 
 - **Samurai Shodown: Edge of Destiny** (in progress, not in the launcher
   yet): recompiles and runs on macOS in its HD mode, from attract mode to
-  fights, but the 3D scene of a fight still renders nearly black. See its
+  fights, with its stages and toon-shaded fighters. See its
   [page](docs/Game-Samurai-Shodown-EoD.md).
 
 ## 0.3.1 - 2026-11-17

@@ -576,8 +576,9 @@ typedef struct {
 
 static u32 vt_mesh;
 
-/* call method `idx` of guest COM object `obj` (this + up to 6 arguments) */
-#define VCALL(obj, idx, n, ...) x2_guest_call(c, RD32(RD32(obj) + 4 * (idx)), n, obj, __VA_ARGS__)
+/* call method `idx` of guest COM object `obj` with `this` and the arguments (counted, up to 15) */
+#define NARGS(...)           ((int)(sizeof((u32[]){__VA_ARGS__}) / sizeof(u32)))
+#define VCALL(obj, idx, ...) x2_guest_call(c, RD32(RD32(obj) + 4 * (idx)), 1 + NARGS(__VA_ARGS__), obj, __VA_ARGS__)
 #define VCALL0(obj, idx) x2_guest_call(c, RD32(RD32(obj) + 4 * (idx)), 1, obj)
 enum { COM_ADDREF = 1, COM_RELEASE = 2 };
 enum { DEV_CREATE_VB = 26, DEV_CREATE_IB = 27, DEV_DRAW_INDEXED = 82, DEV_CREATE_DECL = 86, DEV_SET_DECL = 87,
@@ -608,12 +609,14 @@ static void M_DrawSubset(X2Cpu *c) {
     for (u32 i = 0; i < m->ntable; i++) {
         AttrRange *a = &m->table[i];
         if (a->attrib != id || !a->face_count) continue;
-        VCALL(m->dev, DEV_SET_STREAM, 4, 0, m->vb, 0, m->stride);
-        VCALL(m->dev, DEV_SET_INDICES, 2, m->ib);
-        if (m->fvf) VCALL(m->dev, DEV_SET_FVF, 2, m->fvf);
-        else VCALL(m->dev, DEV_SET_DECL, 2, m->decl);
-        VCALL(m->dev, DEV_DRAW_INDEXED, 7, 4 /* TRIANGLELIST */, 0, a->vertex_start, a->vertex_count,
-              3 * a->face_start, a->face_count);
+        VCALL(m->dev, DEV_SET_STREAM, 0, m->vb, 0, m->stride);
+        VCALL(m->dev, DEV_SET_INDICES, m->ib);
+        if (m->fvf)
+            VCALL(m->dev, DEV_SET_FVF, m->fvf);
+        else
+            VCALL(m->dev, DEV_SET_DECL, m->decl);
+        VCALL(m->dev, DEV_DRAW_INDEXED, 4 /* TRIANGLELIST */, 0, a->vertex_start, a->vertex_count, 3 * a->face_start,
+              a->face_count);
     }
     RET(0);
 }
@@ -647,12 +650,12 @@ static void M_GetIndexBuffer(X2Cpu *c) {
 }
 static void M_LockVertexBuffer(X2Cpu *c) { /* (flags, **data) */
     Mesh *m = COM_THIS(Mesh);
-    RET(VCALL(m->vb, BUF_LOCK, 5, 0, 0, ARG(2), ARG(1)));
+    RET(VCALL(m->vb, BUF_LOCK, 0, 0, ARG(2), ARG(1)));
 }
 static void M_UnlockVertexBuffer(X2Cpu *c) { RET(VCALL0(COM_THIS(Mesh)->vb, BUF_UNLOCK)); }
 static void M_LockIndexBuffer(X2Cpu *c) {
     Mesh *m = COM_THIS(Mesh);
-    RET(VCALL(m->ib, BUF_LOCK, 5, 0, 0, ARG(2), ARG(1)));
+    RET(VCALL(m->ib, BUF_LOCK, 0, 0, ARG(2), ARG(1)));
 }
 static void M_UnlockIndexBuffer(X2Cpu *c) { RET(VCALL0(COM_THIS(Mesh)->ib, BUF_UNLOCK)); }
 static void M_GetAttributeTable(X2Cpu *c) { /* (table, *size) */
@@ -749,21 +752,21 @@ static u32 make_mesh(X2Cpu *c, Build *b, u32 options, u32 dev, u32 *out) {
     u32 pool = (options & 0x220) ? 1 /* MANAGED */ : (options & 0x110) ? 2 /* SYSTEMMEM */ : 0;
     u32 vusage = (options & 0x200) ? 0x200u : 0, iusage = (options & 0x800) ? 0x200u : 0;
     u32 tmp = x2_heap_alloc(0, 16, true); /* out pointers */
-    u32 hr = VCALL(dev, DEV_CREATE_VB, 7, m->stride * (b->nv ? b->nv : 1), vusage, m->fvf, pool, tmp, 0);
+    u32 hr = VCALL(dev, DEV_CREATE_VB, m->stride * (b->nv ? b->nv : 1), vusage, m->fvf, pool, tmp, 0);
     m->vb = RD32(tmp);
     if (!hr) {
-        hr = VCALL(dev, DEV_CREATE_IB, 7, 3 * (b->ntri ? b->ntri : 1) * (idx32 ? 4u : 2u), iusage,
+        hr = VCALL(dev, DEV_CREATE_IB, 3 * (b->ntri ? b->ntri : 1) * (idx32 ? 4u : 2u), iusage,
                    idx32 ? 102u /* INDEX32 */ : 101u /* INDEX16 */, pool, tmp + 4, 0);
         m->ib = RD32(tmp + 4);
     }
     if (!hr) {
         u32 el = x2_heap_alloc(0, (m->nelems + 1) * 8, false);
         memcpy(X2P(el), m->elems, (m->nelems + 1) * 8);
-        hr = VCALL(dev, DEV_CREATE_DECL, 3, el, tmp + 8);
+        hr = VCALL(dev, DEV_CREATE_DECL, el, tmp + 8);
         m->decl = RD32(tmp + 8);
         x2_heap_free(0, el);
     }
-    if (!hr && !VCALL(m->vb, BUF_LOCK, 5, 0, 0, tmp + 12, 0)) {
+    if (!hr && !VCALL(m->vb, BUF_LOCK, 0, 0, tmp + 12, 0)) {
         u8 *p = X2P(RD32(tmp + 12));
         for (u32 i = 0; i < b->nv; i++) {
             const Vtx *v = &b->v[i];
@@ -779,7 +782,7 @@ static u32 make_mesh(X2Cpu *c, Build *b, u32 options, u32 dev, u32 *out) {
         }
         VCALL0(m->vb, BUF_UNLOCK);
     }
-    if (!hr && !VCALL(m->ib, BUF_LOCK, 5, 0, 0, tmp + 12, 0)) {
+    if (!hr && !VCALL(m->ib, BUF_LOCK, 0, 0, tmp + 12, 0)) {
         u8 *p = X2P(RD32(tmp + 12));
         for (u32 i = 0; i < b->ntri; i++)
             for (int k = 0; k < 3; k++) {

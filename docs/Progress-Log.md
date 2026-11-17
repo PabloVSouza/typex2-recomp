@@ -2,6 +2,22 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-17: Samurai Shodown: Edge of Destiny's fights render
+
+- **Stages:** they are `.X` meshes drawn with `ID3DXMesh::DrawSubset`, whose
+  `SetStreamSource` call passed one argument short: the stride was garbage
+  and every triangle collapsed. The mesh code's guest calls now count their
+  arguments.
+- **Fighters:** black silhouettes. Their shader adds a point light whose
+  1/range constant is infinite when there is none; D3D9's `cmp` selects the
+  other side, but the translation blended both and inf × 0 gave NaN. `cmp` /
+  `cnd` are selects now (`mix` with a boolean vector; an MSL overload), and
+  `pow(0, 0)` is 1 as on D3D9 hardware. 136 of the 774 dumped shaders
+  change; all compile (Metal, glslang for Vulkan).
+- **Effect state:** `Begin` without `D3DXFX_DONOTSAVESTATE` remembers each
+  device state a pass changes, `End` restores it, as D3DX does.
+- Every other game's attract mode checked again.
+
 ## 2026-11-17: Samurai Shodown: Edge of Destiny boots
 
 - **New game:** `games/sse`, from `game.exe`. Attract mode, movies, coin,
