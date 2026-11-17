@@ -7,7 +7,9 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.3.1 - 2026-11-17
+
+Faster on Android, and Load State fixed in RetroArch.
 
 - **Android:** games run faster. Game code is now built with link-time
   optimisation, and calls between its parts are cheaper. **The King of
