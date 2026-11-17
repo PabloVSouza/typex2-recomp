@@ -2,6 +2,21 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-17: Save states tested in RetroArch on Android
+
+- **Tested** on the tablet, BlazBlue CT's attract fight: save 343-370 MB,
+  pause about 20 ms, copy 230-270 ms; load pause 17 ms, restore 190 ms.
+- **Load refused silently:** RetroArch serializes an "Undo Load State"
+  backup right before each load, and the core refused any second operation
+  within 0.5 s (meant for rewind and run-ahead). Now only a third within 1 s
+  is refused, with a message.
+- **One-second pause after movies:** the DirectShow feeder thread outlives
+  the movie and had no stop point, so every state waited for the 1 s
+  fallback. It now stops in its 33 ms sleep. A slow stop logs the thread
+  that held it up.
+- RetroArch compresses the file after a save (about 20 s for 343 MB on the
+  tablet); Load State does nothing until then.
+
 ## 2026-11-16: Link-time optimisation; KOF XIII Climax holds 60 fps on Android
 
 - **Found:** `X2_PROF` on the tablet, Climax fight on the Japanese temple

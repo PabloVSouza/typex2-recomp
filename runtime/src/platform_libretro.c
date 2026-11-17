@@ -1011,13 +1011,18 @@ audio:;
 
 /* Save states (savestate.c), taken and restored in memory on RetroArch's thread. They load
  * only in the run that took them and on the same screen (a refused load says why). A state is
- * the game's whole memory (100-300 MB): one per frame (rewind, run-ahead) is refused. */
+ * the game's whole memory (100-300 MB): one per frame (rewind, run-ahead) is refused. A pair is
+ * fine: RetroArch saves a backup ("undo load") just before each load. */
 static char ss_msg[400];
-static u64 ss_last_ns;
+static u64 ss_ops_ns[2]; /* the last two operations, oldest first */
 static bool ss_too_often(void) {
     u64 now = x2_time_ns();
-    bool r = ss_last_ns && now - ss_last_ns < 500000000ull;
-    ss_last_ns = now;
+    bool r = ss_ops_ns[0] && now - ss_ops_ns[0] < 1000000000ull; /* a third within 1 s */
+    ss_ops_ns[0] = ss_ops_ns[1];
+    ss_ops_ns[1] = now;
+    static bool told; /* once: under run-ahead this is every frame */
+    if (r && !told) msg("Save states: rewind and run-ahead are not supported", 240);
+    told |= r;
     return r;
 }
 EXPORT size_t retro_serialize_size(void) { return running ? x2_ss_size() : 0; }

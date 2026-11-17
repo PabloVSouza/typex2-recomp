@@ -318,6 +318,7 @@ static void feeder(X2Cpu *c) {
     while (g->feeding) {
         struct timespec ts = {0, 33333333};
         nanosleep(&ts, NULL);
+        x2_ss_check("wait", NULL); /* idle between samples (the thread outlives the movie) */
         if (!g->running || !g->video) continue;
         if (x2_video_finished(g->video)) {
             if (!eos) x2_guest_call(c, guest_method(g->renderer_in, PIN_EndOfStream), 1, g->renderer_in);

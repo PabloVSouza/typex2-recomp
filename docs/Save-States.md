@@ -17,6 +17,11 @@ loads) and in RetroArch (its Save State and Load State).
 - **Large.** A state holds the game's whole memory: about 55 MB for
   KOF '98 UM, 200 MB for KOF XII, and 400-550 MB for KOF XIII, SSF4 and
   BlazBlue. Saving or loading takes a fraction of a second.
+- **RetroArch writes the file after saving.** With "Savestate Compression"
+  on (Settings → Saving, the default), a 350 MB state takes about 20 s to
+  write on a mid-range Android tablet, and Load State does nothing until it
+  is written. Turning compression off makes the file bigger but quicker to
+  write.
 - **No rewind or run-ahead.** They need a state every frame, which this size
   doesn't allow, so the core refuses them.
 

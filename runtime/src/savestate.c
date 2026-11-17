@@ -260,9 +260,15 @@ static bool stop_all(bool loading) {
     u64 start = ss_start;
     __atomic_store_n(&x2_ss_pending, 1, __ATOMIC_SEQ_CST);
     pthread_mutex_lock(&ss_lock);
+    bool told = false;
     for (int round = 0;; round++) {
         X2Thread *t = first_running();
         if (!t) break;
+        if (!told && x2_time_ns() - start > 1000000000ull) { /* a slow stop: who holds it up */
+            told = true;
+            x2_log("state: thread %u still running after 1 s (in %s, %s)", t->id,
+                   t->cpu.host_fn ? t->cpu.host_fn : "guest code", t->ss_at ? t->ss_at : "no stop point yet");
+        }
         if (x2_time_ns() - start > 3000000000ull) {
             snprintf(x2_ss_error, sizeof x2_ss_error,
                      "thread %u did not stop (in %s, %d critical section(s) held; frames from thread %u)", t->id,

@@ -13,6 +13,10 @@ games are recompiled on your computer from your own files.
   optimisation, and calls between its parts are cheaper. **The King of
   Fighters XIII Climax** holds 60 fps in fights on every stage tested on
   the test tablet; before, most stages ran at about 50.
+- **Save states in RetroArch:** Load State works with RetroArch's "Undo Load
+  State" backup (on by default), which the core used to refuse silently.
+  After a game's movie, saving and loading no longer pause the game for a
+  second.
 
 ## 0.3.0 - 2026-11-16
 
