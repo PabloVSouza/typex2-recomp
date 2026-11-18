@@ -29,7 +29,10 @@ const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size);
 /* ---- shaders -------------------------------------------------------------------- */
 typedef struct {
     GLuint sh;
-    struct { u32 var; GLuint sh; } *vars; /* pixel shader variants (VAR_* bits), compiled on demand */
+    struct {
+        u32 var;
+        GLuint sh;
+    } *vars; /* pixel shader variants (VAR_* bits), compiled on demand */
     u32 nvars;
     Sm3Info info;
     bool ok;      /* translated (and, once compiled, compiled) */
@@ -103,7 +106,8 @@ static bool shader_compile(Shader *s, u32 var) {
         int dn = snprintf(defs, sizeof defs, "%s%s", var & VAR_ATEST ? "#define X2_ATEST 1\n" : "",
                           var & VAR_MEDIUMP ? "#define X2_MEDIUMP 1\n" : "");
         for (int i = 0; i < 16; i++)
-            if (var & VAR_SHADOW0 << i) dn += snprintf(defs + dn, sizeof defs - (size_t)dn, "#define X2_SHADOW%d 1\n", i);
+            if (var & VAR_SHADOW0 << i)
+                dn += snprintf(defs + dn, sizeof defs - (size_t)dn, "#define X2_SHADOW%d 1\n", i);
         const char *nl = strchr(s->glsl, '\n');
         size_t at = nl ? (size_t)(nl - s->glsl) + 1 : 0, n = strlen(s->glsl);
         char *src = malloc(n + (size_t)dn + 1);
