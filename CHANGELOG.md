@@ -7,7 +7,9 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.4.0 - 2026-11-18
+
+Samurai Shodown: Edge of Destiny starts working, and clearer build errors.
 
 - **Samurai Shodown: Edge of Destiny** (in progress): recompiles and runs
   in its HD mode, from attract mode to fights, with its stages, toon-shaded
