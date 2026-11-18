@@ -11,7 +11,7 @@ Static recompilation of Taito Type X and Type X2 arcade games (x86 Windows XP PC
 native code for macOS and Android: `x2recomp` lifts `game.exe` (or `launcher.exe`) to C, the C
 runtime provides memory, threads, Win32 / D3D9 / D3DX / DirectSound /
 DirectShow, a JVS I/O board and renderers (Metal by default on macOS, Vulkan on
-Android, GL only as a reference, to be removed; Android requires Vulkan 1.3). Front ends: a standalone SDL3 player
+Android, OpenGL / GLES as the fallback for devices without Vulkan 1.3). Front ends: a standalone SDL3 player
 (macOS; on Android inside the Type X2 app, the launcher built with Tauri, which also ES-DE
 launches) and a libretro core holding every game. The Android app holds no game code: each
 game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
@@ -58,6 +58,11 @@ gets an entry per milestone. Update them with the README.
   Known issues never go in `CHANGELOG.md`: they live in
   `docs/Known-Issues.md` (with the game pages), which the release notes and
   the Discord post link to; keep it current as issues are found and fixed.
+* **The three renderers keep the same features.** Metal, Vulkan and OpenGL /
+  GLES (the fallback for older Android devices and the macOS RetroArch core):
+  a rendering feature or fix goes into all three in the same change and is
+  checked on each (`X2_RENDERER=gl` / `metal` / `vulkan`). Performance may
+  differ between them; what they draw and support may not.
 * **Never write into the user's game folders** (debug dumps, logs, test
   files). Use `$TMPDIR` / `/tmp` or the session scratchpad. The games' own
   saves (`sv/`, `Ranking/`, ...) are the exception: the game writes them.

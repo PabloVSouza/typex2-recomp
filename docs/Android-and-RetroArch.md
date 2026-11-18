@@ -79,12 +79,13 @@ computer.
    Android only loads cores from RetroArch's own data folder.
 
 Settings and limits:
-- **Video.** Vulkan 1.3 is required (most devices from 2022 on, with Android
-  13 or later). The core renders with Vulkan. RetroArch switches to its
-  `vulkan` driver by itself while "Allow driver switching" (Settings →
-  Drivers) is on, the default. The OpenGL ES renderer (`X2_RENDERER=gl`) is
-  a development reference that will be removed, not a supported fallback.
-  The app uses Vulkan too.
+- **Video.** The core and the app render with Vulkan 1.3 (most devices from
+  2022 on, with Android 13 or later). RetroArch switches to its `vulkan`
+  driver by itself while "Allow driver switching" (Settings → Drivers) is
+  on, the default. Older devices use OpenGL ES instead: the app switches by
+  itself when Vulkan 1.3 is missing; in RetroArch, set the video driver to
+  `gl` and put `X2_RENDERER=gl` in the game's `x2.env`. Both renderers draw
+  the same; OpenGL ES is usually slower on the same GPU.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.
 - **Save states** work within a run of the game, on the screen they were
