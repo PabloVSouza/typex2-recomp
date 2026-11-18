@@ -22,12 +22,15 @@ void gfx_gl_bind_target(const GfxState *st);
 u32 gfx_gl_target_scale(const GfxState *st);
 GLuint gfx_gl_texture(GfxId id);
 GLenum gfx_gl_texture_target(GfxId id); /* GL_TEXTURE_2D or GL_TEXTURE_CUBE_MAP */
+bool gfx_gl_texture_is_depth(GfxId id);
 GLuint gfx_gl_buffer(GfxId id);
 const u8 *gfx_gl_buffer_shadow(GfxId id, u32 *size);
 
 /* ---- shaders -------------------------------------------------------------------- */
 typedef struct {
-    GLuint sh, sh_var[4]; /* pixel shader variants by VAR_* bits (index 0 unused) */
+    GLuint sh;
+    struct { u32 var; GLuint sh; } *vars; /* pixel shader variants (VAR_* bits), compiled on demand */
+    u32 nvars;
     Sm3Info info;
     bool ok;      /* translated (and, once compiled, compiled) */
     bool pixel;
@@ -78,17 +81,29 @@ void gfx_gl_shader_create(GfxId id, bool pixel, const u32 *tok, u32 n) {
 }
 /* pixel shader variants, compiled on demand: VAR_ATEST compiles the alpha test
  * in (a shader that may discard loses early depth and Mali's hidden-surface
- * removal), VAR_MEDIUMP makes the maths fp16 */
-enum { VAR_ATEST = 1, VAR_MEDIUMP = 2 };
+ * removal), VAR_MEDIUMP makes the maths fp16, VAR_SHADOW0 << n reads sampler n
+ * (bound to a depth texture) as a shadow map compare, as Metal and Vulkan do */
+enum { VAR_ATEST = 1, VAR_MEDIUMP = 2, VAR_SHADOW0 = 4 };
+static GLuint *shader_slot(Shader *s, u32 var) {
+    if (!var) return &s->sh;
+    for (u32 i = 0; i < s->nvars; i++)
+        if (s->vars[i].var == var) return &s->vars[i].sh;
+    s->vars = realloc(s->vars, (s->nvars + 1) * sizeof *s->vars);
+    s->vars[s->nvars].var = var;
+    s->vars[s->nvars].sh = 0;
+    return &s->vars[s->nvars++].sh;
+}
 static bool shader_compile(Shader *s, u32 var) {
-    GLuint *sh = var ? &s->sh_var[var & 3] : &s->sh;
+    GLuint *sh = shader_slot(s, var);
     if (*sh) return true;
     char log[2048] = "";
     if (var) {
         /* the variant's defines right after the #version line */
-        char defs[64];
+        char defs[512];
         int dn = snprintf(defs, sizeof defs, "%s%s", var & VAR_ATEST ? "#define X2_ATEST 1\n" : "",
                           var & VAR_MEDIUMP ? "#define X2_MEDIUMP 1\n" : "");
+        for (int i = 0; i < 16; i++)
+            if (var & VAR_SHADOW0 << i) dn += snprintf(defs + dn, sizeof defs - (size_t)dn, "#define X2_SHADOW%d 1\n", i);
         const char *nl = strchr(s->glsl, '\n');
         size_t at = nl ? (size_t)(nl - s->glsl) + 1 : 0, n = strlen(s->glsl);
         char *src = malloc(n + (size_t)dn + 1);
@@ -111,8 +126,9 @@ void gfx_gl_shader_destroy(GfxId id) {
     Shader *s = id < MAX_IDS ? shaders[id] : NULL;
     if (!s) return;
     if (s->sh) glDeleteShader(s->sh);
-    for (int v = 1; v < 4; v++)
-        if (s->sh_var[v]) glDeleteShader(s->sh_var[v]);
+    for (u32 v = 0; v < s->nvars; v++)
+        if (s->vars[v].sh) glDeleteShader(s->vars[v].sh);
+    free(s->vars);
     free(s->glsl);
     free(s);
     shaders[id] = NULL;
@@ -150,6 +166,11 @@ static u64 program_key(const Shader *vs, const Shader *ps, u32 var) {
     u64 k = fnv1a(ps->glsl, fnv1a(vs->glsl, driver));
     if (var & VAR_ATEST) k = fnv1a("X2_ATEST", k);
     if (var & VAR_MEDIUMP) k = fnv1a("X2_MEDIUMP", k);
+    if (var >> 2) {
+        char b[24];
+        snprintf(b, sizeof b, "X2_SHADOW%x", var >> 2);
+        k = fnv1a(b, k);
+    }
     return k;
 }
 static bool program_load(GLuint pr, u64 key) {
@@ -236,7 +257,7 @@ static Prog *get_program(Shader *vs, Shader *ps, u32 var) {
         if (cache) glProgramParameteri(pr, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
 #endif
         glAttachShader(pr, vs->sh);
-        glAttachShader(pr, var ? ps->sh_var[var] : ps->sh);
+        glAttachShader(pr, *shader_slot(ps, var));
         glLinkProgram(pr);
         GLint ok = 0;
         glGetProgramiv(pr, GL_LINK_STATUS, &ok);
@@ -416,9 +437,12 @@ typedef struct {
 static SamplerEntry samplers[512];
 static u32 nsamplers;
 
-static GLuint get_sampler(const u32 *ss) {
+/* cmp: a shadow map's compare sampler (D3D9 on NVIDIA: the reference passes when <= the
+ * stored depth, filtered as the hardware's PCF), as on Metal and Vulkan */
+static GLuint get_sampler(const u32 *ss, bool cmp) {
     u32 mag = ss[5], min = ss[6], mip = ss[7];
-    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13;
+    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13 |
+              (u32)cmp << 15;
     u32 border = ss[4]; /* D3DCOLOR ARGB */
     for (u32 i = 0; i < nsamplers; i++)
         if (samplers[i].key == key && samplers[i].border == border) return samplers[i].s;
@@ -430,7 +454,15 @@ static GLuint get_sampler(const u32 *ss) {
     if (ss[1] == 4 || ss[2] == 4 || ss[3] == 4) {
         float bc[4] = {(float)(border >> 16 & 255) / 255.0f, (float)(border >> 8 & 255) / 255.0f, (float)(border & 255) / 255.0f,
                        (float)(border >> 24) / 255.0f};
+        /* Samurai Shodown EoD's stages set 1.0f's bits (0x3f800000) and read the red as the
+         * depth beyond their shadow map: white, as meant (Metal, Vulkan); a compare reads red */
+        if (border == 0x3f800000u) bc[0] = bc[1] = bc[2] = bc[3] = 1.0f;
+        if (cmp) bc[0] = bc[1] = bc[2] = bc[3] = (border >> 16 & 0xFF) >= 0x80 ? 1.0f : 0.0f;
         glSamplerParameterfv(s, GL_TEXTURE_BORDER_COLOR, bc);
+    }
+    if (cmp) {
+        glSamplerParameteri(s, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+        glSamplerParameteri(s, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
     }
     glSamplerParameteri(s, GL_TEXTURE_MAG_FILTER, mag >= 2 ? GL_LINEAR : GL_NEAREST);
     GLint mf;
@@ -612,6 +644,11 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         extern int gfx_gl_ab;
         if (mp == 1 || (mp == 2 && !gfx_gl_ab)) var |= VAR_MEDIUMP;
     }
+    /* a sampler read only as a whole 2D coordinate and bound to a depth texture: a shadow map */
+    for (u32 m = ps->info.samplers_shadow; m; m &= m - 1) {
+        int i = __builtin_ctz(m);
+        if (gfx_gl_texture_is_depth(st->tex[i])) var |= (u32)VAR_SHADOW0 << i;
+    }
     Prog *pg = get_program(vs, ps, var);
     if (!pg) return;
     Decl *dc = st->decl < MAX_IDS ? decls[st->decl] : NULL;
@@ -688,7 +725,7 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         GLenum target = t ? gfx_gl_texture_target(st->tex[i]) : GL_TEXTURE_2D;
         glBindTexture(target, t ? t : black_tex); /* a cube map binds to its own target */
         unit_tex[i] = t ? t : black_tex;
-        glBindSampler((GLuint)i, get_sampler(st->samp[i]));
+        glBindSampler((GLuint)i, get_sampler(st->samp[i], (var & (u32)VAR_SHADOW0 << i) != 0));
     }
     glActiveTexture(GL_TEXTURE0);
 

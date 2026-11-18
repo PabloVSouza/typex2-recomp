@@ -46,7 +46,7 @@ enum {
 
 typedef struct {
     bool pixel;
-    bool shadow_ok; /* MSL, Vulkan: 2D samples as x2_t2d / x2_t2dp, which also read depth textures as shadow maps */
+    bool shadow_ok; /* 2D samples as x2_t2d / x2_t2dp, which also read depth textures as shadow maps */
     bool t2d_used;
     uint32_t t2d_mask, other_mask; /* samplers read through x2_t2d, and otherwise */
     int major, minor;
@@ -1017,7 +1017,7 @@ bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out,
     c->n = n;
     uint32_t ver = tok[0];
     c->pixel = (ver >> 16) == 0xFFFF;
-    c->shadow_ok = target == SH_MSL || target == SH_VKGLSL;
+    c->shadow_ok = true;
     c->major = (int)((ver >> 8) & 0xFF);
     c->minor = (int)(ver & 0xFF);
     info->pixel = c->pixel;
@@ -1050,8 +1050,16 @@ bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out,
         for (int i = 0; i < 16; i++) {
             if (!(info->samplers_used & (1u << i))) continue;
             const char *ty = c->samp_type[i] == 3 ? "samplerCube" : c->samp_type[i] == 4 ? "sampler3D" : "sampler2D";
+            if (info->samplers_shadow & (1u << i)) /* a shadow map in the X2_SHADOW<n> variant (gfx_gl_draw.c) */
+                sf(&s, "#ifdef X2_SHADOW%d\nuniform highp sampler2DShadow s%d;\n#else\n", i, i);
             sf(&s, "uniform %s s%d;\n", ty, i);
+            if (info->samplers_shadow & (1u << i)) sf(&s, "#endif\n");
         }
+        if (c->t2d_used)
+            sf(&s, "vec4 x2_t2d(sampler2D s, X2_HP vec4 c) { return texture(s, c.xy); }\n"
+                   "vec4 x2_t2dp(sampler2D s, X2_HP vec4 c) { return texture(s, c.xy / c.w); }\n"
+                   "vec4 x2_t2d(highp sampler2DShadow s, X2_HP vec4 c) { return vec4(texture(s, c.xyz)); }\n"
+                   "vec4 x2_t2dp(highp sampler2DShadow s, X2_HP vec4 c) { return vec4(textureProj(s, c)); }\n");
         sf(&s, "uniform int u_alpha_func;\nuniform float u_alpha_ref;\n");
         if (c->major >= 3) {
             for (int i = 0; i < 16; i++) {

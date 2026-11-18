@@ -16,6 +16,9 @@ games are recompiled on your computer from your own files.
 - **Samurai Shodown: Edge of Destiny:** the floors are lit all over, not
   only in a square around the fighters. The game's own frame limiter is
   off (the runtime paces it), so it no longer costs RetroArch frames.
+- **OpenGL / OpenGL ES** stays as the renderer for devices without Vulkan
+  1.3, with the same features as Vulkan and Metal: shadow maps (Samurai
+  Shodown: Edge of Destiny) now render on it too.
 - **Android (Vulkan):** the picture is drawn in one pass. A block of
   coloured garbage beside 4:3 pictures (on Mali GPUs) is gone, and so,
   very likely, are the single black frames that made movies blink.

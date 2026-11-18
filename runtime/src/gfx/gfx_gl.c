@@ -455,6 +455,10 @@ GLuint gfx_gl_texture(GfxId id) {
     if (t->pend) pend_flush(t); /* first use of a texture whose upload was deferred */
     return t->tex;
 }
+bool gfx_gl_texture_is_depth(GfxId id) {
+    Tex *t = id < MAX_IDS ? texs[id] : NULL;
+    return t && t->depth && !t->cube;
+}
 GLenum gfx_gl_texture_target(GfxId id) {
     Tex *t = id < MAX_IDS ? texs[id] : NULL;
     return t ? tex_target(t) : GL_TEXTURE_2D;
