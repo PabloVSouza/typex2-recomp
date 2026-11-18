@@ -18,7 +18,8 @@ games are recompiled on your computer from your own files.
   off (the runtime paces it), so it no longer costs RetroArch frames.
 - **OpenGL / OpenGL ES** stays as the renderer for devices without Vulkan
   1.3, with the same features as Vulkan and Metal: shadow maps (Samurai
-  Shodown: Edge of Destiny) now render on it too.
+  Shodown: Edge of Destiny) now render on it too, and RetroArch's Restart
+  works with it as with Vulkan.
 - **Android (Vulkan):** the picture is drawn in one pass. A block of
   coloured garbage beside 4:3 pictures (on Mali GPUs) is gone, and so,
   very likely, are the single black frames that made movies blink.
