@@ -7,8 +7,11 @@ Sen*), SNK Playmore, 2008, Taito Type X2. `games/sse`.
 its movies, coin and start, character select, the story screens and fights
 all run, with the stages, the toon-shaded fighters and their shadows
 rendered: at 60 fps in the game's HD mode (1280×720) on macOS, and at 60 fps
-in its SD mode (640×480) on the Android test tablet. In the launcher and the
-Android app.
+in its SD mode (640×480) on the Android test tablet, in the app and in
+RetroArch. In the launcher and the Android app. A scripted arcade run (EASY,
+one round) on macOS won two fights, lost the third, continued, picked the
+character again and fought on; the later stages, the boss and the endings
+are not reached by a script and wait for a real playthrough.
 
 ## Controls
 

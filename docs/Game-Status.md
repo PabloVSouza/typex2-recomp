@@ -42,7 +42,7 @@ Mali-G57 MC2) for Android.
 | BlazBlue: Calamity Trigger | Type X2 | 2008 | `bbct` | Playable | not tested | Playable, issues | [BlazBlue CT](Game-BlazBlue-CT.md) |
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | Fights at 60 fps (scripted) | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |
 | The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | Attract mode, 60 fps (not played yet) | Fights at 60 fps (scripted) | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
-| Samurai Shodown: Edge of Destiny | Type X2 | 2008 | `sse` | Fights run (scripted) | Fights run, 60 fps (SD mode) | not tested | [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md) |
+| Samurai Shodown: Edge of Destiny | Type X2 | 2008 | `sse` | Arcade runs (scripted: wins, losses, continue) | Fights run, 60 fps (SD mode) | Fights at 60 fps (scripted) | [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
