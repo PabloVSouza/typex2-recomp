@@ -113,7 +113,7 @@ void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
     TexCreate *k = emit(C_TEX_CREATE, sizeof(TexCreate));
-    *k = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : 1, 0};
+    *k = (TexCreate){id, fmt, w, h, levels, rt, scale ? scale : GFX_SCALE_ONE, 0};
     if (gfx_tex_create_hook) gfx_tex_create_hook(k);
     pthread_mutex_unlock(&rec_lock);
 }
@@ -122,12 +122,12 @@ void gfx_texture_create_cube(GfxId id, enum GfxFormat fmt, uint32_t size, uint32
     pthread_mutex_lock(&rec_lock);
     if (id < (1u << 20)) tex_fmt[id] = fmt;
     TexCreate *k = emit(C_TEX_CREATE, sizeof(TexCreate));
-    *k = (TexCreate){id, fmt, size, size, levels, 0, 1, 1};
+    *k = (TexCreate){id, fmt, size, size, levels, 0, GFX_SCALE_ONE, 1};
     if (gfx_tex_create_hook) gfx_tex_create_hook(k);
     pthread_mutex_unlock(&rec_lock);
 }
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool rt) {
-    gfx_texture_create_scaled(id, fmt, w, h, levels, rt, 1);
+    gfx_texture_create_scaled(id, fmt, w, h, levels, rt, GFX_SCALE_ONE);
 }
 void gfx_texture_upload(GfxId id, uint32_t level, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const void *data,
                         uint32_t pitch) {

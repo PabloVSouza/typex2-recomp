@@ -118,6 +118,7 @@ struct Device {
     u32 tex_obj[GFX_MAX_SAMPLERS], vb_obj[GFX_MAX_STREAMS], ib_obj, decl_obj, vs_obj, ps_obj;
     u32 rt_obj[4], ds_obj;
     u32 backbuffer, auto_ds;
+    u32 bw, bh; /* backbuffer size, as the game sees it */
     u32 fvf;
     bool fvf_active; /* SetFVF came after SetVertexDeclaration: the FVF is the declaration */
     bool d3d8;       /* created through IDirect3D8: hands out D3D8 vtables */
@@ -143,8 +144,25 @@ static bool creating_d3d8; /* CreateDevice runs on behalf of IDirect3D8 */
 static void init_vtables(void);
 
 /* ---- surfaces / textures ------------------------------------------------- */
-/* render scale for the next standalone surface (set while creating the backbuffer) */
-static u32 next_surface_scale = 1;
+/* render scale for the next standalone surface: the backbuffer's and its depth buffer's
+ * (GFX_SCALE_ONE / 256 units; 0: none set, the scene scale applies) */
+static u32 next_surface_scale;
+/* X2_SCENE_SCALE=<0.5-1>, opt-in: the game's own render targets and depth buffers at that
+ * fraction of their size (the 3D scene and its effects), for less GPU work. Those the size
+ * of the backbuffer keep it: the HUD and full-screen passes draw there, with a depth buffer
+ * that has to match. Small ones (blur chains) keep theirs too. */
+static u32 scene_scale(const Device *d, u32 w, u32 h) {
+    static u32 q;
+    if (!q) {
+        const char *e = getenv("X2_SCENE_SCALE");
+        double v = e ? atof(e) : 1.0;
+        if (v < 0.5 || v > 1.0) v = 1.0;
+        q = (u32)(v * GFX_SCALE_ONE + 0.5);
+        if (q != GFX_SCALE_ONE) x2_log("d3d9: render targets at %.0f%% (X2_SCENE_SCALE)", v * 100);
+    }
+    if (q == GFX_SCALE_ONE || (d && w == d->bw && h == d->bh) || w < 64 || h < 64) return GFX_SCALE_ONE;
+    return q;
+}
 /* a standalone surface owns its pixels and its renderer texture: games create
  * and release them per frame (KOF MI Regulation A: an image surface a frame) */
 /* still bound (released early by a game that relies on the device's reference): kept */
@@ -181,7 +199,10 @@ static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, G
     s->container = container;
     if (!tex) {  /* standalone render target / depth / offscreen surface */
         tex = new_id();
-        gfx_texture_create_scaled(tex, gfx_fmt(fmt), w, h, 1, true, next_surface_scale);
+        u32 sc = next_surface_scale         ? next_surface_scale
+                 : usage == 1 || usage == 2 ? scene_scale(d, w, h)
+                                            : GFX_SCALE_ONE;
+        gfx_texture_create_scaled(tex, gfx_fmt(fmt), w, h, 1, true, sc);
         s->com.destroy = surface_destroy;
         s->com.keep = true;
         s->com.free_guest = surface_free_guest;
@@ -335,7 +356,10 @@ static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt,
     t->id = new_id();
     t->com.destroy = texture_destroy;
     t->com.keep = true;
-    gfx_texture_create(t->id, gfx_fmt(fmt), w, h, levels, (usage & 3) != 0 /* RENDERTARGET|DEPTHSTENCIL */);
+    if (usage & 3) /* RENDERTARGET | DEPTHSTENCIL */
+        gfx_texture_create_scaled(t->id, gfx_fmt(fmt), w, h, levels, true, scene_scale(d, w, h));
+    else
+        gfx_texture_create(t->id, gfx_fmt(fmt), w, h, levels, false);
     if (usage & 3) X2_TRACE("d3d9: %s texture %ux%u fmt %u", usage & 1 ? "render-target" : "depth", w, h, fmt);
     u32 g = x2_com_wrap(&t->com, d->d3d8 ? vt_texture8 : vt_texture, "IDirect3DTexture9");
     for (u32 i = 0; i < levels; i++) {
@@ -1353,7 +1377,9 @@ static void A_CreateDevice(X2Cpu *c) {
     if (getenv("X2_BB_SCALE")) scale = (u32)atoi(getenv("X2_BB_SCALE"));
     if (scale < 1 || scale > 4) scale = 1;
     if (scale > 1) x2_log("d3d9: backbuffer rendered at %ux (%ux%u)", scale, bw * scale, bh * scale);
-    next_surface_scale = scale;
+    next_surface_scale = scale * GFX_SCALE_ONE;
+    d->bw = bw;
+    d->bh = bh;
     d->backbuffer = make_surface(d, D3DFMT_A8R8G8B8, bw, bh, 1, 0, 0, 0, 0);
     d->rt_obj[0] = d->backbuffer;
     gfx_set_backbuffer(surface_tex(d->backbuffer));
@@ -1363,7 +1389,7 @@ static void A_CreateDevice(X2Cpu *c) {
         d->ds_obj = d->auto_ds;
         d->st.ds = surface_tex(d->auto_ds);
     }
-    next_surface_scale = 1;
+    next_surface_scale = 0;
     d->st.vp = (GfxViewport){0, 0, (float)bw, (float)bh, 0, 1};
     d->st.scissor[2] = (s32)bw;
     d->st.scissor[3] = (s32)bh;

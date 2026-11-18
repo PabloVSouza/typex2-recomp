@@ -117,6 +117,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_VSYNC=1` / `X2_NOPRESENT=1` | vsynced presentation / never present (headless runs, hidden window; add `SDL_AUDIO_DRIVER=dummy` for silence) |
 | `X2_BB_SCALE=n` | render the backbuffer at n× (default: the largest multiple fitting 1280×1024, so 640×480 games get 2×) |
 | `X2_HD=0` / `=1` | Samurai Shodown: Edge of Destiny in its SD mode (640×480, 4:3) or HD (1280×720); default HD, SD on Android. For SD the emulated I/O board lists its coin inputs first (the game takes HD from the first function in the feature list) |
+| `X2_SCENE_SCALE=<0.5-1>` | opt-in: render the game's own render targets and depth buffers (the 3D scene and its effects) at that fraction of their size, for less GPU work; those the size of the backbuffer (HUD, full-screen passes) and small ones keep theirs. Samurai Shodown EoD in HD on the test tablet: `0.75` holds 60 fps (GPU 12.7 ms against 16.5) |
 | `X2_NO_S3TC=1` | decode DXT textures on the CPU (default on GPUs without S3TC) |
 | `X2_FONT=file.ttc` | font for GDI text where CoreText is unavailable (default: Noto Sans CJK) |
 | `X2_AUDIOLOG=1` | audio peak level every 2 s |

@@ -6,6 +6,7 @@
 
 #include "../core.h"
 #include "gfx.h"
+#include "gfx_cmd.h"
 #include "gl.h"
 #include "sm3_glsl.h"
 
@@ -537,15 +538,16 @@ static void draw_init(void) {
 
 static void apply_state(const GfxState *st) {
     const u32 *rs = st->rs;
-    /* the target may be rendered at a multiple of the size the game sees (backbuffer upscaling) */
-    const float s = (float)gfx_gl_target_scale(st);
+    /* the target may be rendered at another size than the game sees (backbuffer upscaling,
+     * X2_SCENE_SCALE): scale in 1/256 */
+    const u32 tsc = gfx_gl_target_scale(st);
+    const float s = (float)tsc / GFX_SCALE_ONE;
     glViewport((GLint)(st->vp.x * s), (GLint)(st->vp.y * s), (GLsizei)(st->vp.w * s), (GLsizei)(st->vp.h * s));
     glDepthRangef(st->vp.minz, st->vp.maxz);
     if (rs[174]) {
         glEnable(GL_SCISSOR_TEST);
-        const GLint si = (GLint)s;
-        glScissor(st->scissor[0] * si, st->scissor[1] * si, (st->scissor[2] - st->scissor[0]) * si,
-                  (st->scissor[3] - st->scissor[1]) * si);
+        GLint x0 = (GLint)gfx_scale_px(st->scissor[0], tsc), y0 = (GLint)gfx_scale_px(st->scissor[1], tsc);
+        glScissor(x0, y0, (GLint)gfx_scale_px(st->scissor[2], tsc) - x0, (GLint)gfx_scale_px(st->scissor[3], tsc) - y0);
     } else {
         glDisable(GL_SCISSOR_TEST);
     }

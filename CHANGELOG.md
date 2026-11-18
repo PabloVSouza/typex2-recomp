@@ -20,6 +20,9 @@ games are recompiled on your computer from your own files.
   1.3, with the same features as Vulkan and Metal: shadow maps (Samurai
   Shodown: Edge of Destiny) now render on it too, and RetroArch's Restart
   works with it as with Vulkan.
+- **`X2_SCENE_SCALE`** (opt-in, all renderers): draws a game's 3D scene and
+  its effects at a fraction of their size, the HUD at full size. Samurai
+  Shodown: Edge of Destiny in HD holds 60 fps on the test tablet at `0.75`.
 - **Android (Vulkan):** the picture is drawn in one pass. A block of
   coloured garbage beside 4:3 pictures (on Mali GPUs) is gone, and so,
   very likely, are the single black frames that made movies blink.

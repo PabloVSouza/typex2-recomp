@@ -15,7 +15,7 @@
 typedef struct {
     GLuint tex, fbo;
     u32 fmt, w, h, levels; /* w, h: allocated size (scale x the size the game sees) */
-    u32 scale;             /* render resolution multiplier (backbuffer upscaling) */
+    u32 scale;             /* allocated / game size in 1/256 (backbuffer upscaling, X2_SCENE_SCALE) */
     bool depth;
     GLuint fbo_depth; /* depth texture currently attached to fbo (0 = none) */
     GLuint fbo_color[3]; /* textures attached as color 1-3 (multiple render targets) */
@@ -131,8 +131,11 @@ static void tex_alloc_levels(Tex *t, u32 skip) {
 static void do_tex_create(const TexCreate *k) {
     if (k->id >= MAX_IDS) return;
     Tex *t = calloc(1, sizeof *t);
-    t->scale = k->scale ? k->scale : 1;
-    t->fmt = k->fmt; t->w = k->w * t->scale; t->h = k->h * t->scale; t->levels = k->levels;
+    t->scale = k->scale ? k->scale : GFX_SCALE_ONE;
+    t->fmt = k->fmt;
+    t->w = gfx_scaled(k->w, t->scale);
+    t->h = gfx_scaled(k->h, t->scale);
+    t->levels = k->levels;
     t->depth = k->fmt == GFX_FMT_D24S8 || k->fmt == GFX_FMT_D16;
     t->cube = k->cube != 0;
     GLenum target = tex_target(t);
@@ -351,7 +354,7 @@ static void do_buf_destroy(GfxId id) {
 /* render target binding: the first color target of the state, or the backbuffer */
 u32 gfx_gl_target_scale(const GfxState *st) {
     Tex *t = st->rt[0] < MAX_IDS ? texs[st->rt[0]] : NULL;
-    return t && t->scale ? t->scale : 1;
+    return t && t->scale ? t->scale : GFX_SCALE_ONE; /* 1/256 */
 }
 /* StretchRect between render targets / the backbuffer (rects in the game's pixels) */
 static void do_blit(const Blit *k) {
@@ -363,14 +366,16 @@ static void do_blit(const Blit *k) {
         if (!warned++) x2_log("gfx: StretchRect from/to a texture that is not a render target: not supported");
         return;
     }
-    u32 ss = s && s->scale ? s->scale : 1, ds = d && d->scale ? d->scale : 1;
+    u32 ss = s && s->scale ? s->scale : GFX_SCALE_ONE, ds = d && d->scale ? d->scale : GFX_SCALE_ONE;
     GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
     glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, sf);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, df);
-    glBlitFramebuffer((GLint)(k->s[0] * ss), (GLint)(k->s[1] * ss), (GLint)(k->s[2] * ss), (GLint)(k->s[3] * ss),
-                      (GLint)(k->d[0] * ds), (GLint)(k->d[1] * ds), (GLint)(k->d[2] * ds), (GLint)(k->d[3] * ds),
-                      GL_COLOR_BUFFER_BIT, k->linear ? GL_LINEAR : GL_NEAREST);
+    glBlitFramebuffer((GLint)gfx_scale_px(k->s[0], ss), (GLint)gfx_scale_px(k->s[1], ss),
+                      (GLint)gfx_scale_px(k->s[2], ss), (GLint)gfx_scale_px(k->s[3], ss),
+                      (GLint)gfx_scale_px(k->d[0], ds), (GLint)gfx_scale_px(k->d[1], ds),
+                      (GLint)gfx_scale_px(k->d[2], ds), (GLint)gfx_scale_px(k->d[3], ds), GL_COLOR_BUFFER_BIT,
+                      k->linear ? GL_LINEAR : GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (scissor) glEnable(GL_SCISSOR_TEST);
 }
@@ -417,7 +422,7 @@ static void do_clear(const Clear *k) {
     bind_target(&k->st);
     const GfxViewport *vp = &k->st.vp;
     glEnable(GL_SCISSOR_TEST);
-    float s = (float)gfx_gl_target_scale(&k->st);
+    float s = (float)gfx_gl_target_scale(&k->st) / GFX_SCALE_ONE;
     glScissor((GLint)(vp->x * s), (GLint)(vp->y * s), (GLsizei)(vp->w * s), (GLsizei)(vp->h * s));
     GLbitfield m = 0;
     if (k->flags & 1) {

@@ -31,7 +31,16 @@ typedef struct Frame {
     u32 refs; /* deferred texture uploads still pointing into data (replay side) */
 } Frame;
 
+/* scale: the allocated size over the size the game sees, in 1/256 (GFX_SCALE_ONE = the same) */
 typedef struct { GfxId id; u32 fmt, w, h, levels, rt, scale, cube; } TexCreate;
+static inline u32 gfx_scaled(u32 v, u32 scale) {
+    u32 r = (u32)(((u64)v * scale + GFX_SCALE_ONE / 2) / GFX_SCALE_ONE);
+    return r ? r : 1;
+}
+/* a coordinate (edge) the game gives in its pixels, on a target allocated at scale */
+static inline s64 gfx_scale_px(s64 v, u32 scale) {
+    return (v * (s64)scale + (s64)GFX_SCALE_ONE / 2) / (s64)GFX_SCALE_ONE;
+}
 typedef struct { GfxId id; u32 level, x, y, w, h, pitch, bytes, fmt; } TexUpload;
 typedef struct { GfxId id; u32 size, index; } BufCreate;
 typedef struct { GfxId id; u32 offset, size; } BufUpload;

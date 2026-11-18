@@ -100,5 +100,7 @@ this `game.exe` does not run.
   present now draws the picture in one pass (which also removed a block of
   garbage beside the 4:3 picture on the Mali GPU). Not seen since, but the
   blinking never reproduced on demand.
-- **Android in HD** (`X2_HD=1`): the display shows 35-40 fps in fights on
-  the test tablet.
+- **Android in HD** (`X2_HD=1`): a fight frame needs about 16.5 ms of GPU
+  time on the test tablet, so fights mostly hold 60 fps and dip during the
+  large animations (the round start). `X2_SCENE_SCALE=0.75` renders the 3D
+  scene at 75% (HUD at full size): 12.7 ms, 60 fps throughout.

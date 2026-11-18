@@ -143,7 +143,8 @@ static u32 tex_mem_type = ~0u;  /* the memory type of texture blocks, once one w
 static int64_t announced, room; /* bytes of textures announced and not created yet; free in texture blocks */
 
 static int64_t tex_estimate(const TexCreate *k) {
-    int64_t s = k->scale ? k->scale : 1, b = (int64_t)k->w * k->h * s * s * 4; /* DXT is decoded to RGBA8 */
+    u32 s = k->scale ? k->scale : GFX_SCALE_ONE;
+    int64_t b = (int64_t)gfx_scaled(k->w, s) * gfx_scaled(k->h, s) * 4; /* DXT is decoded to RGBA8 */
     if (k->levels != 1) b = b * 4 / 3;
     return k->cube ? b * 6 : b;
 }
@@ -632,10 +633,10 @@ static VkImageView make_view(VTex *t, VkComponentMapping sw, VkImageAspectFlags 
 
 static VTex *tex_new(u32 fmt, u32 w, u32 h, u32 levels, bool rt, bool cube, u32 scale, bool vol, bool rgb565) {
     VTex *t = calloc(1, sizeof *t);
-    t->scale = scale ? scale : 1;
+    t->scale = scale ? scale : GFX_SCALE_ONE;
     t->fmt = fmt;
-    t->w = w * t->scale;
-    t->h = h * t->scale;
+    t->w = gfx_scaled(w, t->scale);
+    t->h = gfx_scaled(h, t->scale);
     t->levels = levels ? levels : 1;
     t->rt = rt;
     t->depth = fmt == GFX_FMT_D24S8 || fmt == GFX_FMT_D16;
@@ -802,7 +803,8 @@ static void tex_upload_now(const TexUpload *k) {
         static int on = -1;
         if (on < 0) on = !getenv("X2_DXT565") || atoi(getenv("X2_DXT565")) != 0;
         if (on && !gfx_dxt1_has_alpha((const u8 *)(k + 1), k->bytes)) { /* never used yet: new storage */
-            VTex *n = tex_new(t->fmt, t->w / t->scale, t->h / t->scale, t->levels, false, false, t->scale, false, true);
+            VTex *n = tex_new(t->fmt, t->w * GFX_SCALE_ONE / t->scale, t->h * GFX_SCALE_ONE / t->scale, t->levels,
+                              false, false, t->scale, false, true);
             tex_free(t);
             n->id = t->id;
             n->gen = t->gen;
@@ -1980,7 +1982,7 @@ static void do_clear(const Clear *k) {
     if (drawlog) x2_log("clear flags %u rt0 %u ds %u color %08x", k->flags, k->st.rt[0], k->st.ds, k->color);
     select_target(&k->st, NULL, 0, (k->flags & 6) != 0);
     const GfxViewport *vp = &k->st.vp;
-    float s = (float)target_of(&k->st)->scale;
+    float s = (float)target_of(&k->st)->scale / GFX_SCALE_ONE;
     VkRect2D r = clamp_rect((s64)(vp->x * s), (s64)(vp->y * s), (s64)(vp->w * s), (s64)(vp->h * s));
     if (!r.extent.width || !r.extent.height) return;
     VkClearColorValue col = {{(k->color >> 16 & 0xFF) / 255.f, (k->color >> 8 & 0xFF) / 255.f,
@@ -2044,10 +2046,12 @@ static void do_blit(const Blit *k) {
     transition(s, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     transition(d, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     u32 ss = s->scale, ds = d->scale;
+#define SP(v, sc) (s32) gfx_scale_px((v), (sc))
     VkImageBlit b = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {{(s32)(k->s[0] * ss), (s32)(k->s[1] * ss), 0}, {(s32)(k->s[2] * ss), (s32)(k->s[3] * ss), 1}},
+                     {{SP(k->s[0], ss), SP(k->s[1], ss), 0}, {SP(k->s[2], ss), SP(k->s[3], ss), 1}},
                      {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {{(s32)(k->d[0] * ds), (s32)(k->d[1] * ds), 0}, {(s32)(k->d[2] * ds), (s32)(k->d[3] * ds), 1}}};
+                     {{SP(k->d[0], ds), SP(k->d[1], ds), 0}, {SP(k->d[2], ds), SP(k->d[3], ds), 1}}};
+#undef SP
     vkCmdBlitImage(cmd, s->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, d->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                    &b, k->linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST);
     s->used = d->used = cur_serial;
@@ -2325,13 +2329,14 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     pvkCmdPushDescriptorSetKHR(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, playout, 0, nw, w);
 
     /* dynamic state */
-    float sc = (float)target_of(st)->scale;
+    u32 tsc = target_of(st)->scale;
+    float sc = (float)tsc / GFX_SCALE_ONE;
     VkViewport v = {st->vp.x * sc, st->vp.y * sc, st->vp.w * sc, st->vp.h * sc, st->vp.minz, st->vp.maxz};
     vkCmdSetViewport(cmd, 0, 1, &v);
-    VkRect2D sr = rs[174] ? clamp_rect((s64)st->scissor[0] * (s64)sc, (s64)st->scissor[1] * (s64)sc,
-                                       (s64)(st->scissor[2] - st->scissor[0]) * (s64)sc,
-                                       (s64)(st->scissor[3] - st->scissor[1]) * (s64)sc)
-                          : (VkRect2D){{0, 0}, {cur_w, cur_h}};
+    s64 sx0 = gfx_scale_px(st->scissor[0], tsc), sy0 = gfx_scale_px(st->scissor[1], tsc);
+    VkRect2D sr =
+        rs[174] ? clamp_rect(sx0, sy0, gfx_scale_px(st->scissor[2], tsc) - sx0, gfx_scale_px(st->scissor[3], tsc) - sy0)
+                : (VkRect2D){{0, 0}, {cur_w, cur_h}};
     vkCmdSetScissor(cmd, 0, 1, &sr);
     u32 bf = rs[193];
     float bc[4] = {(bf >> 16 & 0xFF) / 255.f, (bf >> 8 & 0xFF) / 255.f, (bf & 0xFF) / 255.f, (bf >> 24) / 255.f};
@@ -3195,7 +3200,7 @@ bool gfx_vk_run_frames(u32 timeout_ms) {
 
 /* ---- init ------------------------------------------------------------------------- */
 static VTex *black_tex(bool cube, bool vol) {
-    VTex *t = tex_new(GFX_FMT_BGRA8, 1, 1, 1, false, cube, 1, vol, false);
+    VTex *t = tex_new(GFX_FMT_BGRA8, 1, 1, 1, false, cube, GFX_SCALE_ONE, vol, false);
     static const u32 px[1] = {0xFF000000u};
     for (u32 f = 0; f < (cube ? 6u : 1u); f++) upload(t, 0, f, 0, 0, 1, 1, (const u8 *)px, 4);
     return t;
@@ -3372,7 +3377,7 @@ static void setup(u32 w, u32 h) {
     black[0] = black_tex(false, false);
     black[1] = black_tex(true, false);
     black[2] = black_tex(false, true);
-    fallback_bb = *tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, 1, false, false);
+    fallback_bb = *tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, GFX_SCALE_ONE, false, false);
     frame_end();
     x2_log("vulkan: %s, API %u.%u, D24S8 as %s", pp.deviceName, VK_API_VERSION_MAJOR(pp.apiVersion),
            VK_API_VERSION_MINOR(pp.apiVersion), depth24 == VK_FORMAT_D24_UNORM_S8_UINT ? "D24S8" : "D32S8");
@@ -3462,7 +3467,7 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     VK_CHECK(vkResetFences(dev, 1, &o->fence));
     if (!o->t || o->t->w != w || o->t->h != h) {
         if (o->t) tex_free(o->t); /* destroyed once its last use is done */
-        o->t = tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, 1, false, false);
+        o->t = tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, GFX_SCALE_ONE, false, false);
     }
     VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                    VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL};

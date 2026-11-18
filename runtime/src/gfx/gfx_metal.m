@@ -276,10 +276,10 @@ static void bind_target(const GfxState *st) {
 static void do_tex_create(const TexCreate *k) {
     if (k->id >= MAX_IDS) return;
     MTex *t = calloc(1, sizeof *t);
-    t->scale = k->scale ? k->scale : 1;
+    t->scale = k->scale ? k->scale : GFX_SCALE_ONE;
     t->fmt = k->fmt;
-    t->w = k->w * t->scale;
-    t->h = k->h * t->scale;
+    t->w = gfx_scaled(k->w, t->scale);
+    t->h = gfx_scaled(k->h, t->scale);
     t->levels = k->levels ? k->levels : 1;
     t->rt = k->rt != 0;
     t->depth = k->fmt == GFX_FMT_D24S8 || k->fmt == GFX_FMT_D16;
@@ -1036,7 +1036,7 @@ static void do_clear(const Clear *k) {
     bind_target(&k->st);
     const GfxViewport *vp = &k->st.vp;
     MTex *t = target_of(&k->st);
-    float s = (float)t->scale;
+    float s = (float)t->scale / GFX_SCALE_ONE;
     MTLScissorRect r = clamp_rect((s64)(vp->x * s), (s64)(vp->y * s), (s64)(vp->w * s), (s64)(vp->h * s));
     if (!r.width || !r.height) return;
     bool color = k->flags & 1, depth = (k->flags & 2) && pass_dfmt, stencil = (k->flags & 4) && pass_stencil;
@@ -1081,11 +1081,12 @@ static void do_blit(const Blit *k) {
     MTLPixelFormat cf[4] = {d->tex.pixelFormat};
     [e setRenderPipelineState:builtin_pipe(0, cf, MTLPixelFormatInvalid, MTLColorWriteMaskAll)];
     u32 ss = s->scale, ds = d->scale;
-    float uv[4] = {(float)(k->s[0] * ss) / s->w, (float)(k->s[1] * ss) / s->h, (float)(k->s[2] * ss) / s->w,
-                   (float)(k->s[3] * ss) / s->h};
+    float uv[4] = {(float)gfx_scale_px(k->s[0], ss) / s->w, (float)gfx_scale_px(k->s[1], ss) / s->h,
+                   (float)gfx_scale_px(k->s[2], ss) / s->w, (float)gfx_scale_px(k->s[3], ss) / s->h};
     float z = 0;
-    [e setViewport:(MTLViewport){(double)(k->d[0] * ds), (double)(k->d[1] * ds), (double)((k->d[2] - k->d[0]) * ds),
-                                 (double)((k->d[3] - k->d[1]) * ds), 0, 1}];
+    [e setViewport:(MTLViewport){(double)gfx_scale_px(k->d[0], ds), (double)gfx_scale_px(k->d[1], ds),
+                                 (double)(gfx_scale_px(k->d[2], ds) - gfx_scale_px(k->d[0], ds)),
+                                 (double)(gfx_scale_px(k->d[3], ds) - gfx_scale_px(k->d[1], ds)), 0, 1}];
     [e setVertexBytes:uv length:16 atIndex:0];
     [e setVertexBytes:&z length:4 atIndex:1];
     [e setFragmentTexture:s->tex atIndex:0];
@@ -1288,13 +1289,13 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     if (dk[2]) [enc setStencilReferenceValue:rs[57] & 0xFF];
 
     MTex *t = target_of(st);
-    float sc = (float)t->scale;
+    float sc = (float)t->scale / GFX_SCALE_ONE;
     [enc setViewport:(MTLViewport){st->vp.x * sc, st->vp.y * sc, st->vp.w * sc, st->vp.h * sc, st->vp.minz,
                                    st->vp.maxz}];
     if (rs[174])
-        [enc setScissorRect:clamp_rect((s64)st->scissor[0] * (s64)sc, (s64)st->scissor[1] * (s64)sc,
-                                       (s64)(st->scissor[2] - st->scissor[0]) * (s64)sc,
-                                       (s64)(st->scissor[3] - st->scissor[1]) * (s64)sc)];
+        [enc setScissorRect:clamp_rect(gfx_scale_px(st->scissor[0], t->scale), gfx_scale_px(st->scissor[1], t->scale),
+                                       gfx_scale_px(st->scissor[2], t->scale) - gfx_scale_px(st->scissor[0], t->scale),
+                                       gfx_scale_px(st->scissor[3], t->scale) - gfx_scale_px(st->scissor[1], t->scale))];
     else
         [enc setScissorRect:(MTLScissorRect){0, 0, pass_w, pass_h}];
     /* D3D's front faces are clockwise on screen, as Metal sees them */

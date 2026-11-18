@@ -58,7 +58,9 @@ typedef struct {
 
 void gfx_init(void);
 void gfx_texture_create(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool render_target);
-/* render target allocated at scale x (w, h); viewports and scissors on it are scaled to match */
+#define GFX_SCALE_ONE 256u /* texture scales are in 1/256 */
+/* render target allocated at scale / 256 x (w, h) (GFX_SCALE_ONE: as is); viewports, scissors and
+ * copies on it are scaled to match */
 void gfx_texture_create_scaled(GfxId id, enum GfxFormat fmt, uint32_t w, uint32_t h, uint32_t levels, bool render_target,
                                uint32_t scale);
 /* cube map; uploads address face f (+X -X +Y -Y +Z -Z), level l as level (f << 4 | l) */

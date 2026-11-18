@@ -31,8 +31,9 @@ that isn't here? Report it in
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
 - **Samurai Shodown: Edge of Destiny** (in progress): Android runs it in
-  its SD mode (640×480) to hold 60 fps; in HD (`X2_HD=1`) the display drops
-  to 35-40 fps in fights on the test tablet. Movies blinked on Android
+  its SD mode (640×480) to hold 60 fps; in HD (`X2_HD=1`) fights dip
+  during the large animations unless `X2_SCENE_SCALE=0.75` lowers the 3D
+  resolution. Movies blinked on Android
   before a renderer fix; not seen since
   ([details](Game-Samurai-Shodown-EoD.md#known-issues)).
 - **Super Street Fighter IV Arcade Edition:** on slower Android devices some
