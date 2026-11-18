@@ -2806,7 +2806,7 @@ static VkPipeline ov_pipe;
 static VkFormat ov_pipe_fmt;
 static VkPipelineLayout ov_layout;
 static VkDescriptorSetLayout ov_dsl;
-static VkSampler ov_samp;
+static VkSampler ov_samp, ov_lin; /* overlays: nearest; the game image: linear */
 static u32 ov_white;
 
 /* a new overlay texture (id 0), or new pixels for one of the same size; returns its id */
@@ -2880,6 +2880,8 @@ static void ov_init(VkFormat fmt) {
         si.addressModeU = si.addressModeV = si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         si.maxLod = 0.25f;
         VK_CHECK(vkCreateSampler(dev, &si, NULL, &ov_samp));
+        si.magFilter = si.minFilter = VK_FILTER_LINEAR;
+        VK_CHECK(vkCreateSampler(dev, &si, NULL, &ov_lin));
         static const u8 white[4] = {255, 255, 255, 255};
         ov_white = gfx_vk_overlay_tex(0, white, 1, 1);
     }
@@ -2963,8 +2965,27 @@ static void ov_init(VkFormat fmt) {
     ov_pipe_fmt = fmt;
 }
 
-/* the queued quads into the swapchain image (in TRANSFER_DST layout; left in PRESENT_SRC) */
-static void ov_draw(VkCommandBuffer c, VkImage img, VkImageView view) {
+static void ov_quad_draw(VkCommandBuffer c, VkSampler samp, VkImageView view, int mode, const float col[4], float x,
+                         float y, float w, float h) {
+    VkDescriptorImageInfo ii = {samp, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkWriteDescriptorSet wr = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    wr.dstBinding = 0;
+    wr.descriptorCount = 1;
+    wr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    wr.pImageInfo = &ii;
+    pvkCmdPushDescriptorSetKHR(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_layout, 0, 1, &wr);
+    struct {
+        float col[4];
+        s32 mode, pad[3];
+    } pc = {{col[0], col[1], col[2], col[3]}, mode, {0}};
+    vkCmdPushConstants(c, ov_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
+    VkViewport v = {x, y, w, h, 0, 1};
+    vkCmdSetViewport(c, 0, 1, &v);
+    vkCmdDraw(c, 3, 1, 0, 0);
+}
+
+/* the overlay textures changed since the last present (copies: outside rendering) */
+static void ov_upload(VkCommandBuffer c) {
     for (u32 i = 1; i < ovt_n; i++) {
         OvTex *t = &ovt[i];
         if (!t->dirty) continue;
@@ -2978,43 +2999,18 @@ static void ov_draw(VkCommandBuffer c, VkImage img, VkImageView view) {
         t->dirty = false;
         t->ready = true;
     }
-    barrier_raw(c, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    VkRenderingAttachmentInfo ca = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-    ca.imageView = view;
-    ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    ca.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    VkRenderingInfo ri = {VK_STRUCTURE_TYPE_RENDERING_INFO};
-    ri.renderArea.extent = sc_extent;
-    ri.layerCount = 1;
-    ri.colorAttachmentCount = 1;
-    ri.pColorAttachments = &ca;
-    pvkCmdBeginRendering(c, &ri);
-    vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_pipe);
+}
+
+/* the queued quads (inside the present's rendering) */
+static void ov_draw(VkCommandBuffer c) {
     VkRect2D sc = {{0, 0}, sc_extent};
     vkCmdSetScissor(c, 0, 1, &sc);
     for (u32 i = 0; i < ovq_n; i++) {
         const OvQuad *q = &ovq[i];
         if (q->w <= 0 || q->h <= 0) continue;
         u32 id = q->tex && q->tex < ovt_n && ovt[q->tex].ready ? q->tex : ov_white;
-        VkDescriptorImageInfo ii = {ov_samp, ovt[id].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        VkWriteDescriptorSet w = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        w.dstBinding = 0;
-        w.descriptorCount = 1;
-        w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        w.pImageInfo = &ii;
-        pvkCmdPushDescriptorSetKHR(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_layout, 0, 1, &w);
-        struct {
-            float col[4];
-            s32 mode, pad[3];
-        } pc = {{q->col[0], q->col[1], q->col[2], q->col[3]}, q->mode, {0}};
-        vkCmdPushConstants(c, ov_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
-        VkViewport v = {q->x, q->y, q->w, q->h, 0, 1};
-        vkCmdSetViewport(c, 0, 1, &v);
-        vkCmdDraw(c, 3, 1, 0, 0);
+        ov_quad_draw(c, ov_samp, ovt[id].view, q->mode, q->col, q->x, q->y, q->w, q->h);
     }
-    pvkCmdEndRendering(c);
-    barrier_raw(c, img, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     ovq_n = 0;
 }
 
@@ -3048,19 +3044,13 @@ void gfx_vk_present(u32 ww, u32 wh) {
     VTex *t = shown();
     VkCommandBuffer saved = cmd;
     cmd = c; /* transition() records into cmd */
-    transition(t, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transition(t, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd = saved;
-    barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    VkClearColorValue black_c = {{0, 0, 0, 1}};
-    VkImageSubresourceRange rr = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkCmdClearColorImage(c, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &black_c, 1, &rr);
+    ov_init(sc_format);
+    ov_upload(c);
     /* KOF XIII Climax's 4:3 image carries a 16:9 picture with bars: show that band */
-    float y0 = 0, y1 = (float)t->h, ih = (float)t->h;
-    if (t->w * 3 == t->h * 4 && x2_game_letterboxed()) {
-        ih = (float)(t->w * 9 / 16);
-        y0 = ((float)t->h - ih) / 2;
-        y1 = y0 + ih;
-    }
+    float ih = (float)t->h;
+    if (t->w * 3 == t->h * 4 && x2_game_letterboxed()) ih = (float)(t->w * 9 / 16);
     float sa = (float)sc_extent.width / (float)sc_extent.height, ga = (float)t->w / ih;
     s32 vw = (s32)sc_extent.width, vh = (s32)sc_extent.height;
     if (sa > ga)
@@ -3068,18 +3058,32 @@ void gfx_vk_present(u32 ww, u32 wh) {
     else
         vh = (s32)(sc_extent.width / ga);
     s32 x0 = ((s32)sc_extent.width - vw) / 2, yy0 = ((s32)sc_extent.height - vh) / 2;
-    VkImageBlit b = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {{0, (s32)y0, 0}, {(s32)t->w, (s32)y1, 1}},
-                     {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {{x0, yy0, 0}, {x0 + vw, yy0 + vh, 1}}};
-    vkCmdBlitImage(c, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                   1, &b, VK_FILTER_LINEAR);
-    if (ovq_n) {
-        ov_init(sc_format);
-        ov_draw(c, sc_img[idx], sc_view[idx]);
-    } else {
-        barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-    }
+    /* One pass that clears to black and draws the image as a quad. A clear and a scaling blit
+     * left a block of garbage on Mali in the screen tile where the picture ends (beside a 4:3
+     * image on the 5:3 tablet). */
+    barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo ca = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    ca.imageView = sc_view[idx];
+    ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    ca.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    ca.clearValue.color = (VkClearColorValue){{0, 0, 0, 1}};
+    VkRenderingInfo ri = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+    ri.renderArea.extent = sc_extent;
+    ri.layerCount = 1;
+    ri.colorAttachmentCount = 1;
+    ri.pColorAttachments = &ca;
+    pvkCmdBeginRendering(c, &ri);
+    vkCmdBindPipeline(c, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_pipe);
+    /* the whole image scaled to vw, its band (all of it, or KOF XIII Climax's) in the scissor */
+    float full_h = (float)vh * (float)t->h / ih;
+    VkRect2D sc = {{x0, yy0}, {(u32)vw, (u32)vh}};
+    vkCmdSetScissor(c, 0, 1, &sc);
+    static const float white[4] = {1, 1, 1, 1};
+    ov_quad_draw(c, ov_lin, t->view, 2, white, (float)x0, (float)yy0 - (full_h - (float)vh) / 2, (float)vw, full_h);
+    ov_draw(c);
+    pvkCmdEndRendering(c);
+    barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     VK_CHECK(vkEndCommandBuffer(c));
     VkPipelineStageFlags ws = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     VkSubmitInfo si = {VK_STRUCTURE_TYPE_SUBMIT_INFO};

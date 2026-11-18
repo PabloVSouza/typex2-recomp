@@ -7,6 +7,16 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Samurai Shodown: Edge of Destiny** on Android runs in the game's own SD
+  mode (640×480, 4:3) by default: fights at 60 fps on the test tablet,
+  where HD showed 35-40. `X2_HD=1` in the game's `x2.env` chooses HD, and
+  `X2_HD=0` SD on a computer.
+- **Android (Vulkan):** the picture is drawn in one pass. A block of
+  coloured garbage beside 4:3 pictures (on Mali GPUs) is gone, and so,
+  very likely, are the single black frames that made movies blink.
+
 ## 0.4.0 - 2026-11-18
 
 Samurai Shodown: Edge of Destiny starts working, and clearer build errors.

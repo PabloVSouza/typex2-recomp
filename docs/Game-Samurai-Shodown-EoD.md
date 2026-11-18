@@ -5,10 +5,10 @@ Sen*), SNK Playmore, 2008, Taito Type X2. `games/sse`.
 
 **Status: fights run** (macOS and Android, scripted input). Attract mode with
 its movies, coin and start, character select, the story screens and fights
-all run in the game's HD mode (1280×720), with the stages, the toon-shaded
-fighters and their shadows rendered: at 60 fps on macOS; on the Android test
-tablet the game runs at 60 but the display drops frames in fights. In the
-launcher and the Android app.
+all run, with the stages, the toon-shaded fighters and their shadows
+rendered: at 60 fps in the game's HD mode (1280×720) on macOS, and at 60 fps
+in its SD mode (640×480) on the Android test tablet. In the launcher and the
+Android app.
 
 ## Controls
 
@@ -25,10 +25,15 @@ the SD versions).
 
 ## What it needed
 
-- **HD mode.** The game reads system switch bit 0 of the I/O board at
-  start-up as the cabinet's monitor setting: set, it runs at 1280×720 with
-  the HD movies; clear, at 640×480. The emulated board sets it for this
-  game, and the display modes offered include 1280×720.
+- **HD mode.** At start-up the game looks at the first function in the I/O
+  board's feature list: an odd code, as switch inputs (0x01) are, selects
+  HD, 1280×720 with the HD movies; otherwise it runs in SD, 640×480 (4:3).
+  The emulated board lists switch inputs first, so the game runs in HD;
+  for SD it lists the coin inputs first: the default on Android, where an
+  HD fight frame needs about 16.5 ms of GPU time on the test tablet (the 3D
+  scene at 1152×648) and the display showed 35-40 fps; SD needs about
+  11 ms. `X2_HD=1` / `X2_HD=0` in `x2.env` choose. The display modes
+  offered include 1280×720.
 - **The I/O board start-up.** Common copies of `game.exe` have the call that
   sets up the board's polling (0x40117a in `main`) and the wait for its first
   reply replaced with NOPs, so `main` read the switches before any poll and
@@ -74,11 +79,14 @@ this `game.exe` does not run.
 
 ## Known issues
 
-- **Cutscenes flash** at times on Android (reported while playing; not
-  reproduced in recordings of the attract movies and the versus screen yet).
-- **Android:** on the test tablet (Mali-G57) a fight frame needs about
-  16.5 ms of GPU time, most of it the 3D scene at 1152×648, so the display
-  shows 35-40 fps while the game runs at 60.
+- **Movies blinked** on Android: single black frames, a few a minute in
+  some runs and none in others. They showed the overlays over a black
+  picture, as the Vulkan present's clear without its blit would; the
+  present now draws the picture in one pass (which also removed a block of
+  garbage beside the 4:3 picture on the Mali GPU). Not seen since, but the
+  blinking never reproduced on demand.
+- **Android in HD** (`X2_HD=1`): the display shows 35-40 fps in fights on
+  the test tablet.
 - **Frame pacing:** the game's own limiter measures its frame from
   `Present`'s return and sleeps the rest of 1/60 s, so a frame takes a
   little over 16.7 ms (about one late frame in 120).

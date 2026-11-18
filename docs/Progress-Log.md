@@ -2,6 +2,20 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-18: Samurai Shodown: Edge of Destiny at 60 fps on Android (SD mode)
+
+- The HD switch was not system switch bit 0: `main` tests bit 0 of the first
+  function code in the I/O board's feature list (switch inputs, 0x01, so HD
+  whenever the board answers). Listing the coin inputs first gives the SD
+  mode, 640×480: about 11 ms of GPU time per fight frame on the tablet
+  against 16.5 ms in HD, so fights hold 60 fps. SD is the Android default;
+  `X2_HD` chooses.
+- The Vulkan present cleared the swapchain image and blitted the game image
+  into it. On the Mali-G57 that left a block of garbage in the screen tile
+  where a 4:3 picture ends, and screen recordings of the movies showed single
+  frames with the overlays over a black picture (clear without blit). The
+  present is now one render pass: clear, the picture as a quad, overlays.
+
 ## 2026-11-18: Samurai Shodown: Edge of Destiny on Android, in the launcher
 
 - **Launcher:** the game is listed (image size 0x3344000, entry 0x4d9fa0;
