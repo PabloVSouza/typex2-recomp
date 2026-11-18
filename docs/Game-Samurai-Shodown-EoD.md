@@ -56,7 +56,17 @@ the SD versions).
   same (`sample_compare` in a shader variant per sampler bound to a depth
   texture), and Vulkan (`sampler2DShadow`). The game sets the sampler's
   border to the bits of 1.0f, depth 1 outside the map (lit): compare
-  samplers take the border's red channel as the depth.
+  samplers take the border's red channel as the depth. The stages also
+  read a colour copy of the map, depth in red, with the same border: as a
+  colour that is red 0.5, which the cabinet's GPU returns. Vulkan uses that
+  exact colour (`VK_EXT_custom_border_color`); Metal, with only three border
+  colours, white. Transparent black had left the floor dark everywhere
+  outside the map, a lit square that followed the fighters.
+- **Frame limiter.** Before each `Present` the game sleeps until 1/60 s has
+  passed since the last one returned. The runtime paces `Present` itself;
+  in RetroArch, where `Present` returns when the frontend's frame starts,
+  every core frame waited the whole 1/60 s for the game. The recompiler sets
+  the limiter's rate to 0, which the game takes as no limit.
 - **Direct3D enumeration.** The game's DXUT-style enumeration drops a device
   whose caps have `D3DPMISCCAPS_NULLREFERENCE`; the caps no longer set it,
   and only the HAL device exists.
@@ -87,6 +97,3 @@ this `game.exe` does not run.
   blinking never reproduced on demand.
 - **Android in HD** (`X2_HD=1`): the display shows 35-40 fps in fights on
   the test tablet.
-- **Frame pacing:** the game's own limiter measures its frame from
-  `Present`'s return and sleeps the rest of 1/60 s, so a frame takes a
-  little over 16.7 ms (about one late frame in 120).

@@ -334,11 +334,18 @@ const BytePatch kPatches[] = {
      0xf, "e900000000"},
     // Samurai Shodown: Edge of Destiny, a game.exe whose JVS start-up was taken out (0x401171
     // in main): the call that sets up the I/O board's polling (0x4a1de0) and the wait for its
-    // first reply became NOPs. main then reads the board's switches before any poll, and
-    // system switch bit 0 (the cabinet's HD monitor setting) reads 0: the game runs in SD,
-    // 640x480. The original call and wait come back, as in the game's launcher.exe.
+    // first reply became NOPs. main then reads the board's data before any poll, and the
+    // first function of its feature list (odd: HD) reads 0: the game runs in SD, 640x480.
+    // The original call and wait come back, as in the game's launcher.exe.
     {"Samurai Shodown EoD JVS start-up", "e8ca0b0a0085c074f7909090909090e8bb0b0a0083f80190906a00e82f0c0a00", 9,
      "e8610c0a0090e8bb0b0a0083f80175f6"},
+    // Samurai Shodown: Edge of Destiny frame limiter (0x4b63f0, before each Present): sleeps
+    // until 1/60 s has passed since the last Present returned. The runtime paces Present
+    // already; in RetroArch, Present returns when the frontend's frame starts, so each of
+    // its frames waited the whole 1/60 s for the game and missed vsync now and then (15 in
+    // 120 on the tablet). The limiter's rate (0x4b7402, the settings' 60) becomes 0, which
+    // the game takes as no limit: xor eax, eax.
+    {"Samurai Shodown EoD frame limiter", "8b0d60776703578b3dd0766703e839e7feff508bcfe8e1edffff", 0xd, "33c0909090"},
     // KOF XIII owner settings defaults (0x43faf0, run once before the saved settings are read
     // over them): the language (0x77503c, read by Lua's OwnerSettingLanguage; 0 Japanese,
     // 1 English(US)) defaults to English instead of Japanese. The two zero stores at 0x43fb01

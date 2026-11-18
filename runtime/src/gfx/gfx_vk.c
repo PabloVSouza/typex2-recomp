@@ -66,7 +66,8 @@ static VkCommandPool cpool;
 static VkPipelineLayout playout;
 static VkDescriptorSetLayout dslayout;
 static VkFormat depth24; /* D24S8: D24_UNORM_S8_UINT or D32_SFLOAT_S8_UINT */
-static bool depth_linear; /* depth24 filters linearly (shadow map compares) */
+static bool depth_linear;  /* depth24 filters linearly (shadow map compares) */
+static bool custom_border; /* VK_EXT_custom_border_color, without format */
 /* a frontend that shares its queue (RetroArch) locks it around submissions */
 static void (*qlock)(void *), (*qunlock)(void *);
 static void *qlock_handle;
@@ -1739,6 +1740,18 @@ static VkSampler get_sampler(const u32 *ss, bool cmp) {
     si.borderColor = border >> 24 < 128               ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
                      : (border & 0xFFFFFF) > 0x7F7F7F ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
                                                       : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    /* any other colour exactly, where the driver can (Samurai Shodown EoD's floors read the red of
+     * 1.0f's bits, 0x3f800000, as the depth beyond their shadow map: 0.5, not transparent black) */
+    VkSamplerCustomBorderColorCreateInfoEXT cb = {VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT};
+    if (custom_border && !cmp && border != 0 && border != 0xFF000000u && border != 0xFFFFFFFFu) {
+        cb.customBorderColor.float32[0] = (float)(border >> 16 & 0xFF) / 255.0f;
+        cb.customBorderColor.float32[1] = (float)(border >> 8 & 0xFF) / 255.0f;
+        cb.customBorderColor.float32[2] = (float)(border & 0xFF) / 255.0f;
+        cb.customBorderColor.float32[3] = (float)(border >> 24) / 255.0f;
+        cb.format = VK_FORMAT_UNDEFINED;
+        si.pNext = &cb;
+        si.borderColor = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
+    }
     /* a compare reads red as the depth (Samurai Shodown EoD sets 1.0f's bits, 0x3f800000) */
     if (cmp)
         si.borderColor =
@@ -3217,12 +3230,35 @@ VkDevice gfx_vk_make_device(VkPhysicalDevice gpu, VkSurfaceKHR surf, VkDeviceWra
     VkPhysicalDeviceVulkan13Features f13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     f13.dynamicRendering = VK_TRUE;
     f13.synchronization2 = VK_TRUE;
-    const char *dext[] = {"VK_KHR_push_descriptor", "VK_KHR_swapchain"};
+    const char *dext[3] = {"VK_KHR_push_descriptor"};
+    u32 ndext = 1;
+    if (surf && !wrap) dext[ndext++] = "VK_KHR_swapchain";
+    /* border colours other than the three built-in ones (optional) */
+    VkPhysicalDeviceCustomBorderColorFeaturesEXT fcb = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT};
+    custom_border = false;
+    u32 ne = 0;
+    vkEnumerateDeviceExtensionProperties(gpu, NULL, &ne, NULL);
+    VkExtensionProperties *ep = calloc(ne ? ne : 1, sizeof *ep);
+    vkEnumerateDeviceExtensionProperties(gpu, NULL, &ne, ep);
+    for (u32 i = 0; i < ne; i++)
+        if (!strcmp(ep[i].extensionName, "VK_EXT_custom_border_color")) {
+            VkPhysicalDeviceFeatures2 f2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &fcb};
+            vkGetPhysicalDeviceFeatures2(gpu, &f2);
+            if (fcb.customBorderColors && fcb.customBorderColorWithoutFormat) {
+                custom_border = true;
+                x2_log("vulkan: custom border colours");
+                dext[ndext++] = "VK_EXT_custom_border_color";
+                fcb.pNext = NULL;
+                f13.pNext = &fcb;
+            }
+        }
+    free(ep);
     VkDeviceCreateInfo di = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     di.pNext = &f13;
     di.queueCreateInfoCount = 1;
     di.pQueueCreateInfos = &qi;
-    di.enabledExtensionCount = surf && !wrap ? 2 : 1;
+    di.enabledExtensionCount = ndext;
     di.ppEnabledExtensionNames = dext;
     VkDevice d = VK_NULL_HANDLE;
     if (wrap)

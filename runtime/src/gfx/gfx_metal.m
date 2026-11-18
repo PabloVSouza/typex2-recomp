@@ -915,6 +915,10 @@ static id<MTLSamplerState> get_sampler(const u32 *ss, bool cmp) {
     d.borderColor = border >> 24 < 128               ? MTLSamplerBorderColorTransparentBlack
                     : (border & 0xFFFFFF) > 0x7F7F7F ? MTLSamplerBorderColorOpaqueWhite
                                                      : MTLSamplerBorderColorOpaqueBlack;
+    /* Samurai Shodown EoD's floors set 1.0f's bits (0x3f800000) and read its red, 0.5 on the
+     * cabinet's GPU, as the depth beyond their shadow map; transparent black left everything
+     * there in shadow. White, as meant, gives the same result (Vulkan uses the exact colour). */
+    if (border == 0x3f800000u) d.borderColor = MTLSamplerBorderColorOpaqueWhite;
     d.magFilter = mag >= 2 ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;
     d.minFilter = min >= 2 ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;
     d.mipFilter = mip == 0   ? MTLSamplerMipFilterNotMipmapped
@@ -1344,9 +1348,9 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             if (tx) tx->used = cur_serial;
             id<MTLSamplerState> sm = get_sampler(st->samp[i], pass_i && (pk.shadow & (1u << i)));
             if (drawlog)
-                x2_log("  %s s%d: tex %u (%ux%u fmt %u%s) -> %ux%u type %d", pass_i ? "ps" : "vs", i, st->tex[i],
+                x2_log("  %s s%d: tex %u (%ux%u fmt %u%s) -> %ux%u type %d addr %u/%u border %08x%s", pass_i ? "ps" : "vs", i, st->tex[i],
                        tx ? tx->w : 0, tx ? tx->h : 0, tx ? tx->fmt : 0, tx && mt == tx->tex ? "" : ", black", (u32)mt.width,
-                       (u32)mt.height, ty);
+                       (u32)mt.height, ty, st->samp[i][1], st->samp[i][2], st->samp[i][4], pass_i && (pk.shadow & (1u << i)) ? " compare" : "");
             if (pass_i) {
                 [enc setFragmentTexture:mt atIndex:i];
                 [enc setFragmentSamplerState:sm atIndex:i];
