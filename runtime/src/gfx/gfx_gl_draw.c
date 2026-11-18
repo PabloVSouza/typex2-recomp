@@ -91,7 +91,9 @@ static GLuint *shader_slot(Shader *s, u32 var) {
     if (!var) return &s->sh;
     for (u32 i = 0; i < s->nvars; i++)
         if (s->vars[i].var == var) return &s->vars[i].sh;
-    s->vars = realloc(s->vars, (s->nvars + 1) * sizeof *s->vars);
+    void *grown = realloc(s->vars, (s->nvars + 1) * sizeof *s->vars);
+    if (!grown) x2_fatal("gfx: out of memory");
+    s->vars = grown;
     s->vars[s->nvars].var = var;
     s->vars[s->nvars].sh = 0;
     return &s->vars[s->nvars++].sh;
@@ -934,4 +936,28 @@ void gfx_gl_set_cache_dir(const char *base, const char *game) {
     x2_mkdir(dir);
     snprintf(gfx_gl_cache_dir, sizeof gfx_gl_cache_dir, "%s", dir);
     x2_log("gfx: program cache in %s", dir);
+}
+
+/* libretro Reset (gfx_gl_release): the draw side's GL objects go; the context stays */
+void gfx_gl_draw_release(void) {
+    for (u32 i = 0; i < MAX_IDS; i++) {
+        if (shaders[i]) gfx_gl_shader_destroy(i);
+        if (decls[i]) free(decls[i]), decls[i] = NULL;
+    }
+    for (u32 b = 0; b < PROG_BUCKETS; b++)
+        while (progs[b]) {
+            Prog *p = progs[b];
+            progs[b] = p->next;
+            if (p->prog) glDeleteProgram(p->prog);
+            free(p);
+        }
+    for (u32 i = 0; i < nsamplers; i++) glDeleteSamplers(1, &samplers[i].s);
+    nsamplers = 0;
+    for (int r = 0; r < 2; r++)
+        if (ring_buf[r]) glDeleteBuffers(1, &ring_buf[r]), ring_buf[r] = 0;
+    if (vao) glDeleteVertexArrays(1, &vao), vao = 0;
+    if (scratch_vbo) glDeleteBuffers(1, &scratch_vbo), scratch_vbo = 0;
+    if (scratch_ibo) glDeleteBuffers(1, &scratch_ibo), scratch_ibo = 0;
+    if (black_tex) glDeleteTextures(1, &black_tex), black_tex = 0;
+    memset(unit_tex, 0, sizeof unit_tex);
 }

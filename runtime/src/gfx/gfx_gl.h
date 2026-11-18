@@ -6,6 +6,7 @@
 #include "gl.h"
 
 void gfx_gl_init(uint32_t w, uint32_t h);
+void gfx_gl_release(void); /* libretro Reset: this instance's GL objects go, the context stays */
 /* compiled-shader cache in <base>/typex2-shaders/<game> (X2_SHADER_CACHE=0: off) */
 void gfx_gl_set_cache_dir(const char *base, const char *game);
 /* Replay queued guest frames; waits up to timeout_ms for one. Returns true if

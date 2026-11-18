@@ -844,3 +844,29 @@ bool gfx_gl_run_frames(u32 timeout_ms, GLuint *out_tex, u32 *out_w, u32 *out_h) 
     }
     return any;
 }
+
+/* libretro Reset (as gfx_vk_release): the game restarts in a fresh instance of the core on
+ * RetroArch's GL context, so everything this instance made goes; the context stays. Called
+ * with the context current (from retro_run). */
+void gfx_gl_draw_release(void);
+void gfx_gl_release(void) {
+    glFinish();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    for (u32 i = 0; i < MAX_IDS; i++) {
+        Tex *t = texs[i];
+        if (t) {
+            pend_free(t);
+            glDeleteTextures(1, &t->tex);
+            if (t->fbo) glDeleteFramebuffers(1, &t->fbo);
+            free(t);
+            texs[i] = NULL;
+        }
+        if (bufs[i]) do_buf_destroy(i);
+    }
+    if (backbuffer_fbo) glDeleteFramebuffers(1, &backbuffer_fbo), backbuffer_fbo = 0;
+    if (backbuffer_tex) glDeleteTextures(1, &backbuffer_tex), backbuffer_tex = 0;
+    if (passq[0]) glDeleteQueries(PASSQ, passq), memset(passq, 0, sizeof passq);
+    if (gpuq[0]) glDeleteQueries(GPUQ, gpuq), memset(gpuq, 0, sizeof gpuq);
+    gfx_gl_draw_release();
+    glFinish();
+}

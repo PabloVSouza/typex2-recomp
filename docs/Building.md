@@ -74,7 +74,8 @@ build-tools, no Gradle; one APK for every game, plus the RetroArch core.
   ([Debugging](Debugging.md#switches), `X2_SHADER_DUMP`).
 - `retro_host`: a minimal libretro frontend for testing the core; `--next
   <game folder>` (repeatable) closes and reopens the core between games as
-  RetroArch does, to test switching games.
+  RetroArch does, to test switching games; `--reset N,M` calls Restart at
+  those frames; `--state s600,l900` saves and loads a state.
 - `android/` (APK packaging, FFmpeg cross-build), `es-de/` (ES-DE system
   files), `libretro/` (the core's info file), `version.sh`, `lint.sh`,
   `wiki_sync.sh`.

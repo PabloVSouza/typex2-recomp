@@ -10,6 +10,7 @@
  * --hidden      no visible window (automated runs)
  * --state s600,l900  retro_serialize (s) / retro_unserialize (l) of one in-memory state
  *               at those retro_run counts, as RetroArch's Save / Load State do
+ * --reset N,M   retro_reset at those retro_run counts (Quick Menu → Restart)
  * --exit        end like RetroArch: retro_deinit, then exit() with its cleanup
  *               (default: _Exit, since guest threads cannot be joined)
  * Keys: arrows, Z X C V = Y B X A (game A B C D), 1 = Start, 5 = Select (coin),
@@ -179,6 +180,7 @@ static void save_png(const char *path, unsigned w, unsigned h) {
     X(void, get_system_av_info, (struct retro_system_av_info *))                                                       \
     X(bool, load_game, (const struct retro_game_info *))                                                               \
     X(void, run, (void))                                                                                               \
+    X(void, reset, (void))                                                                                             \
     X(void, unload_game, (void))                                                                                       \
     X(void, deinit, (void))                                                                                            \
     X(size_t, serialize_size, (void))                                                                                  \
@@ -233,7 +235,7 @@ int main(int argc, char **argv) {
     long max_frames = 0;
     const char *shot = NULL;
     bool hidden = false, full_exit = false;
-    const char *state_ops = "";
+    const char *state_ops = "", *reset_ops = "";
     void *state = NULL;
     size_t state_size = 0;
     const char *contents[16] = {argv[2]};
@@ -246,6 +248,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--hidden")) hidden = true;
         else if (!strcmp(argv[i], "--state") && i + 1 < argc)
             state_ops = argv[++i];
+        else if (!strcmp(argv[i], "--reset") && i + 1 < argc)
+            reset_ops = argv[++i];
         else if (!strcmp(argv[i], "--exit"))
             full_exit = true;
     }
@@ -308,6 +312,12 @@ int main(int argc, char **argv) {
                     quit = true;
             update_keys();
             core.run();
+            if (*reset_ops && n >= atol(reset_ops)) { /* --reset */
+                fprintf(stderr, "[host] frame %ld: reset\n", n);
+                core.reset();
+                const char *c = strchr(reset_ops, ',');
+                reset_ops = c ? c + 1 : "";
+            }
             if (*state_ops && n >= atol(state_ops + 1)) { /* --state */
                 if (*state_ops == 's') {
                     size_t sz = core.serialize_size();

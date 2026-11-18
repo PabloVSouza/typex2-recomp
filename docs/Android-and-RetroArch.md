@@ -90,8 +90,7 @@ Settings and limits:
   and slow motion work.
 - **Save states** work within a run of the game, on the screen they were
   saved on ([Save states](Save-States.md)). No rewind or run-ahead. Reset (Quick
-  Menu → Restart) restarts the game with Vulkan; with OpenGL it isn't
-  supported.
+  Menu → Restart) restarts the game, with Vulkan and with OpenGL.
 - **Switching games.** Close a game (Quick Menu → Close Content) and load
   another, no restart needed. A closed game gives back almost all its memory;
   1-3 MB stays until RetroArch quits. Launched from ES-DE, RetroArch

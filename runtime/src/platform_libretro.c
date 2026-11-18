@@ -739,6 +739,7 @@ boot:
 #ifdef X2_VULKAN
     if (inherited && use_vk) vk_context_reset(); /* RetroArch made the context already */
 #endif
+    if (inherited && !use_vk) context_reset(); /* current: a reset runs from retro_run */
     return true;
 }
 
@@ -757,21 +758,30 @@ static void close_game(const char *why) {
 
 /* Reset, on the instance running the game: its GPU objects freed on RetroArch's device, the
  * game closed, and RetroArch's context handed back (*hw) for the instance that restarts it.
- * Vulkan only: false (nothing done) with OpenGL. */
+ * Runs in retro_run, where RetroArch has the core's GL context current. */
 EXPORT bool retro_x2_release(struct retro_hw_render_callback *hw) {
+    if (!running) return false;
 #ifdef X2_VULKAN
-    if (!running || !use_vk || !vk_ready) return false;
+    if (use_vk) {
+        if (!vk_ready) return false;
+        *hw = hw_render;
+        x2_park_all(); /* before the objects go: the guest stops recording */
+        void gfx_vk_release(void);
+        gfx_vk_release();
+        vk_ready = false;
+        close_game("released for a reset");
+        return true;
+    }
+#endif
+    if (!gl_ready) return false;
     *hw = hw_render;
-    x2_park_all(); /* before the objects go: the guest stops recording */
-    void gfx_vk_release(void);
-    gfx_vk_release();
-    vk_ready = false;
+    x2_park_all();
+    gfx_gl_release();
+    if (blit_prog) glDeleteProgram(blit_prog), blit_prog = 0;
+    if (blit_vao) glDeleteVertexArrays(1, &blit_vao), blit_vao = 0;
+    gl_ready = false;
     close_game("released for a reset");
     return true;
-#else
-    (void)hw;
-    return false;
-#endif
 }
 /* on the instance that restarts the game, before its retro_load_game */
 EXPORT void retro_x2_takeover(const struct retro_hw_render_callback *hw) {
@@ -812,14 +822,15 @@ EXPORT void retro_unload_game(void) {
 
 /* Reset: a guest cannot be restarted in place, so the game restarts in a fresh instance
  * (as switching games does), on the context RetroArch already made: the running instance
- * frees its GPU objects first (retro_x2_release). Vulkan only. */
-EXPORT void retro_reset(void) {
+ * frees its GPU objects first (retro_x2_release). It happens at the next retro_run, where
+ * RetroArch has the core's GL context current (Vulkan needs no context, but takes the same path). */
+static bool reset_pending;
+EXPORT void retro_reset(void) { reset_pending = true; }
+static void do_reset(void) {
+    reset_pending = false;
     struct retro_hw_render_callback hw;
     if (inst_on ? !inst.x2_release(&hw) : !retro_x2_release(&hw)) {
-        if (inst_on)
-            inst.reset(); /* says why, from the running instance */
-        else
-            msg("Type X2: reset needs the Vulkan renderer", 180);
+        msg("Type X2: the game could not be restarted", 180);
         return;
     }
     __typeof__(&retro_x2_forward) forward = inst_on ? inst.x2_forward : retro_x2_forward;
@@ -835,6 +846,7 @@ EXPORT void retro_reset(void) {
 static int pace_ab;     /* X2_AB half of this call */
 static u64 repeats;     /* calls that showed the previous image again (X2_PACELOG) */
 EXPORT void retro_run(void) {
+    if (reset_pending) do_reset();
     if (inst_on) {
         inst.run();
         return;
