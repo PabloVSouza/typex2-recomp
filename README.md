@@ -61,7 +61,7 @@ Type X / X2 game, including the ones not supported yet:
 
 1. **Download the launcher** from the
    [releases page](https://github.com/PabloVSouza/typex2-recomp/releases):
-   `.dmg` (macOS), `.AppImage` / `.deb` (Linux, glibc 2.39+, as on Ubuntu
+   `.dmg` (macOS on Apple Silicon), `.AppImage` / `.deb` (Linux, glibc 2.39+, as on Ubuntu
    24.04), `.msi` / setup `.exe` (Windows). The apps aren't signed yet:
    on macOS allow it once in System Settings → Privacy & Security ("Open
    Anyway"); on Windows choose SmartScreen's "More info" → "Run anyway".

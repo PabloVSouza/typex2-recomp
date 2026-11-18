@@ -60,7 +60,11 @@ jobs:
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" launcher/src-tauri/target/release/bundle/dmg/*.dmg --clobber
+        # Tauri names it after Rust's arch (aarch64); players know it as Apple Silicon
+        run: |
+          dmg="$RUNNER_TEMP/Type.X.Recomp_${GITHUB_REF_NAME#v}_macOS_Apple_Silicon.dmg"
+          cp launcher/src-tauri/target/release/bundle/dmg/*.dmg "$dmg"
+          gh release upload "$GITHUB_REF_NAME" "$dmg" --clobber
 
   linux:
     needs: draft
