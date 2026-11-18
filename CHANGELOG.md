@@ -14,6 +14,9 @@ games are recompiled on your computer from your own files.
   fighters and their shadows, on macOS and Android. It is in the launcher and
   the Android app, with BlazBlue's pad layout (R in place of D). See its
   [page](docs/Game-Samurai-Shodown-EoD.md).
+- **Launcher:** when recompiling fails, the notification shows the
+  compiler's last lines and its exit code, not only "Compiling ... failed:"
+  (the full output is in Log).
 
 ## 0.3.1 - 2026-11-17
 

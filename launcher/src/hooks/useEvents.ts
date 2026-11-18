@@ -7,6 +7,13 @@ import { jobLabel } from "@/lib";
 import type { JobEvent } from "@/lib";
 import { useActivity } from "@/stores";
 
+/** A failed tool's message is a heading and its last output lines: the error is near the end. */
+function errorSummary(message?: string) {
+  const lines = (message ?? "").split("\n").filter((l) => l.trim());
+  if (lines.length <= 4) return lines.join("\n");
+  return [lines[0], "…", ...lines.slice(-3)].join("\n");
+}
+
 /** The backend's events into the stores; the state is refreshed when a job or a game ends. */
 export function useEvents() {
   const qc = useQueryClient();
@@ -19,7 +26,7 @@ export function useEvents() {
         if (e.step === "done" || e.step === "error" || e.step === "cancelled") {
           qc.invalidateQueries({ queryKey: ["state"] });
           if (e.step === "done") toast.success(t("jobs.finished", { job: jobLabel(t, e.job) }));
-          if (e.step === "error") toast.error(t("jobs.failed", { job: jobLabel(t, e.job) }), { description: e.message?.split("\n")[0] });
+          if (e.step === "error") toast.error(t("jobs.failed", { job: jobLabel(t, e.job) }), { description: errorSummary(e.message) });
         }
       }),
       listen<{ job: string; line: string }>("job-log", (e) => onBuildLine(e.line)),

@@ -147,8 +147,15 @@ impl Ctx {
             pids.retain(|p| *p != pid);
         }
         self.check()?;
-        if !status?.success() {
-            return Err(format!("{what} failed:\n{}", tail.join("\n")));
+        let status = status?;
+        if !status.success() {
+            // a crash prints nothing: its code (Windows: an NTSTATUS such as 0xC0000005) says what
+            let code = match status.code() {
+                Some(c) if !(0..=0xFFFF).contains(&c) => format!("exit code {:#X}", c as u32),
+                Some(c) => format!("exit code {c}"),
+                None => status.to_string(),
+            };
+            return Err(format!("{what} failed ({code}):\n{}", tail.join("\n")));
         }
         Ok(())
     }
