@@ -9,6 +9,7 @@ export function layoutName(t: TFunction, l: Layout): string {
     case "stick-kof": return t("layouts.stickKof");
     case "stick-sf4": return t("layouts.stickSf4");
     case "stick-bb": return t("layouts.stickBb");
+    case "stick-sse": return t("layouts.stickSse");
     default: return l.label;
   }
 }

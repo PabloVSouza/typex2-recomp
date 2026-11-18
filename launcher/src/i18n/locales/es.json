@@ -167,7 +167,8 @@
     "default": "Del juego",
     "stickKof": "Stick de 8 botones (filas L1 / L2): A C sobre B D",
     "stickSf4": "Stick de 8 botones (filas L1 / L2)",
-    "stickBb": "Stick de 8 botones, panel tipo B"
+    "stickBb": "Stick de 8 botones, panel tipo B",
+    "stickSse": "Stick de 8 botones: A B C sobre R"
   },
   "export": {
     "kicker": "Exportar",

@@ -165,7 +165,8 @@
     "default": "ゲームの初期設定",
     "stickKof": "8 ボタンスティック (L1 / L2 列): 上段 A C、下段 B D",
     "stickSf4": "8 ボタンスティック (L1 / L2 列)",
-    "stickBb": "8 ボタンスティック、Type B パネル"
+    "stickBb": "8 ボタンスティック、Type B パネル",
+    "stickSse": "8 ボタンスティック：A B C の下に R"
   },
   "export": {
     "kicker": "エクスポート",

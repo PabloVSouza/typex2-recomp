@@ -6,6 +6,7 @@ const DEFAULT = { id: "default", label: "Game default", pad: "" };
 const kof: Layouts = [DEFAULT, { id: "stick-kof", label: "8-button stick (L1 / L2 rows): A C over B D", pad: "l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc" }];
 const sf4: Layouts = [DEFAULT, { id: "stick-sf4", label: "8-button stick (L1 / L2 rows)", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456" }];
 const bb: Layouts = [DEFAULT, { id: "stick-bb", label: "8-button stick, Type B panel", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" }];
+const sse: Layouts = [DEFAULT, { id: "stick-sse", label: "8-button stick: A B C over R", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" }];
 const catalog: GameInfo[] = [
   { id: "kof12", title: "The King of Fighters XII", board: "Type X2", year: 2009, publisher: "SNK Playmore", layouts: kof },
   { id: "kof13", title: "The King of Fighters XIII", board: "Type X2", year: 2010, publisher: "SNK Playmore", layouts: kof },
@@ -15,6 +16,7 @@ const catalog: GameInfo[] = [
   { id: "bbct", title: "BlazBlue: Calamity Trigger", board: "Type X2", year: 2008, publisher: "Arc System Works", layouts: bb },
   { id: "kof98um", title: "The King of Fighters '98 Ultimate Match", board: "Type X", year: 2008, publisher: "SNK Playmore", layouts: kof },
   { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", layouts: kof },
+  { id: "sse", title: "Samurai Shodown: Edge of Destiny", board: "Type X2", year: 2008, publisher: "SNK Playmore", layouts: sse },
 ];
 const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, touch: 0, env: "" };
 const entry = (id: string, state: "none" | "ready" | "stale") => ({

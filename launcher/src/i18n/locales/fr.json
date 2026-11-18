@@ -167,7 +167,8 @@
     "default": "Réglage du jeu",
     "stickKof": "Stick 8 boutons (rangées L1 / L2) : A C au-dessus de B D",
     "stickSf4": "Stick 8 boutons (rangées L1 / L2)",
-    "stickBb": "Stick 8 boutons, panneau type B"
+    "stickBb": "Stick 8 boutons, panneau type B",
+    "stickSse": "Stick 8 boutons : A B C au-dessus de R"
   },
   "export": {
     "kicker": "Exporter",

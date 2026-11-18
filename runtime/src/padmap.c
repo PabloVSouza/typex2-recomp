@@ -24,15 +24,19 @@ static const struct {
 };
 
 static const char *game_id(void) { return x2_game && x2_game->id ? x2_game->id : ""; }
-/* BlazBlue CT and CS share the panel: buttons A B C D on cabinet SHOT1-4 */
-static bool is_blazblue(void) { return !strcmp(game_id(), "bbcs") || !strcmp(game_id(), "bbct"); }
+static bool is_sse(void) { return !strcmp(game_id(), "sse"); }
+/* BlazBlue CT and CS share the panel: buttons A B C D on cabinet SHOT1-4;
+ * Samurai Shodown EoD has the same four, called A B C R */
+static bool is_blazblue(void) { return !strcmp(game_id(), "bbcs") || !strcmp(game_id(), "bbct") || is_sse(); }
 
 /* what each game calls cabinet SHOT1-6 (labels for frontends) */
 static const char *const *shot_names(void) {
     static const char *const kof[6] = {"A", "C", "3", "B", "D", "6"};
     static const char *const sf4[6] = {"LP", "MP", "HP", "LK", "MK", "HK"};
     static const char *const bb[6] = {"A", "B", "C", "D", "5", "6"};
+    static const char *const sse[6] = {"A", "B", "C", "R", "5", "6"};
     if (!strcmp(game_id(), "ssf4ae")) return sf4;
+    if (is_sse()) return sse;
     if (is_blazblue()) return bb;
     return kof;
 }
@@ -177,7 +181,7 @@ void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
         label[0] = "A", bits[0] = JVS_B1;
         label[1] = "B", bits[1] = JVS_B2;
         label[2] = "C", bits[2] = JVS_B3;
-        label[3] = "D", bits[3] = JVS_B4;
+        label[3] = is_sse() ? "R" : "D", bits[3] = JVS_B4;
     } else { /* KOF: C D above A B */
         label[0] = "C", bits[0] = X2_BTN_C;
         label[1] = "D", bits[1] = X2_BTN_D;

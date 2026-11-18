@@ -166,7 +166,8 @@
     "default": "Vorgabe des Spiels",
     "stickKof": "8-Tasten-Stick (Reihen L1 / L2): A C über B D",
     "stickSf4": "8-Tasten-Stick (Reihen L1 / L2)",
-    "stickBb": "8-Tasten-Stick, Type-B-Panel"
+    "stickBb": "8-Tasten-Stick, Type-B-Panel",
+    "stickSse": "8-Tasten-Stick: A B C über R"
   },
   "export": {
     "kicker": "Export",

@@ -920,7 +920,11 @@ static id<MTLSamplerState> get_sampler(const u32 *ss, bool cmp) {
     d.mipFilter = mip == 0   ? MTLSamplerMipFilterNotMipmapped
                   : mip == 1 ? MTLSamplerMipFilterNearest
                              : MTLSamplerMipFilterLinear;
-    if (cmp) d.compareFunction = MTLCompareFunctionLessEqual;
+    if (cmp) { /* a compare reads red as the depth (Samurai Shodown EoD sets 1.0f's bits, 0x3f800000) */
+        d.compareFunction = MTLCompareFunctionLessEqual;
+        d.borderColor = (border >> 16 & 0xFF) >= 0x80 ? MTLSamplerBorderColorOpaqueWhite
+                                                       : MTLSamplerBorderColorOpaqueBlack;
+    }
     SampEnt *e = calloc(1, sizeof *e);
     e->key = key;
     e->border = border;
@@ -1169,8 +1173,8 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     pk.vs = vs->serial;
     pk.ps = ps->serial;
     pk.atest = st->rs[15] && st->rs[25] != 8 ? 1 : 0;
-    for (int i = 0; i < 16; i++) { /* depth textures on 2D samplers: shadow maps */
-        if (!(ps->info.samplers_used & (1u << i)) || ps->info.samp_type[i] != 2) continue;
+    for (int i = 0; i < 16; i++) { /* depth textures on 2D samplers read by x2_t2d: shadow maps */
+        if (!(ps->info.samplers_shadow & (1u << i))) continue;
         MTex *tx = tex_get(st->tex[i]);
         if (tx && tx->depth && tx->tex) pk.shadow |= 1u << i;
     }

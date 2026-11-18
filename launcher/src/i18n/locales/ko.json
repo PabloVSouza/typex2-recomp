@@ -165,7 +165,8 @@
     "default": "게임 기본값",
     "stickKof": "8버튼 스틱(L1 / L2 줄): 위 A C, 아래 B D",
     "stickSf4": "8버튼 스틱(L1 / L2 줄)",
-    "stickBb": "8버튼 스틱, Type B 패널"
+    "stickBb": "8버튼 스틱, Type B 패널",
+    "stickSse": "8버튼 스틱: A B C 아래 R"
   },
   "export": {
     "kicker": "내보내기",

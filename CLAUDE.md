@@ -26,7 +26,7 @@ game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
 | The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
-| Samurai Shodown: Edge of Destiny | `sse` | fights run on macOS (scripted; HD mode via JVS system switch bit 0, `.X` stage meshes, toon shading); not in the launcher, Android not built (needs Vulkan shadow maps) |
+| Samurai Shodown: Edge of Destiny | `sse` | fights run on macOS and Android (HD mode via JVS system switch bit 0, `.X` stage meshes, toon shading, shadow maps); in the launcher; Android: display 35-40 fps in fights (GPU ~16.5 ms), cutscene flashes reported |
 
 Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress.
 

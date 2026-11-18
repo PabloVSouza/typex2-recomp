@@ -167,7 +167,8 @@
     "default": "Predefinido do jogo",
     "stickKof": "Arcade stick de 8 botões (filas L1 / L2): A C sobre B D",
     "stickSf4": "Arcade stick de 8 botões (filas L1 / L2)",
-    "stickBb": "Arcade stick de 8 botões, painel Type B"
+    "stickBb": "Arcade stick de 8 botões, painel Type B",
+    "stickSse": "Arcade stick de 8 botões: A B C sobre R"
   },
   "export": {
     "kicker": "Exportar",

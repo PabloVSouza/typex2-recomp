@@ -43,6 +43,10 @@ const BLAZBLUE: &[Layout] = &[
     DEFAULT,
     Layout { id: "stick-bb", label: "8-button stick, Type B panel", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" },
 ];
+const SSE: &[Layout] = &[
+    DEFAULT,
+    Layout { id: "stick-sse", label: "8-button stick: A B C over R", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" },
+];
 
 pub const GAMES: &[Game] = &[
     Game { id: "kof12", title: "The King of Fighters XII", board: "Type X2", year: 2009, publisher: "SNK Playmore", size: 0x2ec000, entry: 0x5f120b, layouts: KOF },
@@ -53,6 +57,7 @@ pub const GAMES: &[Game] = &[
     Game { id: "bbct", title: "BlazBlue: Calamity Trigger", board: "Type X2", year: 2008, publisher: "Arc System Works", size: 0x714000, entry: 0x4d703e, layouts: BLAZBLUE },
     Game { id: "kof98um", title: "The King of Fighters '98 Ultimate Match", board: "Type X", year: 2008, publisher: "SNK Playmore", size: 0x18e5000, entry: 0x5b5250, layouts: KOF },
     Game { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", size: 0x1c3b000, entry: 0x79aba1, layouts: KOF },
+    Game { id: "sse", title: "Samurai Shodown: Edge of Destiny", board: "Type X2", year: 2008, publisher: "SNK Playmore", size: 0x3344000, entry: 0x4d9fa0, layouts: SSE },
 ];
 
 impl Game {

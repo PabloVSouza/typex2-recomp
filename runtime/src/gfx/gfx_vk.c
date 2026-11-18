@@ -66,6 +66,7 @@ static VkCommandPool cpool;
 static VkPipelineLayout playout;
 static VkDescriptorSetLayout dslayout;
 static VkFormat depth24; /* D24S8: D24_UNORM_S8_UINT or D32_SFLOAT_S8_UINT */
+static bool depth_linear; /* depth24 filters linearly (shadow map compares) */
 /* a frontend that shares its queue (RetroArch) locks it around submissions */
 static void (*qlock)(void *), (*qunlock)(void *);
 static void *qlock_handle;
@@ -1225,13 +1226,16 @@ static VkShaderModule compile(VShader *s, const char *defines) {
     if (!m) s->ok = false;
     return m;
 }
-/* key: pixel: alpha test; vertex: 2 bits per input register (1 int, 2 uint vertex data) */
+/* key: pixel: bit 0 alpha test, bits 1-16 the 2D samplers bound to depth textures (shadow
+ * maps); vertex: 2 bits per input register (1 int, 2 uint vertex data) */
 static VkShaderModule module_for(VShader *s, u32 key) {
     for (u32 i = 0; i < s->nvar; i++)
         if (s->var[i].key == key) return s->var[i].m;
     char defs[512] = "";
     size_t l = 0;
-    if (s->pixel && key) l += (size_t)snprintf(defs + l, sizeof defs - l, "#define X2_ATEST 1\n");
+    if (s->pixel && key & 1) l += (size_t)snprintf(defs + l, sizeof defs - l, "#define X2_ATEST 1\n");
+    for (int i = 0; s->pixel && i < 16; i++)
+        if (key >> (i + 1) & 1) l += (size_t)snprintf(defs + l, sizeof defs - l, "#define X2_SHADOW%d 1\n", i);
     /* fp16 pixel maths as on GLES (gfx_gl_draw.c); X2_PS_MEDIUMP=0 turns it off */
     static int mp = -1;
     if (mp < 0) mp = !getenv("X2_PS_MEDIUMP") || atoi(getenv("X2_PS_MEDIUMP")) != 0;
@@ -1497,7 +1501,7 @@ typedef struct {
 
 /* ---- pipelines ------------------------------------------------------------------- */
 typedef struct {
-    u32 vs, ps, atest, vtkey, topo;
+    u32 vs, ps, atest, vtkey, topo, shadow;
     u8 afmt[16], abuf[16];
     u16 aoff[16];
     u32 stride[10];
@@ -1674,7 +1678,7 @@ static VkPipeline get_pipeline(const PipeKey *k, VShader *vs, VShader *ps) {
     static int together = -1;
     if (together < 0) together = !getenv("X2_PREBUILD") || atoi(getenv("X2_PREBUILD")) != 0;
     u64 t0 = x2_time_ns();
-    VkShaderModule vm = module_for(vs, k->vtkey), fm = module_for(ps, k->atest);
+    VkShaderModule vm = module_for(vs, k->vtkey), fm = module_for(ps, k->atest | k->shadow << 1);
     u64 t_mod = x2_time_ns() - t0; /* shader modules: translation, SPIR-V (glslang or the disk cache) */
     VkPipeline p;
     if (vm && fm && together && replay_f)
@@ -1711,13 +1715,19 @@ static VkSamplerAddressMode address(u32 a) {
     default: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
     }
 }
-static VkSampler get_sampler(const u32 *ss) {
+/* cmp: a shadow map's compare sampler (D3D9 on NVIDIA: the reference passes when <= the
+ * stored depth; filtered when the format allows, as the hardware's PCF) */
+static VkSampler get_sampler(const u32 *ss, bool cmp) {
     u32 mag = ss[5], min = ss[6], mip = ss[7];
-    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13;
+    if (cmp && !depth_linear) mag = min = 1;
+    u32 key = (ss[1] & 7) | (ss[2] & 7) << 3 | (ss[3] & 7) << 6 | (mag & 3) << 9 | (min & 3) << 11 | (mip & 3) << 13 |
+              (u32)cmp << 15;
     u32 border = ss[4];
     for (SampEnt *e = samps; e; e = e->next)
         if (e->key == key && e->border == border) return e->s;
     VkSamplerCreateInfo si = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    si.compareEnable = cmp;
+    si.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     si.magFilter = mag >= 2 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
     si.minFilter = min >= 2 ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
     si.mipmapMode = mip >= 2 ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
@@ -1729,6 +1739,10 @@ static VkSampler get_sampler(const u32 *ss) {
     si.borderColor = border >> 24 < 128               ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
                      : (border & 0xFFFFFF) > 0x7F7F7F ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
                                                       : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+    /* a compare reads red as the depth (Samurai Shodown EoD sets 1.0f's bits, 0x3f800000) */
+    if (cmp)
+        si.borderColor =
+            (border >> 16 & 0xFF) >= 0x80 ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
     SampEnt *e = calloc(1, sizeof *e);
     e->key = key;
     e->border = border;
@@ -2104,6 +2118,7 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
 
     /* textures this draw samples */
     VTex *samp_tex[20];
+    u32 shadow = 0;
     VkDescriptorImageInfo img[20];
     u32 binding[20], nsamp = 0;
     for (int pass_i = 0; pass_i < 2; pass_i++) {
@@ -2118,6 +2133,9 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             }
             /* a texture of another type than the sampler reads black, as in GL (no 3D textures exist) */
             VTex *use = tx && ty != 4 && tx->cube == (ty == 3) ? tx : black[ty == 3 ? 1 : ty == 4 ? 2 : 0];
+            /* a depth texture on a pixel 2D sampler: a shadow map (sm3_glsl.c x2_t2d) */
+            bool shadow_bit = pass_i && sh->info.samplers_shadow & (1u << i) && use == tx && tx->depth;
+            if (shadow_bit) shadow |= 1u << i;
             if (drawlog)
                 x2_log("  %s s%d: tex %u (%ux%u fmt %u)%s", pass_i ? "ps" : "vs", i, st->tex[i], tx ? tx->w : 0,
                        tx ? tx->h : 0, tx ? tx->fmt : 0, use == tx ? "" : " black");
@@ -2140,8 +2158,8 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
             }
             use->used = cur_serial;
             samp_tex[nsamp] = use;
-            img[nsamp] =
-                (VkDescriptorImageInfo){get_sampler(st->samp[i]), use->view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            img[nsamp] = (VkDescriptorImageInfo){get_sampler(st->samp[i], shadow_bit), use->view,
+                                                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             binding[nsamp++] = pass_i ? 2 + (u32)i : 18 + (u32)i;
         }
     }
@@ -2152,6 +2170,7 @@ static void draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
     pk.vs = vs->serial;
     pk.ps = ps->serial;
     pk.atest = rs[15] && rs[25] != 8 ? 1 : 0;
+    pk.shadow = shadow;
     pk.topo = (u32)topo;
     u32 bgra_mask = 0;
     VkBuffer sbuf[GFX_MAX_STREAMS] = {0};
@@ -2390,6 +2409,11 @@ static bool predict_key(const GfxState *st, u32 prim, bool up, u32 up_stride, bo
     pk->vs = vs->serial;
     pk->ps = ps->serial;
     pk->atest = rs[15] && rs[25] != 8 ? 1 : 0;
+    for (int i = 0; i < 16; i++) { /* shadow maps, as draw() finds them */
+        if (!(ps->info.samplers_shadow & (1u << i))) continue;
+        VTex *tx = tex_get(st->tex[i]);
+        if (tx && !tx->cube && tx->depth) pk->shadow |= 1u << i;
+    }
     pk->topo = prim == 1   ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST
                : prim == 2 ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST
                : prim == 3 ? VK_PRIMITIVE_TOPOLOGY_LINE_STRIP
@@ -2497,7 +2521,8 @@ static VkPipeline build_ahead(const PipeKey *k, VkShaderModule vm, VkShaderModul
         bool dup = false;
         for (u32 i = 0; i < ahead_n && !dup; i++) dup = !memcmp(&ahead[i].k, &nk, sizeof nk);
         if (dup) continue;
-        VkShaderModule v2 = module_for(shaders[st->vs], nk.vtkey), f2 = module_for(shaders[st->ps], nk.atest);
+        VkShaderModule v2 = module_for(shaders[st->vs], nk.vtkey),
+                       f2 = module_for(shaders[st->ps], nk.atest | nk.shadow << 1);
         if (v2 && f2) ahead[ahead_n++] = (AheadJob){nk, v2, f2, VK_NULL_HANDLE};
     }
     u64 t0 = x2_time_ns();
@@ -3222,6 +3247,11 @@ static void setup(u32 w, u32 h) {
     vkGetPhysicalDeviceFormatProperties(phys, VK_FORMAT_D24_UNORM_S8_UINT, &fp);
     depth24 = fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT ? VK_FORMAT_D24_UNORM_S8_UINT
                                                                                         : VK_FORMAT_D32_SFLOAT_S8_UINT;
+    VkFormatProperties fp16;
+    vkGetPhysicalDeviceFormatProperties(phys, depth24, &fp);
+    vkGetPhysicalDeviceFormatProperties(phys, VK_FORMAT_D16_UNORM, &fp16);
+    depth_linear =
+        fp.optimalTilingFeatures & fp16.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     /* one push-descriptor set: the two uniform blocks, 16 pixel and 4 vertex samplers */
     VkDescriptorSetLayoutBinding lb[22];
     for (u32 i = 0; i < 22; i++) {

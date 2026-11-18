@@ -13,6 +13,8 @@ typedef struct {
     int ps_in_usage[16], ps_in_index[16];
     uint32_t samplers_used;
     int samp_type[16];
+    uint32_t samplers_shadow;       /* pixel 2D samplers read only through x2_t2d / x2_t2dp: a depth texture there
+                                     * is a shadow map, in the X2_SHADOW<n> variant (MSL, Vulkan) */
     int const_count;                /* float constants read: c0 .. c(const_count-1); all with relative addressing */
 } Sm3Info;
 

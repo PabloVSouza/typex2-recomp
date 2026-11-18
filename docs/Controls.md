@@ -23,7 +23,7 @@
 - **L3 / R3** stay free for frontend hotkeys.
 - **Touch.** On touch screens without a pad, an on-screen pad appears with
   the game's buttons: KOF C D over A B, SSF4 LP MP HP over LK MK HK,
-  BlazBlue A B C over D.
+  BlazBlue A B C over D, Samurai Shodown EoD A B C over R.
 
 ### Default layouts
 
@@ -32,6 +32,7 @@
 | KOF XII / XIII / XIII Climax / '98 UM | FinalBurn Neo's Neo Geo "Modern" pad. Y B X A = A B C D. R2 = A+B, R1 = C+D, L2 = A+B+C, L1 = B+C+D. |
 | SSF4 AE | LP MP HP on Y X R1, LK MK HK on B A R2. L1 = three punches, L2 = three kicks. |
 | BlazBlue CS / CT | A B C on Y X R1, D on B. A = B+C (throw), R2 = A+B (barrier), L1 = A+B+C, L2 = A+B+C+D. |
+| Samurai Shodown EoD | As BlazBlue, with R in place of D: A B C on Y X R1, R on B. A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+R. |
 
 ### `X2_PAD`
 
@@ -56,7 +57,7 @@ Several values together make one button press several at once
 ```
 # SSF4 AE
 X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
-# BlazBlue CS / CT
+# BlazBlue CS / CT, Samurai Shodown EoD (R in place of D)
 X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234
 # KOF (A C over B D)
 X2_PAD=l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc
@@ -75,6 +76,7 @@ In RetroArch, remaps apply on top, exactly as with FBNeo.
 | KOF XII / XIII / Climax / '98 UM | A | C | — | B | D | — |
 | SSF4 AE | LP | MP | HP | LK | MK | HK |
 | BlazBlue CS / CT | A | B | C | D | — | — |
+| Samurai Shodown EoD | A | B | C | R | — | — |
 
 ## Scripted input (`X2_INPUT`)
 

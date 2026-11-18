@@ -165,7 +165,8 @@
     "default": "游戏默认",
     "stickKof": "8 键摇杆（L1 / L2 行）：A C 在上，B D 在下",
     "stickSf4": "8 键摇杆（L1 / L2 行）",
-    "stickBb": "8 键摇杆，Type B 面板"
+    "stickBb": "8 键摇杆，Type B 面板",
+    "stickSse": "8 键摇杆：A B C 下方为 R"
   },
   "export": {
     "kicker": "导出",

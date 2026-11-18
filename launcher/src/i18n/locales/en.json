@@ -166,7 +166,8 @@
     "default": "Game default",
     "stickKof": "8-button stick (L1 / L2 rows): A C over B D",
     "stickSf4": "8-button stick (L1 / L2 rows)",
-    "stickBb": "8-button stick, Type B panel"
+    "stickBb": "8-button stick, Type B panel",
+    "stickSse": "8-button stick: A B C over R"
   },
   "export": {
     "kicker": "Export",

@@ -9,9 +9,10 @@ games are recompiled on your computer from your own files.
 
 ## Unreleased
 
-- **Samurai Shodown: Edge of Destiny** (in progress, not in the launcher
-  yet): recompiles and runs on macOS in its HD mode, from attract mode to
-  fights, with its stages and toon-shaded fighters. See its
+- **Samurai Shodown: Edge of Destiny** (in progress): recompiles and runs
+  in its HD mode, from attract mode to fights, with its stages, toon-shaded
+  fighters and their shadows, on macOS and Android. It is in the launcher and
+  the Android app, with BlazBlue's pad layout (R in place of D). See its
   [page](docs/Game-Samurai-Shodown-EoD.md).
 
 ## 0.3.1 - 2026-11-17

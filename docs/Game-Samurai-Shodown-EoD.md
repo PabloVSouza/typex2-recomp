@@ -3,11 +3,18 @@
 Samurai Shodown: Edge of Destiny (サムライスピリッツ閃, *Samurai Spirits
 Sen*), SNK Playmore, 2008, Taito Type X2. `games/sse`.
 
-**Status: fights run** (macOS, scripted input). Attract mode with its
-movies, coin and start, character select, the story screens and fights all
-run in the game's HD mode (1280×720) at 60 fps, with the stages, the
-toon-shaded fighters and their shadows rendered. Not played by hand yet, and
-not in the launcher or on Android yet.
+**Status: fights run** (macOS and Android, scripted input). Attract mode with
+its movies, coin and start, character select, the story screens and fights
+all run in the game's HD mode (1280×720), with the stages, the toon-shaded
+fighters and their shadows rendered: at 60 fps on macOS; on the Android test
+tablet the game runs at 60 but the display drops frames in fights. In the
+launcher and the Android app.
+
+## Controls
+
+The cabinet has four buttons, A B C R (SHOT1-4): the same panel as
+BlazBlue's, and the same pad layouts with R in place of D
+([Controls](Controls.md)).
 
 ## Files
 
@@ -42,7 +49,9 @@ the SD versions).
 - **Shadow maps.** The fighters' shadows sample a depth texture, which on the
   Type X2's NVIDIA GPU returns a filtered depth comparison. Metal does the
   same (`sample_compare` in a shader variant per sampler bound to a depth
-  texture). Vulkan does not yet.
+  texture), and Vulkan (`sampler2DShadow`). The game sets the sampler's
+  border to the bits of 1.0f, depth 1 outside the map (lit): compare
+  samplers take the border's red channel as the depth.
 - **Direct3D enumeration.** The game's DXUT-style enumeration drops a device
   whose caps have `D3DPMISCCAPS_NULLREFERENCE`; the caps no longer set it,
   and only the HAL device exists.
@@ -65,10 +74,11 @@ this `game.exe` does not run.
 
 ## Known issues
 
-- **Not played by hand yet;** the button layout (`X2_PAD` line) is not
-  worked out yet.
-- **Android:** not built yet. Its shadows need the Vulkan renderer's shadow
-  map sampling, which does not exist yet.
+- **Cutscenes flash** at times on Android (reported while playing; not
+  reproduced in recordings of the attract movies and the versus screen yet).
+- **Android:** on the test tablet (Mali-G57) a fight frame needs about
+  16.5 ms of GPU time, most of it the 3D scene at 1152×648, so the display
+  shows 35-40 fps while the game runs at 60.
 - **Frame pacing:** the game's own limiter measures its frame from
   `Present`'s return and sleeps the rest of 1/60 s, so a frame takes a
   little over 16.7 ms (about one late frame in 120).

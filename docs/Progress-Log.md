@@ -2,6 +2,28 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-18: Samurai Shodown: Edge of Destiny on Android, in the launcher
+
+- **Launcher:** the game is listed (image size 0x3344000, entry 0x4d9fa0;
+  `launcher.exe` has the same identity, `game.exe` is found first) with an
+  8-button stick preset.
+- **Buttons:** the test menu's INPUT TEST shows A B C R on cabinet SHOT1-4,
+  BlazBlue's panel: the same default pad layout, R in place of D.
+- **Vulkan shadow maps:** pixel 2D samplers read only through `x2_t2d` /
+  `x2_t2dp` (`Sm3Info.samplers_shadow`) are `sampler2DShadow` in the
+  `X2_SHADOW<n>` variant (pixel shader variant key bits 1-16), sampled with a
+  compare sampler (linear when the depth formats filter). Metal uses the same
+  mask: a sampler also read with an explicit LOD never becomes a depth2d.
+  Every dumped shader compiles with glslang with and without the shadow
+  defines.
+- **Shadow map border:** the game sets the border to 1.0f's bits
+  (0x3f800000), "lit outside the map"; read as a colour it was transparent
+  black, depth 0, so the floor outside a square around the fighters was in
+  shadow. Compare samplers take the border's red channel (the depth).
+- **Android:** runs on the test tablet's Vulkan at 60 game fps, but the GPU
+  needs about 16.5 ms per fight frame (the scene at 1152×648, ~9 ms), so the
+  display drops frames.
+
 ## 2026-11-17: Samurai Shodown: Edge of Destiny's fights render
 
 - **Stages:** they are `.X` meshes drawn with `ID3DXMesh::DrawSubset`, whose

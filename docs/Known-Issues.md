@@ -30,9 +30,10 @@ that isn't here? Report it in
   Some test-menu sound
   effects are missing from the game's files
   ([details](Game-KOF-MI-Regulation-A.md#known-issues)).
-- **Samurai Shodown: Edge of Destiny** (in progress, not in the launcher
-  yet): fights run on macOS with scripted input, not played by hand yet;
-  not on Android yet ([details](Game-Samurai-Shodown-EoD.md#known-issues)).
+- **Samurai Shodown: Edge of Destiny** (in progress): on Android the
+  display drops to 35-40 fps in fights (the GPU needs about 16.5 ms per
+  frame on the test tablet), and cutscenes flash at times
+  ([details](Game-Samurai-Shodown-EoD.md#known-issues)).
 - **Super Street Fighter IV Arcade Edition:** on slower Android devices some
   stages still lose frames in fights: 1-7 late per 120 on the test tablet.
   These come from occasional 20-30 ms frames; the game thread averages

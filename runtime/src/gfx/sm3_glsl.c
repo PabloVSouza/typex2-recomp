@@ -46,7 +46,9 @@ enum {
 
 typedef struct {
     bool pixel;
-    bool shadow_ok; /* MSL: 2D samples as x2_t2d / x2_t2dp, which also read depth textures as shadow maps */
+    bool shadow_ok; /* MSL, Vulkan: 2D samples as x2_t2d / x2_t2dp, which also read depth textures as shadow maps */
+    bool t2d_used;
+    uint32_t t2d_mask, other_mask; /* samplers read through x2_t2d, and otherwise */
     int major, minor;
     const uint32_t *tok;
     uint32_t n, pos;
@@ -510,6 +512,8 @@ static void translate_ins(Ctx *c) {
                 /* the whole coordinate: bound to a depth texture, z (z/w) is the reference depth of
                  * a shadow map compare (D3D9 on NVIDIA hardware) */
                 snprintf(expr, sizeof expr, "%s(%s,(%s))", control == 1 ? "x2_t2dp" : "x2_t2d", samp, a);
+                c->t2d_used = true;
+                if (s < 16) c->t2d_mask |= 1u << s;
             } else if (control == 1) { /* texldp */
                 snprintf(expr, sizeof expr, "texture(%s,(%s)%s/(%s).w)", samp, a, coord, a);
             } else if (control == 2) { /* texldb */
@@ -517,6 +521,7 @@ static void translate_ins(Ctx *c) {
             } else {
                 snprintf(expr, sizeof expr, "texture(%s,(%s)%s)", samp, a, coord);
             }
+            if (s < 16 && strncmp(expr, "x2_t2d", 6)) c->other_mask |= 1u << s;
             if (s < 16) c->info->samplers_used |= 1u << s;
             assign(c, &d, expr);
             break;
@@ -695,9 +700,17 @@ static void vk_wrap(Ctx *c, Sm3Info *info, Str *s) {
     for (int i = 0; i < 16; i++) {
         if (!(info->samplers_used & (1u << i))) continue;
         const char *ty = c->samp_type[i] == 3 ? "samplerCube" : c->samp_type[i] == 4 ? "sampler3D" : "sampler2D";
+        if (info->samplers_shadow & (1u << i)) /* a shadow map in the X2_SHADOW<n> variant (msl_wrap) */
+            sf(s, "#ifdef X2_SHADOW%d\nlayout(set=0, binding=%d) uniform sampler2DShadow s%d;\n#else\n", i, 2 + i, i);
         sf(s, "layout(set=0, binding=%d) uniform %s %s%d;\n", c->pixel ? 2 + i : 18 + i, ty, c->pixel ? "s" : "vs_s",
            i);
+        if (info->samplers_shadow & (1u << i)) sf(s, "#endif\n");
     }
+    if (c->pixel && c->t2d_used)
+        sf(s, "vec4 x2_t2d(sampler2D s, X2_HP vec4 c) { return texture(s, c.xy); }\n"
+              "vec4 x2_t2dp(sampler2D s, X2_HP vec4 c) { return texture(s, c.xy / c.w); }\n"
+              "vec4 x2_t2d(sampler2DShadow s, X2_HP vec4 c) { return vec4(texture(s, c.xyz)); }\n"
+              "vec4 x2_t2dp(sampler2DShadow s, X2_HP vec4 c) { return vec4(textureProj(s, c)); }\n");
     if (c->pixel) {
         if (c->major >= 3) {
             for (int i = 0; i < 16; i++) {
@@ -821,7 +834,7 @@ static void msl_wrap(Ctx *c, Sm3Info *info, Str *s) {
         if (!(info->samplers_used & (1u << i))) continue;
         char ty[32];
         snprintf(ty, sizeof ty, "%s", msl_tex_type(c->samp_type[i]));
-        if (c->pixel && c->samp_type[i] == 2) { /* a shadow map in the X2_SHADOW<n> variant */
+        if (info->samplers_shadow & (1u << i)) { /* a shadow map in the X2_SHADOW<n> variant */
             sf(s,
                "#ifdef X2_SHADOW%d\n#define X2_T2D_%d depth2d<float>\n#else\n#define X2_T2D_%d "
                "texture2d<float>\n#endif\n",
@@ -1004,13 +1017,14 @@ bool sm3_translate(const uint32_t *tok, uint32_t n, ShTarget target, char **out,
     c->n = n;
     uint32_t ver = tok[0];
     c->pixel = (ver >> 16) == 0xFFFF;
-    c->shadow_ok = target == SH_MSL; /* Vulkan: not yet */
+    c->shadow_ok = target == SH_MSL || target == SH_VKGLSL;
     c->major = (int)((ver >> 8) & 0xFF);
     c->minor = (int)(ver & 0xFF);
     info->pixel = c->pixel;
     for (int i = 0; i < 16; i++) { c->samp_type[i] = 2; c->in_usage[i] = c->out_usage[i] = -1; }
     c->pos = 1;
     while (c->pos < n && tok[c->pos] != 0x0000FFFFu && !c->failed) translate_ins(c);
+    if (c->pixel) info->samplers_shadow = c->t2d_mask & ~c->other_mask;
 
     Str s = {0};
     if (target == SH_MSL) {
