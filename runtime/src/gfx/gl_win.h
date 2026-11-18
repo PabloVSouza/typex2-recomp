@@ -35,8 +35,11 @@
     X(glDeleteBuffers) \
     X(glDeleteFramebuffers) \
     X(glDeleteProgram) \
+    X(glDeleteQueries) \
+    X(glDeleteSamplers) \
     X(glDeleteShader) \
     X(glDeleteTextures) \
+    X(glDeleteVertexArrays) \
     X(glDepthFunc) \
     X(glDepthMask) \
     X(glDepthRange) \
@@ -137,8 +140,11 @@ X2_GL_FUNCS(X)
 #define glDeleteBuffers x2p_glDeleteBuffers
 #define glDeleteFramebuffers x2p_glDeleteFramebuffers
 #define glDeleteProgram x2p_glDeleteProgram
+#define glDeleteQueries x2p_glDeleteQueries
+#define glDeleteSamplers x2p_glDeleteSamplers
 #define glDeleteShader x2p_glDeleteShader
 #define glDeleteTextures x2p_glDeleteTextures
+#define glDeleteVertexArrays x2p_glDeleteVertexArrays
 #define glDepthFunc x2p_glDepthFunc
 #define glDepthMask x2p_glDepthMask
 #define glDepthRange x2p_glDepthRange
