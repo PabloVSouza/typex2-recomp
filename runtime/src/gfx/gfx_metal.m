@@ -917,7 +917,7 @@ static id<MTLSamplerState> get_sampler(const u32 *ss, bool cmp) {
                                                      : MTLSamplerBorderColorOpaqueBlack;
     /* Samurai Shodown EoD's floors set 1.0f's bits (0x3f800000) and read its red, 0.5 on the
      * cabinet's GPU, as the depth beyond their shadow map; transparent black left everything
-     * there in shadow. White, as meant, gives the same result (Vulkan uses the exact colour). */
+     * there in shadow; 0.5 shadows the background past half the light's range. White, as meant. */
     if (border == 0x3f800000u) d.borderColor = MTLSamplerBorderColorOpaqueWhite;
     d.magFilter = mag >= 2 ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;
     d.minFilter = min >= 2 ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;

@@ -61,10 +61,12 @@ the SD versions).
   border to the bits of 1.0f, depth 1 outside the map (lit): compare
   samplers take the border's red channel as the depth. The stages also
   read a colour copy of the map, depth in red, with the same border: as a
-  colour that is red 0.5, which the cabinet's GPU returns. Vulkan uses that
-  exact colour (`VK_EXT_custom_border_color`); Metal, with only three border
-  colours, white. Transparent black had left the floor dark everywhere
-  outside the map, a lit square that followed the fighters.
+  colour that is red 0.5, but that shadows the background wherever it lies
+  past half the light's range (a dark shape moving with the fighters), so
+  both backends return white, as the game means. Transparent black had left
+  the floor dark everywhere outside the map, a lit square that followed the
+  fighters. Other border colours are exact on Vulkan where the driver has
+  `VK_EXT_custom_border_color`.
 - **Frame limiter.** Before each `Present` the game sleeps until 1/60 s has
   passed since the last one returned. The runtime paces `Present` itself;
   in RetroArch, where `Present` returns when the frontend's frame starts,

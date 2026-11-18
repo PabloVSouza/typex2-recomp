@@ -1740,10 +1740,14 @@ static VkSampler get_sampler(const u32 *ss, bool cmp) {
     si.borderColor = border >> 24 < 128               ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
                      : (border & 0xFFFFFF) > 0x7F7F7F ? VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE
                                                       : VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
-    /* any other colour exactly, where the driver can (Samurai Shodown EoD's floors read the red of
-     * 1.0f's bits, 0x3f800000, as the depth beyond their shadow map: 0.5, not transparent black) */
+    /* Samurai Shodown EoD's stages set 1.0f's bits (0x3f800000) and read the red as the depth
+     * beyond their shadow map: white, as meant. Its red as a colour, 0.5, shadowed the
+     * background wherever it lies past half the light's range; transparent black, everything. */
+    if (border == 0x3f800000u) si.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    /* any other colour exactly, where the driver can */
     VkSamplerCustomBorderColorCreateInfoEXT cb = {VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT};
-    if (custom_border && !cmp && border != 0 && border != 0xFF000000u && border != 0xFFFFFFFFu) {
+    if (custom_border && !cmp && border != 0 && border != 0xFF000000u && border != 0xFFFFFFFFu &&
+        border != 0x3f800000u) {
         cb.customBorderColor.float32[0] = (float)(border >> 16 & 0xFF) / 255.0f;
         cb.customBorderColor.float32[1] = (float)(border >> 8 & 0xFF) / 255.0f;
         cb.customBorderColor.float32[2] = (float)(border & 0xFF) / 255.0f;
