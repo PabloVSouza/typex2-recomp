@@ -60,11 +60,7 @@ X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 - With OpenGL (`X2_RENDERER=gl`) a few stages are GPU-bound at 50-55 fps on the Galaxy Tab A11 (Mali-G57 MC2).
 - Link play is off: this is the stand-alone build.
 - The opening movie's separate English audio track is not in this build's files.
-- RetroArch on Android: MP+MK (Focus Attack) was reported not to come out with an 8-button stick
-  (rows L1 Y X R1 / L2 B A R2). The same stick does it in the standalone app, and the test menu's
-  INPUT TEST shows BUTTON2 and BUTTON5 together when both are pressed. In RetroArch on the
-  tablet, MP+MK injected from a virtual gamepad (`adb shell input gamepad keycombination -t 700
-  KEYCODE_BUTTON_X KEYCODE_BUTTON_A`) reaches the core held together (`X2_PADLOG=1` logs
-  `south(B)=MK west(Y)=MP`) and comes out as a Focus Attack. What is left is RetroArch's
-  autoconfig for that stick: `X2_PADLOG=1` in `x2.env` while pressing MP+MK on it shows what
-  RetroArch reports.
+- RetroArch on Android: MP+MK (Focus Attack) and throws need RetroArch's *Input Block Timeout*
+  at 2 ms. At its default of 0, a stick that reports both buttons in the same instant reaches the
+  core with them 16-31 ms apart (`X2_PADLOG=1` against `getevent`), which the game takes as two
+  presses ([details](Android-and-RetroArch.md#the-retroarch-core)).

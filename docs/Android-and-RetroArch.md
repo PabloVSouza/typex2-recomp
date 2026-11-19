@@ -103,6 +103,12 @@ Settings and limits:
   `remaps/FinalBurn Neo/FinalBurn Neo.rmp` to `remaps/Type X2/Type X2.rmp`
   (with `input_libretro_device_p1/p2 = "1"`) to share one layout. Button
   layouts per game: [Controls](Controls.md).
+- **Two buttons at once** (Focus Attack, throws, KOF's AB / CD). Android hands an
+  app one controller event at a time, and with RetroArch's default
+  *Settings → Input → Input Block Timeout* of 0 a second button pressed in the
+  same instant reaches the core one or two frames later: SSF4 then sees MP and
+  MK as two separate presses. Set it to 2 ms (`input_block_timeout = "2"` in
+  `retroarch.cfg`). The standalone app reads both together without it.
 
 ## ES-DE
 

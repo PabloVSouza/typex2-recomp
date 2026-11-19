@@ -9,6 +9,10 @@ games are recompiled on your computer from your own files.
 
 ## Unreleased
 
+- **RetroArch on Android:** two buttons pressed together (SSF4's Focus Attack,
+  throws) need RetroArch's Input Block Timeout at 2 ms; the docs and known
+  issues say how.
+
 - **Launcher on Android:** the controller layout's Assign reads every button
   of controllers Android doesn't know, such as arcade sticks, including L2 and
   R2 when they are triggers. Before, those buttons couldn't be assigned, and
