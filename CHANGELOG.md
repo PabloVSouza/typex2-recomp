@@ -7,14 +7,18 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.5.0 - 2026-11-19
+
+Samurai Shodown: Edge of Destiny at 60 fps on Android, OpenGL as a full
+fallback renderer, and a better layout on upright screens.
 
 - **Samurai Shodown: Edge of Destiny** on Android runs in the game's own SD
   mode (640×480, 4:3) by default: fights at 60 fps on the test tablet,
   where HD showed 35-40. `X2_HD=1` in the game's `x2.env` chooses HD, and
   `X2_HD=0` SD on a computer.
 - **Samurai Shodown: Edge of Destiny:** the floors are lit all over, not
-  only in a square around the fighters. The game's own frame limiter is
+  only in a square around the fighters, with no dark shape moving over the
+  background. The game's own frame limiter is
   off (the runtime paces it), so it no longer costs RetroArch frames.
 - **OpenGL / OpenGL ES** stays as the renderer for devices without Vulkan
   1.3, with the same features as Vulkan and Metal: shadow maps (Samurai
