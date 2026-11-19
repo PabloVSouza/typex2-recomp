@@ -29,9 +29,28 @@ export function useControllerNav() {
     let lastPad = { dir: "" as string, at: 0 }, lastKey = { dir: "" as string, at: 0 };
     // the first move starts in the page (Android focuses the sidebar's first item by itself)
     let started = false;
+    // left from the page's leftmost control, with the menu hidden: the menu opens and takes the
+    // focus (its current item) once it has slid in far enough to be reachable (no longer inert)
+    const openMenu = () => {
+      const ui = useUi.getState();
+      if (!ui.menuHidden || window.matchMedia("(max-width: 767px)").matches) return;
+      ui.setMenuHidden(false);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const item = document.querySelector<HTMLElement>("aside nav [aria-current=page]") ?? document.querySelector<HTMLElement>("aside nav button");
+          item?.focus({ preventScroll: true });
+        }),
+      );
+    };
     const move = (dir: Dir) => {
-      moveFocus(dir, !started);
+      const next = moveFocus(dir, !started);
       started = true;
+      if (next) return;
+      const main = document.activeElement?.closest("main");
+      if (!main) return;
+      if (dir === "left") openMenu();
+      // no control further that way: the page itself scrolls, to its text below or above
+      else if (dir === "down" || dir === "up") main.scrollBy({ top: (dir === "down" ? 0.6 : -0.6) * main.clientHeight, behavior: "smooth" });
     };
     const reset = () => {
       notPad();
@@ -75,7 +94,7 @@ export function useControllerNav() {
         e.preventDefault();
         if (lastPad.dir === dir && performance.now() - lastPad.at < DUP_MS) return;
         lastKey = { dir, at: performance.now() };
-        if (!e.code) usingPad(); // Android's d-pad keys (a controller) carry no code; arrow keys do
+        usingPad(); // the arrow keys too: one highlight style, never the outline
         move(dir);
       } else if (e.key === "Enter" && lastPad.dir === "a" && performance.now() - lastPad.at < DUP_MS) {
         e.preventDefault(); // the pad's A, already pressed

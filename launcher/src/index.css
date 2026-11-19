@@ -133,32 +133,31 @@
   mask-image: linear-gradient(to bottom, black, transparent 70%);
 }
 
-/* Controller navigation (useControllerNav), while a controller is in use (data-pad): a game menu's
- * highlight instead of a focus outline. The focused game card stays at full strength, lifted, the
- * others fade back; the same in the sidebar; other controls glow softly. */
+/* Controller navigation (useControllerNav), while a controller or the arrow keys are in use
+ * (data-pad): a game menu's highlight instead of a focus outline, the same for every control. In
+ * the page or the sidebar, whichever holds the focus, the focused control stays at full strength,
+ * slightly larger, and the others fade back. A game card's inner buttons (tabindex -1) go with
+ * their card. */
+[data-pad] {
+  --ring: transparent; /* the controls' own focus rings (shadcn's ring-ring, border-ring) */
+}
 [data-pad] :focus {
   outline: none;
 }
-[data-pad] [data-card] {
+[data-pad] :is(main, aside) :is(button, a[href], input, select, textarea, [role=switch], [role=combobox], [tabindex]):not([tabindex="-1"]) {
   transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s;
 }
-[data-pad] main:has([data-card]:focus) [data-card]:not(:focus) {
+[data-pad] :is(main, aside):has(:focus) :is(button, a[href], input, select, textarea, [role=switch], [role=combobox], [tabindex]):not([tabindex="-1"]):not(:focus) {
   opacity: 0.4;
+}
+[data-pad] :is(main, aside) :focus {
+  transform: scale(1.02);
 }
 [data-pad] [data-card]:focus {
-  transform: scale(1.02);
   box-shadow: 0 14px 40px rgb(0 0 0 / 0.55);
 }
-[data-pad] aside nav button {
-  transition: opacity 0.2s, background-color 0.2s;
-}
-[data-pad] aside:has(nav :focus) nav button:not(:focus) {
-  opacity: 0.4;
-}
-[data-pad] aside :focus {
-  background-color: rgb(255 255 255 / 0.08);
-  color: var(--foreground);
-}
-[data-pad] main :focus:not([data-card]) {
-  box-shadow: 0 0 0 2px var(--color-cyan), 0 0 18px rgb(62 230 255 / 0.35);
+/* the sidebar's current page keeps only its cyan icon while the focus moves through the sidebar:
+ * its tinted background would read as a second highlight */
+[data-pad] aside:has(:focus) [aria-current=page] {
+  background-color: transparent;
 }

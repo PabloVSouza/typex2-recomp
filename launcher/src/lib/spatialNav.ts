@@ -57,17 +57,27 @@ export function nearest(from: HTMLElement, dir: Dir, all: HTMLElement[]): HTMLEl
   return best;
 }
 
+/** The part of the window a control is in (the page, the sidebar, ...). */
+const region = (el: Element) => el.closest("main, aside, header, [role=dialog], [role=alertdialog], [role=listbox], [role=menu]");
+
 /** Moves the focus; to the page's first control when nothing is focused or when `fresh` (the first
- *  move: Android focuses the sidebar's first item itself). Returns the focused control. */
+ *  move: Android focuses the sidebar's first item itself). Up and down stay in the current part of
+ *  the window (the page's next control may be off screen, farther than the sidebar's); left and
+ *  right cross between them. Returns the focused control, null when there is none that way. */
 export function moveFocus(dir: Dir, fresh = false): HTMLElement | null {
   const all = focusables();
   const cur = document.activeElement as HTMLElement | null;
   // the page, not the sidebar: its first game card, else its first control
   const start = all.find((el) => el.hasAttribute("data-card")) ?? all.find((el) => el.closest("main")) ?? all[0] ?? null;
-  const next = !fresh && cur && cur !== document.body && all.includes(cur) ? nearest(cur, dir, all) : start;
+  let next: HTMLElement | null = start;
+  if (!fresh && cur && cur !== document.body && all.includes(cur)) {
+    const here = region(cur);
+    next = nearest(cur, dir, dir === "up" || dir === "down" ? all.filter((el) => region(el) === here) : all);
+  }
   if (next) {
     next.focus({ preventScroll: true });
-    next.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    // kept in the middle of the page, so what comes next is in view
+    next.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
   }
   return next;
 }

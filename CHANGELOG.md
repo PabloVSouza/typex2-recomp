@@ -16,9 +16,11 @@ games are recompiled on your computer from your own files.
   icon rail and the content gets the width.
 - **Launcher:** controller navigation: the d-pad or stick moves between
   controls, A plays the focused game, X opens its page, B goes back; the
-  focused card stands out while a controller is in use. Refresh reloads the
+  focused control stands out (the others fade) while a controller is in use,
+  stays in the middle of the page as it scrolls, and left from the page's
+  edge opens a hidden menu. Refresh reloads the
   art. On Android the launcher runs at the display's fastest refresh rate.
-- **Launcher:** full-screen mode: the button by the logo hides the menu (the
+- **Launcher:** full-screen mode: the button by the logo slides the menu away (the
   logo and a button to bring it back stay), and the library takes the width.
 
 ## 0.5.0 - 2026-11-19

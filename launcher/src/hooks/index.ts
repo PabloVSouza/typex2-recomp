@@ -6,6 +6,7 @@ export * from "@/hooks/useDevices";
 export * from "@/hooks/useEvents";
 export * from "@/hooks/useGameArt";
 export * from "@/hooks/useLanguageSync";
+export * from "@/hooks/useNarrow";
 export * from "@/hooks/useOpenRelease";
 export * from "@/hooks/useRelease";
 export * from "@/hooks/useReport";
