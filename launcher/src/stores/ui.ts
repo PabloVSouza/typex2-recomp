@@ -7,8 +7,11 @@ interface Ui {
   gameId: string | null;
   /** full-screen mode: the sidebar hidden, a button by the logo brings it back (remembered) */
   menuHidden: boolean;
+  /** in full-screen mode, the sidebar shown over the page for a moment (a controller opened it) */
+  menuPeek: boolean;
   go: (page: Page, gameId?: string) => void;
   setMenuHidden: (hidden: boolean) => void;
+  setMenuPeek: (peek: boolean) => void;
 }
 
 // "#tools", "#game:kof13": open on that page (screenshots of the browser preview)
@@ -28,6 +31,7 @@ export const useUi = create<Ui>((set) => ({
   page: PAGES.includes(hashPage as Page) ? (hashPage as Page) : "library",
   gameId: hashGame ?? null,
   menuHidden: stored,
+  menuPeek: false,
   go: (page, gameId) => set((s) => ({ page, gameId: gameId ?? s.gameId })),
   setMenuHidden: (menuHidden) => {
     try {
@@ -35,6 +39,7 @@ export const useUi = create<Ui>((set) => ({
     } catch {
       /* a convenience: not kept without storage */
     }
-    set({ menuHidden });
+    set({ menuHidden, menuPeek: false });
   },
+  setMenuPeek: (menuPeek) => set({ menuPeek }),
 }));

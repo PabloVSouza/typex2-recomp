@@ -72,7 +72,9 @@ export function moveFocus(dir: Dir, fresh = false): HTMLElement | null {
   let next: HTMLElement | null = start;
   if (!fresh && cur && cur !== document.body && all.includes(cur)) {
     const here = region(cur);
-    next = nearest(cur, dir, dir === "up" || dir === "down" ? all.filter((el) => region(el) === here) : all);
+    // the menu button by the logo (BrandBar) is above both
+    const ok = (el: HTMLElement) => region(el) === here || !!el.closest("[data-brandbar]");
+    next = nearest(cur, dir, here && (dir === "up" || dir === "down") ? all.filter(ok) : all);
   }
   if (next) {
     next.focus({ preventScroll: true });

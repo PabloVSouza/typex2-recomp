@@ -10,9 +10,9 @@ import { useUi, type Page } from "@/stores";
 export function Sidebar() {
   const { t } = useTranslation();
   const { data } = useAppState();
-  const { page, gameId, go, menuHidden } = useUi();
+  const { page, gameId, go, menuHidden, menuPeek } = useUi();
   const narrow = useNarrow();
-  const hidden = menuHidden && !narrow; // upright, the rail stays
+  const hidden = menuHidden && !menuPeek && !narrow; // upright, the rail stays
   const at = (p: Page) => page === p;
   // the Android app plays games built elsewhere: no exports or build tools there
   const desktop = data?.os !== "android";
@@ -27,11 +27,13 @@ export function Sidebar() {
     // Fixed at the left, the page padded beside it (App). Full-screen mode (menuHidden) slides it
     // away with a transform: the GPU moves it, nothing is laid out again while it moves (animating its
     // width re-laid the whole page every frame). Upright (an icon rail) it stays. The logo and the
-    // button that hides it are BrandBar, fixed above: they don't move.
+    // button that hides it are BrandBar, fixed above: they don't move. A controller can show it over
+    // the page for a moment (menuPeek, useControllerNav), the page staying as it is.
     <aside
       className={cn(
         "drag fixed inset-y-0 left-0 z-20 w-64 border-r border-sidebar-border bg-sidebar transition-transform duration-300 ease-out will-change-transform max-md:w-16",
         hidden && "-translate-x-full",
+        menuPeek && "shadow-[24px_0_60px_rgb(0_0_0/0.6)]", // over the page, not beside it
       )}
       aria-hidden={hidden || undefined}
       inert={hidden || undefined}

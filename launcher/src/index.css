@@ -150,7 +150,7 @@
 [data-pad] :is(main, aside):has(:focus) :is(button, a[href], input, select, textarea, [role=switch], [role=combobox], [tabindex]):not([tabindex="-1"]):not(:focus) {
   opacity: 0.4;
 }
-[data-pad] :is(main, aside) :focus {
+[data-pad] :is(main, aside, [data-brandbar]) :focus {
   transform: scale(1.02);
 }
 [data-pad] [data-card]:focus {
@@ -160,4 +160,12 @@
  * its tinted background would read as a second highlight */
 [data-pad] aside:has(:focus) [aria-current=page] {
   background-color: transparent;
+}
+/* the menu button by the logo (BrandBar): the page and the sidebar fade while it has the focus */
+[data-pad]:has([data-brandbar] :focus) :is(main, aside) :is(button, a[href], input, select, textarea, [role=switch], [role=combobox], [tabindex]):not([tabindex="-1"]) {
+  opacity: 0.4;
+}
+[data-pad] [data-brandbar] :focus {
+  color: var(--foreground);
+  background-color: rgb(255 255 255 / 0.08);
 }
