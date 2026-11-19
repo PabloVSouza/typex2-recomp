@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Vulkan (Android):** SSF4's small text (CREDIT(S), INSERT COIN(S)) no longer shows
+  stray marks around the letters: a texture filled a piece at a time starts out
+  zeroed, as with OpenGL and Metal, not holding what a freed texture left.
+- **RetroArch:** `X2_PADLOG` logs directions too.
+
 ## 0.6.1 - 2026-11-19
 
 - **RetroArch on Android:** two buttons pressed together (SSF4's Focus Attack,

@@ -371,6 +371,7 @@ static void collect(void) {
 }
 
 static void end_rendering(void);
+static void dxt_check_run(void);
 static void cmd_begin(void) {
     VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                    VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL};
@@ -397,6 +398,7 @@ static void frame_begin(void) {
     cur_serial++;
     ring_start();
     collect();
+    dxt_check_run();
     cmd_begin();
     if (gputime) {
         u32 q = (u32)(fs - slots) * 2;
@@ -810,6 +812,26 @@ static void tex_upload_now(const TexUpload *k) {
             n->gen = t->gen;
             n->npend = t->npend;
             texs[k->id] = t = n;
+        }
+    }
+    /* A first upload covering part of a texture (SSF4's glyph cache, filled a letter at a time):
+     * the rest reads as zero, as in D3D, GL and Metal, not as whatever a freed texture left in the
+     * memory (stray marks around the letters, different every run) */
+    if (t->layout == VK_IMAGE_LAYOUT_UNDEFINED && !t->rt) {
+        u32 lv = t->cube ? (k->level & 15) : k->level;
+        u32 lw = t->w >> lv ? t->w >> lv : 1, lh = t->h >> lv ? t->h >> lv : 1;
+        if (k->x || k->y || k->w < lw || k->h < lh) {
+            transition(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            VkClearColorValue zero = {0};
+            VkImageSubresourceRange r = {VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0,
+                                         VK_REMAINING_ARRAY_LAYERS};
+            vkCmdClearColorImage(cmd, t->img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &zero, 1, &r);
+            /* the upload's copy (same layout) must come after the clear */
+            VkImageMemoryBarrier2 b = layout_barrier(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            di.imageMemoryBarrierCount = 1;
+            di.pImageMemoryBarriers = &b;
+            pvkCmdPipelineBarrier2(cmd, &di);
         }
     }
     t->uploaded = true;
@@ -1368,6 +1390,88 @@ static void dxt_init(void) {
     vkDestroyShaderModule(dev, mf, NULL);
 }
 
+/* X2_DXT_CHECK=1: each GPU decode is read back once the GPU is done with its frame and compared
+ * with gfx_dxt_decode of the same blocks; differences are logged (a decoder or sync bug) */
+typedef struct DxtCheck {
+    struct DxtCheck *next;
+    u64 serial;
+    VkBuffer buf;
+    Alloc mem;
+    u8 *want;
+    u32 id, level, face, x, y, w, h, px, fmt;
+} DxtCheck;
+static DxtCheck *dxt_checks;
+static int dxt_check = -1;
+static void dxt_check_add(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, const u8 *data, u32 bw, u32 bh) {
+    DxtCheck *c = calloc(1, sizeof *c);
+    u8 *full = gfx_dxt_decode(t->fmt, data, bw * 4, bh * 4);
+    c->serial = cur_serial;
+    c->id = t->id;
+    c->fmt = t->fmt;
+    c->level = level;
+    c->face = face;
+    c->x = x;
+    c->y = y;
+    c->w = w;
+    c->h = h;
+    c->px = t->rgb565 ? 2 : 4;
+    c->want = malloc((size_t)w * h * 4);
+    for (u32 r = 0; r < h; r++) memcpy(c->want + (size_t)r * w * 4, full + (size_t)r * bw * 16, (size_t)w * 4);
+    free(full);
+    if (t->rgb565) gfx_rgba_to_565(c->want, w * h);
+    VkBufferCreateInfo bi = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size = (VkDeviceSize)w * h * c->px;
+    bi.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VK_CHECK(vkCreateBuffer(dev, &bi, NULL, &c->buf));
+    VkMemoryRequirements req;
+    vkGetBufferMemoryRequirements(dev, c->buf, &req);
+    c->mem = mem_alloc(req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VK_CHECK(vkBindBufferMemory(dev, c->buf, blocks[c->mem.block].mem, c->mem.off));
+    transition(t, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    VkBufferImageCopy cp = {0};
+    cp.imageSubresource = (VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT, level, face, 1};
+    cp.imageOffset = (VkOffset3D){(s32)x, (s32)y, 0};
+    cp.imageExtent = (VkExtent3D){w, h, 1};
+    vkCmdCopyImageToBuffer(cmd, t->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, c->buf, 1, &cp);
+    VkMemoryBarrier2 mb = {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+    mb.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+    mb.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    mb.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    mb.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    di.memoryBarrierCount = 1;
+    di.pMemoryBarriers = &mb;
+    pvkCmdPipelineBarrier2(cmd, &di);
+    c->next = dxt_checks;
+    dxt_checks = c;
+}
+static void dxt_check_run(void) {
+    for (DxtCheck **pp = &dxt_checks; *pp;) {
+        DxtCheck *c = *pp;
+        if (c->serial > completed_serial) {
+            pp = &c->next;
+            continue;
+        }
+        const u8 *got = blocks[c->mem.block].map + c->mem.off;
+        u32 bad = 0, first = 0;
+        for (u32 i = 0; i < c->w * c->h; i++)
+            if (memcmp(got + (size_t)i * c->px, c->want + (size_t)i * c->px, c->px) && !bad++) first = i;
+        if (bad) {
+            u32 g = 0, wv = 0;
+            memcpy(&g, got + (size_t)first * c->px, c->px);
+            memcpy(&wv, c->want + (size_t)first * c->px, c->px);
+            x2_log("dxt check: tex %u fmt %u level %u face %u rect %u,%u %ux%u: %u of %u texels differ, first at "
+                   "%u,%u got %08x want %08x",
+                   c->id, c->fmt, c->level, c->face, c->x, c->y, c->w, c->h, bad, c->w * c->h, c->x + first % c->w,
+                   c->y + first / c->w, g, wv);
+        }
+        *pp = c->next;
+        vkDestroyBuffer(dev, c->buf, NULL);
+        mem_free(c->mem);
+        free(c->want);
+        free(c);
+    }
+}
 /* decode a w x h region at x,y of one level and face from packed block rows (bw x bh blocks);
  * false: not done (the caller decodes on the CPU) */
 static bool dxt_decode(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, const u8 *blocks, u32 bw, u32 bh) {
@@ -1431,6 +1535,8 @@ static bool dxt_decode(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h,
     vkCmdDraw(cmd, 3, 1, 0, 0);
     pvkCmdEndRendering(cmd);
     t->used = cur_serial;
+    if (dxt_check < 0) dxt_check = getenv("X2_DXT_CHECK") && atoi(getenv("X2_DXT_CHECK")) != 0;
+    if (dxt_check) dxt_check_add(t, level, face, x, y, w, h, blocks, bw, bh);
     return true;
 }
 

@@ -87,7 +87,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_HEAP_MID=0` | libretro core (ELF): 4-256 KB blocks from the system allocator instead of the instance's releasable size-class chunks (A/B) |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
 | `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
-| `X2_PADLOG=1` | RetroArch core: log each change of the RetroPad buttons the frontend reports and the cabinet buttons they press (finds remaps that move buttons) |
+| `X2_PADLOG=1` | RetroArch core: log each change of the directions and RetroPad buttons the frontend reports and the cabinet buttons they press (finds remaps that move buttons; against `adb shell getevent -lt`, presses or motions the frontend split or dropped) |
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture; upper case C S U D L R A B X Y = player 2) |
 | `X2_DRAWLOG=<frame>[-<last>]` | log every draw of those frames (GL: also `X2_DRAWLOG_VERTS=<n>`, the first n vertices of each draw as floats and hex) |
 | `X2_SHADERLOG=<id>` / `X2_DUMPTEX=<id>[@frame]` `X2_DUMPDIR=dir` | print a translated shader / dump a texture (`tex<id>-f<frame>.png`) |
@@ -98,6 +98,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_MTL_COLD=1` | Metal: give every run's shader entry points their own name, so macOS's shader cache misses as on a first play; with `X2_PACELOG=1` (each pipeline over 2 ms with its shader time, and a per-120-frame total) it measures what a new player sees |
 | `X2_PREBUILD=0` | Vulkan: build each missing pipeline at its draw, one at a time. By default a draw missing its pipeline scans the rest of its frame, predicts the other draws' pipelines from their recorded state, and builds the missing ones together on worker threads (a scene's stalls become one; Mali compiles them one at a time anyway) |
 | `X2_DXT_GPU=0` / `X2_LAZY_UPLOAD=0` | Vulkan: decode DXT textures on the CPU again (default: on the GPU, for GPUs without S3TC) / upload every texture at once (default: uploads to textures no draw has read yet wait, a few MB a frame, until something reads them) |
+| `X2_DXT_CHECK=1` | Vulkan: read back each DXT texture the GPU decodes and compare it with the CPU decoder, logging the texels that differ ("dxt check: ..."); slow |
 | `X2_GPUTIME=1` / `=2` | GPU time per frame / per render-target pass (timer queries; Metal: `=1` only, from command buffer times) |
 | `X2_AB=<frames>` `X2_AB_TEST=pipeline\|mediump` | alternate one experiment every `<frames>`; `X2_GPUTIME=1` and `X2_PACELOG=1` then report both halves of the same scenes |
 | `X2_PROF=<secs>` `X2_PROF_OUT=file` | sampling profiler of the runtime's threads (1 ms); offsets resolve against the unstripped `typex2_libretro_android.so.sym` |

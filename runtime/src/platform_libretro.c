@@ -348,10 +348,16 @@ static u16 player_bits(unsigned port) {
     static int padlog = -1;
     static u32 last[2];
     if (padlog < 0) padlog = getenv("X2_PADLOG") != NULL;
+    /* the directions too (bits 16-19), to see a motion the frontend dropped */
+    pressed |= (v & JVS_UP ? 1u << 16 : 0) | (v & JVS_DOWN ? 1u << 17 : 0) | (v & JVS_LEFT ? 1u << 18 : 0) |
+               (v & JVS_RIGHT ? 1u << 19 : 0);
     if (padlog && port < 2 && pressed != last[port]) {
         static const char *const nm[X2P_COUNT] = {"south(B)", "east(A)", "west(Y)", "north(X)", "L1",
                                                   "R1",       "L2",      "R2",      "L3",       "R3"};
         char s[160] = "", lab[16];
+        static const char *const dn[4] = {" up", " down", " left", " right"};
+        for (int i = 0; i < 4; i++)
+            if (pressed & 1u << (16 + i)) strncat(s, dn[i], sizeof s - strlen(s) - 1);
         for (int i = 0; i < X2P_COUNT; i++)
             if (pressed & 1u << i) {
                 x2_padmap_label(map[i], lab);

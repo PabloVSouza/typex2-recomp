@@ -2,6 +2,20 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-19: RetroArch input on Android, SSF4's text on Vulkan
+
+- MP+MK (Focus Attack) failed in RetroArch with an arcade stick: the stick
+  reports both buttons in one evdev report, but Android hands RetroArch one
+  key event at a time and with Input Block Timeout 0 the second arrives 16-31
+  ms later. 2 ms fixes it (a RetroArch setting, documented). `X2_PADLOG`
+  against `getevent -lt` showed it; it now logs directions too, which showed
+  super-motion misses came from the stick, not the frontend.
+- Stray marks around SSF4's small text on Vulkan: the glyph cache is filled
+  one letter at a time, and a new Vulkan image holds what a freed texture left
+  in its memory (GL and Metal hand out zeroed storage). A texture whose first
+  upload is partial is now cleared first. `X2_DXT_CHECK=1` (GPU DXT decode
+  read back against the CPU decoder) ruled out the decoder on the way.
+
 ## 2026-11-18: Samurai Shodown: Edge of Destiny at 60 fps on Android (SD mode)
 
 - The HD switch was not system switch bit 0: `main` tests bit 0 of the first
