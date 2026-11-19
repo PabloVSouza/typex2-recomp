@@ -10,6 +10,8 @@
   },
   "nav": {
     "library": "Bibliothek",
+    "hideMenu": "Menü ausblenden",
+    "showMenu": "Menü einblenden",
     "games": "Spiele",
     "export": "Export",
     "tools": "Build-Tools",

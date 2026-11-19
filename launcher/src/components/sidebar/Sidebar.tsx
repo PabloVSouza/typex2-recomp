@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Boxes, Gamepad2, Info, Library, ScrollText, Wrench } from "lucide-react";
+import { Boxes, Gamepad2, Info, Library, PanelLeftClose, ScrollText, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Brand } from "@/components/sidebar/Brand";
 import { Dot } from "@/components/sidebar/Dot";
@@ -11,7 +11,7 @@ import { useUi, type Page } from "@/stores";
 export function Sidebar() {
   const { t } = useTranslation();
   const { data } = useAppState();
-  const { page, gameId, go } = useUi();
+  const { page, gameId, go, setMenuHidden } = useUi();
   const at = (p: Page) => page === p;
   // the Android app plays games built elsewhere: no exports or build tools there
   const desktop = data?.os !== "android";
@@ -24,7 +24,18 @@ export function Sidebar() {
   const tabs = desktop ? all : all.filter(([p]) => p !== "export" && p !== "tools");
   return (
     <aside className={cn("drag flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/70 px-3 pb-4 backdrop-blur-sm max-md:w-16 max-md:px-2", data?.os === "macos" ? "pt-11" : "pt-5")} data-tauri-drag-region>
-      <div className="mb-7 px-2 max-md:mb-5 max-md:px-0"><Brand /></div>
+      <div className="mb-7 flex items-center justify-between gap-2 px-2 max-md:mb-5 max-md:justify-center max-md:px-0">
+        <Brand />
+        <button
+          type="button"
+          onClick={() => setMenuHidden(true)}
+          title={t("nav.hideMenu")}
+          aria-label={t("nav.hideMenu")}
+          className="no-drag rounded-lg p-1.5 text-muted-foreground transition hover:bg-white/5 hover:text-foreground max-md:hidden [&_svg]:size-4"
+        >
+          <PanelLeftClose />
+        </button>
+      </div>
       <nav className="no-drag flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         <NavItem label={t("nav.library")} icon={<Library />} active={at("library")} onClick={() => go("library")} />
         {data && data.games.length > 0 && (

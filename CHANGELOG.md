@@ -14,6 +14,12 @@ games are recompiled on your computer from your own files.
   thumbnail server, fetched once); the board, year, publisher and status as
   icons; on narrow screens (a tablet held upright) the sidebar becomes an
   icon rail and the content gets the width.
+- **Launcher:** controller navigation: the d-pad or stick moves between
+  controls, A plays the focused game, X opens its page, B goes back; the
+  focused card stands out while a controller is in use. Refresh reloads the
+  art. On Android the launcher runs at the display's fastest refresh rate.
+- **Launcher:** full-screen mode: the button by the logo hides the menu (the
+  logo and a button to bring it back stay), and the library takes the width.
 
 ## 0.5.0 - 2026-11-19
 

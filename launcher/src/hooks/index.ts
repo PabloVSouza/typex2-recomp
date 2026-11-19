@@ -1,6 +1,7 @@
 export * from "@/hooks/useAction";
 export * from "@/hooks/useAddGame";
 export * from "@/hooks/useAppState";
+export * from "@/hooks/useControllerNav";
 export * from "@/hooks/useDevices";
 export * from "@/hooks/useEvents";
 export * from "@/hooks/useGameArt";

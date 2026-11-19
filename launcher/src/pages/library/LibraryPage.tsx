@@ -4,10 +4,16 @@ import { Trans, useTranslation } from "react-i18next";
 import { Empty, PageHeader, Row, Section } from "@/components/common";
 import { Button } from "@/components/ui";
 import { useAction, useAddGame, useAppState, useScanFolder } from "@/hooks";
-import { api, openUrl, queryClient } from "@/lib";
+import { api, cn, openUrl, queryClient } from "@/lib";
 import { GameCard } from "@/pages/library/GameCard";
+import { useUi } from "@/stores";
 
 const refresh = () => queryClient.invalidateQueries({ queryKey: ["state"] });
+/** the Refresh button: the library and the art (ES-DE media added since shows up) */
+const refreshAll = () => {
+  void refresh();
+  void queryClient.resetQueries({ queryKey: ["art"] });
+};
 
 /** The project's Discord server (a permanent invite) */
 const DISCORD = "https://discord.gg/bEQYMsEe9A";
@@ -15,6 +21,7 @@ const DISCORD = "https://discord.gg/bEQYMsEe9A";
 export function LibraryPage() {
   const { t } = useTranslation();
   const { data } = useAppState();
+  const menuHidden = useUi((s) => s.menuHidden);
   const addGame = useAddGame();
   const scanFolder = useScanFolder();
   const allow = useAction(api.allowAllFiles);
@@ -43,7 +50,7 @@ export function LibraryPage() {
           android ? (
             <>
               {discord}
-              <Button variant="secondary" onClick={refresh}><RefreshCw /> {t("library.android.refresh")}</Button>
+              <Button variant="secondary" onClick={refreshAll}><RefreshCw /> {t("library.android.refresh")}</Button>
             </>
           ) : (
             <>
@@ -76,7 +83,7 @@ export function LibraryPage() {
           )}
         </Empty>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">{data.games.map((g) => <GameCard key={g.id} game={g} />)}</div>
+        <div className={cn("grid gap-4 sm:grid-cols-2", menuHidden && "lg:grid-cols-3")}>{data.games.map((g) => <GameCard key={g.id} game={g} />)}</div>
       )}
     </>
   );

@@ -7,7 +7,7 @@ import type { GameEntry } from "@/lib";
 import { cn } from "@/lib";
 
 /** Build, Play or Stop: the game's next step on this computer. */
-export function GameAction({ game, size = "default" }: { game: GameEntry; size?: "default" | "lg" }) {
+export function GameAction({ game, size = "default", tabIndex }: { game: GameEntry; size?: "default" | "lg"; tabIndex?: number }) {
   const { t } = useTranslation();
   const { data } = useAppState();
   const build = useAction(api.buildLibrary);
@@ -16,18 +16,18 @@ export function GameAction({ game, size = "default" }: { game: GameEntry; size?:
   if (!data?.can_play || !game.supported) return null;
   const big = size === "lg" ? "h-11 px-5 text-base" : "";
   if (data.running === game.id) {
-    return <Button variant="destructive" className={big} onClick={() => stop.mutate(undefined)}><Square /> {t("game.stop")}</Button>;
+    return <Button variant="destructive" tabIndex={tabIndex} className={big} onClick={() => stop.mutate(undefined)}><Square /> {t("game.stop")}</Button>;
   }
   if (game.library.state === "ready") {
     return (
-      <Button className={cn(big, "font-semibold")} disabled={!game.found || !!data.running} onClick={() => launch.mutate(game.id)}>
+      <Button tabIndex={tabIndex} className={cn(big, "font-semibold")} disabled={!game.found || !!data.running} onClick={() => launch.mutate(game.id)}>
         <Play className="fill-current" /> {t("game.play")}
       </Button>
     );
   }
   if (data.android) return null; // the pack comes from the launcher on a computer
   return (
-    <Button variant="secondary" className={big} disabled={!game.found || !!data.job} onClick={() => build.mutate(game.id)}>
+    <Button variant="secondary" tabIndex={tabIndex} className={big} disabled={!game.found || !!data.job} onClick={() => build.mutate(game.id)}>
       <Hammer /> {game.library.state === "stale" ? t("game.rebuild") : t("game.build")}
     </Button>
   );

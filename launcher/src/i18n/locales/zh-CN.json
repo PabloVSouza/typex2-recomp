@@ -10,6 +10,8 @@
   },
   "nav": {
     "library": "游戏库",
+    "hideMenu": "隐藏菜单",
+    "showMenu": "显示菜单",
     "games": "游戏",
     "export": "导出",
     "tools": "构建工具",

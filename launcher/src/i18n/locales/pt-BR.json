@@ -10,6 +10,8 @@
   },
   "nav": {
     "library": "Biblioteca",
+    "hideMenu": "Ocultar menu",
+    "showMenu": "Mostrar menu",
     "games": "Jogos",
     "export": "Exportar",
     "tools": "Ferramentas",

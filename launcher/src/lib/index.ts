@@ -6,3 +6,4 @@ export * from "@/lib/types";
 export * from "@/lib/utils";
 export * from "@/lib/report";
 export * from "@/lib/gamepad";
+export * from "@/lib/spatialNav";
