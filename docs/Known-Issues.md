@@ -41,4 +41,7 @@ that isn't here? Report it in
   These come from occasional 20-30 ms frames; the game thread averages
   12-13.5 ms, and the GPU 10-12.5 ms. No link play; the opening
   movie's English audio track isn't in the game's files
-  ([details](Game-SSF4-AE.md#known-issues)).
+  ([details](Game-SSF4-AE.md#known-issues)). In RetroArch on Android, MP+MK
+  (Focus Attack) was reported not to come out with an 8-button stick; the same
+  stick does it in the standalone app, and in RetroArch MP+MK from a virtual
+  gamepad comes out as a Focus Attack. Under investigation.

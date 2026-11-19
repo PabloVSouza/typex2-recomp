@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Launcher on Android:** the controller layout's Assign reads every button
+  of controllers Android doesn't know, such as arcade sticks, including L2 and
+  R2 when they are triggers. Before, those buttons couldn't be assigned, and
+  sometimes no button registered at all.
+
 ## 0.6.0 - 2026-11-19
 
 A launcher you can use from the couch: game art, controller navigation and a

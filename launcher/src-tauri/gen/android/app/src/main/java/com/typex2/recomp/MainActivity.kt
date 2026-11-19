@@ -2,6 +2,9 @@ package com.typex2.recomp
 
 import android.os.Build
 import android.os.Bundle
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -16,7 +19,52 @@ class MainActivity : TauriActivity() {
   // library (window.x2Back, useControllerNav); only when it has nothing to do does the app leave.
   override val handleBackNavigation: Boolean = false
 
+  // Controller buttons and triggers, passed to the page as X2_PAD names (window.x2PadButton): the
+  // WebView's Gamepad API shows some pads only after certain presses, and an arcade stick's L2 / R2
+  // only as axes; the layout editor's Assign reads these (lib/gamepad.ts). Nothing is consumed.
+  private var page: WebView? = null
+  private val triggerDown = BooleanArray(2)
+
+  private fun padButton(name: String, down: Boolean) {
+    page?.post { page?.evaluateJavascript("window.x2PadButton && window.x2PadButton('$name', $down)", null) }
+  }
+
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    val name = when (event.keyCode) {
+      KeyEvent.KEYCODE_BUTTON_A -> "south"
+      KeyEvent.KEYCODE_BUTTON_B -> "east"
+      KeyEvent.KEYCODE_BUTTON_X -> "west"
+      KeyEvent.KEYCODE_BUTTON_Y -> "north"
+      KeyEvent.KEYCODE_BUTTON_L1 -> "l1"
+      KeyEvent.KEYCODE_BUTTON_R1 -> "r1"
+      KeyEvent.KEYCODE_BUTTON_L2 -> "l2"
+      KeyEvent.KEYCODE_BUTTON_R2 -> "r2"
+      KeyEvent.KEYCODE_BUTTON_THUMBL -> "l3"
+      KeyEvent.KEYCODE_BUTTON_THUMBR -> "r3"
+      else -> null
+    }
+    if (name != null && event.repeatCount == 0 && event.action != KeyEvent.ACTION_MULTIPLE)
+      padButton(name, event.action == KeyEvent.ACTION_DOWN)
+    return super.dispatchKeyEvent(event)
+  }
+
+  override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+    if (event.isFromSource(InputDevice.SOURCE_JOYSTICK) && event.action == MotionEvent.ACTION_MOVE) {
+      val l = maxOf(event.getAxisValue(MotionEvent.AXIS_LTRIGGER), event.getAxisValue(MotionEvent.AXIS_BRAKE))
+      val r = maxOf(event.getAxisValue(MotionEvent.AXIS_RTRIGGER), event.getAxisValue(MotionEvent.AXIS_GAS))
+      for ((i, v) in floatArrayOf(l, r).withIndex()) {
+        val down = v > 0.5f
+        if (down != triggerDown[i]) {
+          triggerDown[i] = down
+          padButton(if (i == 0) "l2" else "r2", down)
+        }
+      }
+    }
+    return super.dispatchGenericMotionEvent(event)
+  }
+
   override fun onWebViewCreate(webView: WebView) {
+    page = webView
     // draws (a controller's moves and scrolls included, not only touch) at the fastest rate
     if (Build.VERSION.SDK_INT >= 35) webView.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_HIGH)
     val callback = object : OnBackPressedCallback(true) {
