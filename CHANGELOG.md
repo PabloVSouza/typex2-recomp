@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.6.2 - 2026-11-19
 
 - **Vulkan (Android):** SSF4's small text (CREDIT(S), INSERT COIN(S)) no longer shows
   stray marks around the letters: a texture filled a piece at a time starts out
