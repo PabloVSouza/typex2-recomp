@@ -1,12 +1,12 @@
-//! Game art for the library cards: the user's own ES-DE scraped media (fanart, then screenshots,
-//! then title screens) for the game's folder, found in ES-DE's media folder. Nothing is
-//! downloaded or written; without ES-DE media the card shows its plain background.
+//! Game art for the library cards: the user's own ES-DE scraped media (fanart, screenshots,
+//! title screens, miximages, covers) for the game's folder, found in ES-DE's media folder and
+//! only read. Without any, `remote` fetches the console port's libretro thumbnail once.
 use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Biggest image handed to the window (fanart is a few hundred KB to a few MB).
 const MAX_BYTES: u64 = 8 << 20;
-const KINDS: [&str; 3] = ["fanart", "screenshots", "titlescreens"];
+const KINDS: [&str; 5] = ["fanart", "screenshots", "titlescreens", "miximages", "covers"];
 const EXTS: [&str; 3] = ["jpg", "png", "jpeg"];
 
 /// ES-DE's home folders: ~/ES-DE (desktop), the shared storage's ES-DE folder (Android).
