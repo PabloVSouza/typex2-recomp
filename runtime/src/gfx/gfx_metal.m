@@ -1717,15 +1717,11 @@ void gfx_mtl_present(u32 ww, u32 wh) {
             v0 = ((float)t->h - ih) / 2 / (float)t->h;
             v1 = v0 + ih / (float)t->h;
         }
-        float sa = (float)ww / (float)wh, ga = (float)t->w / ih;
-        double vw = ww, vh = wh;
-        if (sa > ga)
-            vw = wh * ga;
-        else
-            vh = ww / ga;
+        int32_t px, py, vw, vh;
+        gfx_present_fit(ww, wh, (float)t->w / ih, &px, &py, &vw, &vh);
         MTLPixelFormat cf[4] = {MTLPixelFormatBGRA8Unorm};
         [e setRenderPipelineState:builtin_pipe(1, cf, MTLPixelFormatInvalid, MTLColorWriteMaskAll)];
-        [e setViewport:(MTLViewport){(ww - vw) / 2, (wh - vh) / 2, vw, vh, 0, 1}];
+        [e setViewport:(MTLViewport){px, py, vw, vh, 0, 1}];
         float uv[4] = {0, v0, 1, v1}, z = 0;
         [e setVertexBytes:uv length:16 atIndex:0];
         [e setVertexBytes:&z length:4 atIndex:1];

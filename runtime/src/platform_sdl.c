@@ -10,6 +10,7 @@
 #ifdef __APPLE__
 #include <pthread/qos.h>
 #endif
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
@@ -216,11 +217,9 @@ static void present_image(GLuint tex, u32 tw, u32 th) {
         v0 = ((float)th - ih) / 2 / (float)th;
         v1 = v0 + ih / (float)th;
     }
-    float sa = (float)ww / (float)wh, ga = (float)tw / ih;
-    int vw = ww, vh = wh;
-    if (sa > ga) vw = (int)(wh * ga);
-    else vh = (int)(ww / ga);
-    glViewport((ww - vw) / 2, (wh - vh) / 2, vw, vh);
+    int32_t px, py, vw, vh;
+    gfx_present_fit((u32)ww, (u32)wh, (float)tw / ih, &px, &py, &vw, &vh);
+    glViewport(px, wh - py - vh, vw, vh); /* GL: y bottom-up */
     glUseProgram(blit_prog);
     glUniform2f(blit_rows, v0, v1);
     glActiveTexture(GL_TEXTURE0);
@@ -425,16 +424,43 @@ static bool touch_visible(void) {
     return (n > 0 || touch_seen) && !x2_pad0();
 }
 
+/* An upright screen (a phone, a tablet held upright) with the touch pad: COIN / START / TEST in
+ * a strip at the top, the picture under it in the top 60%, the stick and buttons in the rest,
+ * side by side. Sideways, the picture fills the window and the pad lies over it. */
+static bool portrait_pad(int ww, int wh) { return ww < wh && touch_visible(); }
+static void present_area_update(int ww, int wh) {
+    if (portrait_pad(ww, wh)) {
+        int top = (int)((float)ww * 0.055f * 2.6f);
+        gfx_set_present_area(0, top, ww, (int)((float)wh * 0.6f) - top);
+    } else {
+        gfx_set_present_area(0, 0, 0, 0);
+    }
+}
+
 static void touch_layout(int ww, int wh) {
     float s = (float)(ww < wh ? ww : wh);
-    float br = s * 0.085f, sr = s * 0.19f;
-    tctl[TC_STICK] = (TouchCtl){s * 0.30f, wh - s * 0.30f, sr, NULL, tctl[TC_STICK].tex, 0, 0, 0};
-    /* two rows of up to three, each column a little higher than the last (an arcade panel's curve) */
+    float br = s * 0.085f, sr = s * 0.19f, sx = s * 0.30f, sy = wh - s * 0.30f;
     const char *label[6];
     u16 bits[6];
     x2_touch_buttons(label, bits);
     bool three = label[2] || label[5];
-    float bx = ww - s * (three ? 0.70f : 0.62f), by = wh - s * 0.16f, dx = br * 2.3f;
+    float dx, bx, by;
+    if (ww < wh) { /* the bottom 40%, under the picture */
+        float y0 = (float)wh * 0.6f, ah = (float)wh - y0;
+        sr = fminf(ww * 0.18f, ah * 0.34f);
+        br = fminf(ww * 0.075f, ah * 0.13f);
+        sx = ww * 0.25f;
+        sy = y0 + ah * 0.5f;
+        dx = br * 2.3f;
+        bx = ww - br * 1.8f - dx * (three ? 2 : 1); /* the top row sits br * 0.4 to the right */
+        by = sy + br * 1.15f;
+    } else {
+        dx = br * 2.3f;
+        bx = ww - s * (three ? 0.70f : 0.62f);
+        by = wh - s * 0.16f;
+    }
+    tctl[TC_STICK] = (TouchCtl){sx, sy, sr, NULL, tctl[TC_STICK].tex, 0, 0, 0};
+    /* two rows of up to three, each column a little higher than the last (an arcade panel's curve) */
     for (int i = 0; i < 6; i++) {
         TouchCtl *c = &tctl[TC_BTN + i];
         int col = i % 3, top = i < 3;
@@ -916,6 +942,11 @@ int x2_platform_run(X2Thread *guest, bool start_fullscreen) {
          * not visible (locked screen, minimized), and drop vsync if a swap
          * blocks (display asleep / no vblank), restoring it after a while. */
         SDL_WindowFlags wf = SDL_GetWindowFlags(win);
+        {
+            int pw, ph;
+            SDL_GetWindowSizeInPixels(win, &pw, &ph);
+            present_area_update(pw, ph);
+        }
         if ((wf & (SDL_WINDOW_OCCLUDED | SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED)) || x2_screen_locked()) {
             SDL_Delay(2);
         } else if (use_metal) {

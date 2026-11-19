@@ -3073,13 +3073,8 @@ void gfx_vk_present(u32 ww, u32 wh) {
     /* KOF XIII Climax's 4:3 image carries a 16:9 picture with bars: show that band */
     float ih = (float)t->h;
     if (t->w * 3 == t->h * 4 && x2_game_letterboxed()) ih = (float)(t->w * 9 / 16);
-    float sa = (float)sc_extent.width / (float)sc_extent.height, ga = (float)t->w / ih;
-    s32 vw = (s32)sc_extent.width, vh = (s32)sc_extent.height;
-    if (sa > ga)
-        vw = (s32)(sc_extent.height * ga);
-    else
-        vh = (s32)(sc_extent.width / ga);
-    s32 x0 = ((s32)sc_extent.width - vw) / 2, yy0 = ((s32)sc_extent.height - vh) / 2;
+    s32 x0, yy0, vw, vh;
+    gfx_present_fit(sc_extent.width, sc_extent.height, (float)t->w / ih, &x0, &yy0, &vw, &vh);
     /* One pass that clears to black and draws the image as a quad. A clear and a scaling blit
      * left a block of garbage on Mali in the screen tile where the picture ends (beside a 4:3
      * image on the 5:3 tablet). */

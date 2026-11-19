@@ -23,6 +23,9 @@ games are recompiled on your computer from your own files.
 - **`X2_SCENE_SCALE`** (opt-in, all renderers): draws a game's 3D scene and
   its effects at a fraction of their size, the HUD at full size. Samurai
   Shodown: Edge of Destiny in HD holds 60 fps on the test tablet at `0.75`.
+- **Android, held upright:** the picture sits at the top and the touch
+  stick and buttons get the space below it, side by side, instead of
+  overlapping each other and the picture.
 - **Android (Vulkan):** the picture is drawn in one pass. A block of
   coloured garbage beside 4:3 pictures (on Mali GPUs) is gone, and so,
   very likely, are the single black frames that made movies blink.

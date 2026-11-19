@@ -400,3 +400,23 @@ void gfx_replay_time(u64 ns) {
 
 GfxId gfx_backbuffer;
 void gfx_set_backbuffer(GfxId id) { gfx_backbuffer = id; }
+
+/* ---- where the front end shows the picture ----------------------------------------- */
+static int32_t parea[4]; /* x, y (top down), w, h; w = 0: the whole window */
+void gfx_set_present_area(int32_t x, int32_t y, int32_t w, int32_t h) {
+    parea[0] = x, parea[1] = y, parea[2] = w, parea[3] = h;
+}
+void gfx_present_fit(uint32_t ww, uint32_t wh, float aspect, int32_t *x, int32_t *y, int32_t *w, int32_t *h) {
+    int32_t ax = 0, ay = 0, aw = (int32_t)ww, ah = (int32_t)wh;
+    if (parea[2] > 0 && parea[3] > 0 && parea[0] + parea[2] <= aw && parea[1] + parea[3] <= ah)
+        ax = parea[0], ay = parea[1], aw = parea[2], ah = parea[3];
+    int32_t vw = aw, vh = ah;
+    if ((float)aw / (float)ah > aspect)
+        vw = (int32_t)((float)ah * aspect);
+    else
+        vh = (int32_t)((float)aw / aspect);
+    *x = ax + (aw - vw) / 2;
+    *y = ay + (ah - vh) / 2;
+    *w = vw;
+    *h = vh;
+}

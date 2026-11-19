@@ -90,6 +90,10 @@ void gfx_draw_up(const GfxState *st, uint32_t prim, uint32_t count, const void *
 void gfx_blit(GfxId src, const uint32_t srect[4], GfxId dst, const uint32_t drect[4], bool linear);
 void gfx_present(void);
 void gfx_set_backbuffer(GfxId id); /* texture that Present() shows */
+/* the window area the picture is fitted into (top-down; w = 0: the whole window), and the
+ * picture's rectangle for a window and an aspect ratio (the backends' presents) */
+void gfx_set_present_area(int32_t x, int32_t y, int32_t w, int32_t h);
+void gfx_present_fit(uint32_t ww, uint32_t wh, float aspect, int32_t *x, int32_t *y, int32_t *w, int32_t *h);
 extern GfxId gfx_backbuffer;       /* read by the backends */
 uint64_t gfx_frame_count(void);
 void gfx_request_capture(void); /* log every draw of the next replayed frame */

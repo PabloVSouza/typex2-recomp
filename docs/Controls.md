@@ -23,7 +23,9 @@
 - **L3 / R3** stay free for frontend hotkeys.
 - **Touch.** On touch screens without a pad, an on-screen pad appears with
   the game's buttons: KOF C D over A B, SSF4 LP MP HP over LK MK HK,
-  BlazBlue A B C over D, Samurai Shodown EoD A B C over R.
+  BlazBlue A B C over D, Samurai Shodown EoD A B C over R. Sideways it lies
+  over the picture; held upright, the picture moves to the top and the
+  stick and buttons sit below it.
 
 ### Default layouts
 
