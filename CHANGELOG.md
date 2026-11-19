@@ -7,6 +7,14 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Launcher:** game art on the library cards and the game page (the
+  user's own ES-DE media, else the console port's image from libretro's
+  thumbnail server, fetched once); the board, year, publisher and status as
+  icons; on narrow screens (a tablet held upright) the sidebar becomes an
+  icon rail and the content gets the width.
+
 ## 0.5.0 - 2026-11-19
 
 Samurai Shodown: Edge of Destiny at 60 fps on Android, OpenGL as a full

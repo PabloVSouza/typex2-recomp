@@ -58,6 +58,7 @@ const state: AppStateData = {
 
 export async function mockInvoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
   if (cmd === "load_state") return structuredClone(state);
+  if (cmd === "game_art") return null; // the preview has no art: cards show their plain background
   if (cmd === "save_language") state.language = args?.language as string;
   if (cmd === "allow_all_files" && state.android) state.android.all_files = true;
   if (cmd === "save_update_check") state.check_updates = args?.enabled as boolean;

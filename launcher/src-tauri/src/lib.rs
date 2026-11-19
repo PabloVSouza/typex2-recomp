@@ -3,6 +3,7 @@
 //! On Android it is the app: games found in ES-DE's ROMs folder, played from packs (android.rs).
 #[cfg(target_os = "android")]
 pub mod android;
+pub mod art;
 pub mod config;
 pub mod device;
 pub mod games;
@@ -143,6 +144,19 @@ fn load_state(state: State<AppState>) -> Result<Value> {
         "packages": toolchain::packages(),
         "tools_size": toolchain::disk_use(&state.data),
     }))
+}
+
+/// The game's art for its library card (ES-DE scraped media), as a data: URL, or null.
+#[tauri::command]
+async fn game_art(state: State<'_, AppState>, id: String) -> Result<Option<String>> {
+    let path = state.config()?.games.iter().find(|g| g.id == id).map(|g| PathBuf::from(&g.path));
+    // the user's own ES-DE media first, else libretro's thumbnail (fetched once, cached)
+    let local = path.and_then(|p| art::find(&p));
+    let file = match local {
+        Some(f) => Some(f),
+        None => art::remote(&state.data, &id).await,
+    };
+    Ok(file.and_then(|f| art::data_url(&f)))
 }
 
 /// Adds a game folder (or points an added game at a new folder).
@@ -436,6 +450,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             load_state,
+            game_art,
             add_game,
             scan_folder,
             remove_game,

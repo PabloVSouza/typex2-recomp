@@ -3,6 +3,7 @@ export * from "@/hooks/useAddGame";
 export * from "@/hooks/useAppState";
 export * from "@/hooks/useDevices";
 export * from "@/hooks/useEvents";
+export * from "@/hooks/useGameArt";
 export * from "@/hooks/useLanguageSync";
 export * from "@/hooks/useOpenRelease";
 export * from "@/hooks/useRelease";

@@ -95,7 +95,7 @@ fn decode_list(status: StatusCode, body: &[u8], current: &str) -> Result<Option<
 
 /// The system's certificate store, except on Android: there reqwest's platform verifier needs
 /// Java-side setup the app does not do, so the client trusts Mozilla's root set instead.
-fn root_certs(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+pub(crate) fn root_certs(b: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
     #[cfg(target_os = "android")]
     return b.tls_certs_only(webpki_root_certs::TLS_SERVER_ROOT_CERTS.iter().filter_map(|c| reqwest::Certificate::from_der(c).ok()));
     #[cfg(not(target_os = "android"))]

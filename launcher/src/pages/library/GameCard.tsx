@@ -1,27 +1,46 @@
+import { Building2, CalendarDays, Cpu, Gamepad2 } from "lucide-react";
 import { JobProgress } from "@/components/common";
-import { GameAction, LibraryBadge } from "@/components/games";
+import { GameAction, InfoChip, LibraryStatusIcon } from "@/components/games";
+import { useGameArt } from "@/hooks";
 import type { GameEntry } from "@/lib";
 import { useUi } from "@/stores";
 
+/** A game in the library: its art (ES-DE media or a libretro thumbnail) behind the title, the board,
+ *  year and publisher as chips, the status as an icon and the next action. */
 export function GameCard({ game }: { game: GameEntry }) {
   const go = useUi((s) => s.go);
+  const { data: art } = useGameArt(game.id);
+  const info = game.info;
   return (
-    <div className="surface group relative flex flex-col overflow-hidden rounded-2xl p-5 transition hover:bg-white/[0.03]">
-      <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-gradient-to-br from-amber/15 to-pink/5 blur-2xl transition group-hover:from-amber/25" />
-      <button type="button" className="relative text-left" onClick={() => go("game", game.id)}>
-        {game.info && (
-          <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span className="text-cyan">{game.info.board}</span> · {game.info.year} · {game.info.publisher}
+    <div className="surface group relative isolate flex min-h-48 flex-col overflow-hidden rounded-2xl">
+      {art ? (
+        <img src={art} alt="" className="absolute inset-0 -z-20 size-full object-cover transition duration-500 group-hover:scale-105" />
+      ) : (
+        <div className="absolute inset-0 -z-20 flex items-center justify-center bg-gradient-to-br from-amber/15 via-transparent to-cyan/10">
+          <Gamepad2 className="size-16 text-white/10" />
+        </div>
+      )}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
+      <div className="flex items-start justify-between gap-2 p-3">
+        {info ? (
+          <div className="flex flex-wrap gap-1">
+            <InfoChip icon={<Cpu />} title={info.board}>{info.board.replace(/^Type /, "")}</InfoChip>
+            <InfoChip icon={<CalendarDays />}>{info.year}</InfoChip>
+            <InfoChip icon={<Building2 />}>{info.publisher}</InfoChip>
           </div>
+        ) : (
+          <span />
         )}
-        <div className="font-display text-lg font-semibold leading-snug">{game.title}</div>
-        <div className="mt-1 truncate text-xs text-muted-foreground" title={game.path}>{game.path}</div>
-      </button>
-      <JobProgress match={`library:${game.id}`} className="relative mt-4" />
-      <div className="relative mt-auto flex items-center justify-between gap-3 pt-5">
-        <LibraryBadge game={game} />
+        <LibraryStatusIcon game={game} />
+      </div>
+      <button type="button" className="flex-1 cursor-pointer" aria-label={game.title} onClick={() => go("game", game.id)} />
+      <div className="flex items-end justify-between gap-3 p-4 pt-0">
+        <button type="button" className="min-w-0 text-left" onClick={() => go("game", game.id)}>
+          <div className="font-display text-lg font-semibold leading-snug text-white drop-shadow-md">{game.title}</div>
+        </button>
         <GameAction game={game} />
       </div>
+      <JobProgress match={`library:${game.id}`} className="mx-4 mb-4" />
     </div>
   );
 }

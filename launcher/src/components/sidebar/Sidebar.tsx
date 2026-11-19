@@ -23,12 +23,12 @@ export function Sidebar() {
   ];
   const tabs = desktop ? all : all.filter(([p]) => p !== "export" && p !== "tools");
   return (
-    <aside className={cn("drag flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/70 px-3 pb-4 backdrop-blur-sm", data?.os === "macos" ? "pt-11" : "pt-5")} data-tauri-drag-region>
-      <div className="mb-7 px-2"><Brand /></div>
+    <aside className={cn("drag flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar/70 px-3 pb-4 backdrop-blur-sm max-md:w-16 max-md:px-2", data?.os === "macos" ? "pt-11" : "pt-5")} data-tauri-drag-region>
+      <div className="mb-7 px-2 max-md:mb-5 max-md:px-0"><Brand /></div>
       <nav className="no-drag flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
         <NavItem label={t("nav.library")} icon={<Library />} active={at("library")} onClick={() => go("library")} />
         {data && data.games.length > 0 && (
-          <div className="mt-4 flex flex-col gap-0.5">
+          <div className="mt-4 flex flex-col gap-0.5 max-md:hidden">
             <p className="px-3 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{t("nav.games")}</p>
             {data.games.map((g) => (
               <NavItem
@@ -48,7 +48,7 @@ export function Sidebar() {
           ))}
         </div>
       </nav>
-      <div className="no-drag mt-3 text-center text-[11px] text-muted-foreground">v{data?.version}</div>
+      <div className="no-drag mt-3 text-center text-[11px] text-muted-foreground max-md:text-[9px]">v{data?.version}</div>
     </aside>
   );
 }

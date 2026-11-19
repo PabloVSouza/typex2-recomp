@@ -22,7 +22,7 @@ export function App() {
       <Sidebar />
       <main className="relative flex flex-1 flex-col overflow-y-auto">
         <div className="drag sticky top-0 z-10 h-9 shrink-0" data-tauri-drag-region />
-        <div className="mx-auto w-full max-w-4xl px-10 pb-12">
+        <div className="mx-auto w-full max-w-4xl px-10 pb-12 max-md:px-4">
           <UpdateNotice />
           {state.error ? <div className="text-destructive">{t("app.stateError", { error: errorText(state.error) })}</div> : <Page />}
         </div>

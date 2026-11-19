@@ -13,6 +13,8 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 
 export const api = {
   loadState: () => call<AppStateData>("load_state"),
+  /** A game's art for its card (ES-DE media or a libretro thumbnail) as a data: URL, or null. */
+  gameArt: (id: string) => call<string | null>("game_art", { id }),
   addGame: (path: string) => call<{ id: string; title: string }>("add_game", { path }),
   /** Every supported game under a folder of game folders, added (or its folder updated). */
   scanFolder: (path: string) => call<{ id: string; title: string; new: boolean }[]>("scan_folder", { path }),

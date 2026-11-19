@@ -8,6 +8,7 @@ import { useAction, useAppState } from "@/hooks";
 import { api, pickFolder, reveal } from "@/lib";
 import { bytes, when } from "@/lib";
 import type { GameEntry } from "@/lib";
+import { GameBanner } from "@/pages/game/GameBanner";
 import { GameSettings } from "@/pages/game/GameSettings";
 import { useUi } from "@/stores";
 
@@ -38,16 +39,18 @@ export function GamePage() {
   const building = data.job === `library:${game.id}`;
   return (
     <>
-      <PageHeader
-        kicker={game.info ? `${game.info.board} · ${game.info.year} · ${game.info.publisher}` : undefined}
-        title={game.title}
-        actions={
-          <>
-            {building && <Button variant="secondary" onClick={() => cancel.mutate(undefined)}><X /> {t("common.cancel")}</Button>}
-            <GameAction game={game} size="lg" />
-          </>
-        }
-      />
+      <GameBanner id={game.id}>
+        <PageHeader
+          kicker={game.info ? `${game.info.board} · ${game.info.year} · ${game.info.publisher}` : undefined}
+          title={game.title}
+          actions={
+            <>
+              {building && <Button variant="secondary" onClick={() => cancel.mutate(undefined)}><X /> {t("common.cancel")}</Button>}
+              <GameAction game={game} size="lg" />
+            </>
+          }
+        />
+      </GameBanner>
       <JobProgress match={`library:${game.id}`} className="mb-5" />
       {!data.can_play && game.supported && (
         <Section>
