@@ -72,16 +72,51 @@ pub fn all_files_access() -> bool {
 }
 
 /// Android's settings screen for "All files access" (reading the ROMs folder, writing `x2.env`).
+/// Not every device has the app's own page (issue #4: the button did nothing): then the list of
+/// apps with that access, then the app's info page (Permissions → Files).
 pub fn request_all_files_access() -> Result<()> {
-    jni(|env, a| {
+    let opened = jni(|env, a| {
         let pkg = package(env, a)?;
-        let uri_s = env.new_string(format!("package:{pkg}"))?;
-        let uri = env.call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&uri_s)])?.l()?;
-        let action = env.new_string("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION")?;
-        let intent = env.new_object("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", &[JValue::Object(&action), JValue::Object(&uri)])?;
-        env.call_method(a, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)])?;
+        for (action, with_pkg) in [
+            ("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION", true),
+            ("android.settings.MANAGE_ALL_FILES_ACCESS_PERMISSION", false),
+            ("android.settings.APPLICATION_DETAILS_SETTINGS", true),
+        ] {
+            if start_settings(env, a, action, with_pkg.then_some(pkg.as_str()))? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    })?;
+    if opened {
         Ok(())
-    })
+    } else {
+        Err("Android didn't open its settings. Grant \"All files access\" to Type X2 in Settings → Apps.".into())
+    }
+}
+
+/// Starts the settings screen for `action`; false when the device has none or it fails to start.
+fn start_settings(env: &mut JNIEnv, a: &JObject, action: &str, pkg: Option<&str>) -> jni::errors::Result<bool> {
+    let act = env.new_string(action)?;
+    let intent = match pkg {
+        Some(pkg) => {
+            let s = env.new_string(format!("package:{pkg}"))?;
+            let uri = env.call_static_method("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", &[JValue::Object(&s)])?.l()?;
+            env.new_object("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", &[JValue::Object(&act), JValue::Object(&uri)])?
+        }
+        None => env.new_object("android/content/Intent", "(Ljava/lang/String;)V", &[JValue::Object(&act)])?,
+    };
+    env.call_method(&intent, "addFlags", "(I)Landroid/content/Intent;", &[JValue::Int(FLAG_ACTIVITY_NEW_TASK)])?;
+    // (not resolveActivity: since Android 11 it can answer null for screens that exist)
+    if env.call_method(a, "startActivity", "(Landroid/content/Intent;)V", &[JValue::Object(&intent)]).is_err() {
+        // ActivityNotFoundException, SecurityException: clear it and try the next screen
+        if env.exception_check()? {
+            env.exception_describe()?;
+            env.exception_clear()?;
+        }
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 /// Starts the game in SDL's activity (its own process), as ES-DE does.

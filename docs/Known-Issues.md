@@ -15,6 +15,12 @@ that isn't here? Report it in
   ([details](Save-States.md)).
 - **RetroArch, switching games:** a closed game leaves 1-3 MB behind until
   RetroArch quits.
+- **Android app 0.6.2 and earlier:** "Allow access" shows "Java exception was
+  thrown" and does nothing (fixed for the next version,
+  [#4](https://github.com/PabloVSouza/typex2-recomp/issues/4)). Grant it by
+  hand: Settings → Apps → Type X2 → Permissions → Files → "Allow management of
+  all files" (or Settings → Apps → Special app access → All files access →
+  Type X2), then tap Refresh in the app.
 
 ## Games
 

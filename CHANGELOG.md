@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Android app:** "Allow access" opens Android's "All files access" page again
+  (it failed with "Java exception was thrown" on every device,
+  [#4](https://github.com/PabloVSouza/typex2-recomp/issues/4)); where a device
+  lacks that page, it opens the list of apps with that access, or the app's info page.
+
 ## 0.6.2 - 2026-11-19
 
 - **Vulkan (Android):** SSF4's small text (CREDIT(S), INSERT COIN(S)) no longer shows
