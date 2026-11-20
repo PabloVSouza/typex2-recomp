@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.6.3 - 2026-11-20
 
 - **Android app:** "Allow access" opens Android's "All files access" page again
   (it failed with "Java exception was thrown" on every device,
