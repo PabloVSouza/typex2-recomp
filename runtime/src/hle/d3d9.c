@@ -1330,8 +1330,8 @@ static void A_CreateDevice(X2Cpu *c) {
     if (!bw || !bh) { bw = g_width; bh = g_height; WR32(pp, bw); WR32(pp + 4, bh); }
     g_width = bw;
     g_height = bh;
-    x2_log("d3d9: CreateDevice %ux%u fmt %u windowed %u autodepth %u/%u interval %x (called from %08x)", bw, bh, RD32(pp + 8),
-           RD32(pp + 32), RD32(pp + 36), RD32(pp + 40), RD32(pp + 52), RD32(c->esp));
+    x2_log("d3d9: CreateDevice %ux%u fmt %u windowed %u autodepth %u/%u interval %x flags %x (called from %08x)", bw,
+           bh, RD32(pp + 8), RD32(pp + 32), RD32(pp + 36), RD32(pp + 40), RD32(pp + 52), ARG(4), RD32(c->esp));
     d->d3d8 = creating_d3d8;
     u32 dev = x2_com_wrap(&d->com, d->d3d8 ? vt_device8 : vt_device, "IDirect3DDevice9");
     /* default render state (only what differs from zero) */

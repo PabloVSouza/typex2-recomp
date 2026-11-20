@@ -621,6 +621,10 @@ static bool parse_dds(const u8 *p, size_t n, Image *im) {
     if (mips > 16) mips = 16;
     /* a cube map stores six faces (+X -X +Y -Y +Z -Z), each with its mip chain */
     u32 faces = RD32_HOST(p + 112) & 0x200 ? 6 : 1;
+    /* a volume texture (DDSD_DEPTH, DDSCAPS2_VOLUME): D3DX's 2D loaders take the first
+       slice of each level, so skip the other slices */
+    u32 depth = (RD32_HOST(p + 8) & 0x800000) && (RD32_HOST(p + 112) & 0x200000) ? RD32_HOST(p + 24) : 1;
+    if (!depth) depth = 1;
     const u8 *d = p + 128;
     for (u32 fc = 0; fc < faces; fc++)
         for (u32 l = 0; l < mips; l++) {
@@ -629,7 +633,7 @@ static bool parse_dds(const u8 *p, size_t n, Image *im) {
             im->face_data[fc][l] = d;
             if (fc == 0) im->level_data[l] = d;
             im->level_pitch[l] = fmt_pitch(f, lv(w, l));
-            d += sz;
+            d += (size_t)sz * lv(depth, l);
         }
     im->faces = faces;
     im->w = w; im->h = h; im->levels = mips ? mips : 1; im->fmt = f; im->file_format = 4;
