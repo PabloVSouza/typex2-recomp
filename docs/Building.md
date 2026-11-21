@@ -90,7 +90,7 @@ Agents and humans: read [`CLAUDE.md`](../CLAUDE.md) (also `AGENTS.md`) for the
 project rules. Style is `.clang-format` on new and changed lines only
 (`tools/lint.sh format`, `tools/lint.sh fix`); bug-finding checks are
 `.clang-tidy` (`tools/lint.sh tidy` after configuring `build/`); editors follow
-`.editorconfig`. CI builds Linux, macOS and Windows on every push.
+`.editorconfig`. CI builds Linux, macOS and Windows for each release tag (or by hand: Actions → CI → Run workflow).
 
 ## Versions and releases
 

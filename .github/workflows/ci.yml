@@ -1,12 +1,12 @@
-# Builds the recompiler, the tools, the runtime and x2-player on every push and pull
-# request. No game is built: games are recompiled on the user's machine from their own
-# files, and none are in this repository.
+# Builds the recompiler, the tools, the runtime and x2-player for each release tag (v*), or by
+# hand (Actions → CI → Run workflow); not on every push. No game is built: games are recompiled
+# on the user's machine from their own files, and none are in this repository.
 name: CI
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   linux:

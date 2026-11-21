@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.6.4 - 2026-11-21
 
 - **Launcher on Windows:** compiling a game no longer fails with
   `'x2/recomp.h' file not found`. The launcher handed the compiler its own

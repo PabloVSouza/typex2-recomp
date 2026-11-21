@@ -48,8 +48,9 @@ gets an entry per milestone. Update them with the README.
 * **Commit after each verified milestone and push right after** (origin on
   GitHub; the maintainer wants the remote current). End commit messages with
   the co-author line the session gives you. CI (`.github/workflows/ci.yml`:
-  Linux, macOS, Windows builds) must stay green: check `gh run list` after
-  pushing.
+  Linux, macOS, Windows builds) runs only for release tags (and by hand:
+  `gh workflow run CI`), not on every push; it must be green for each
+  release: check `gh run list` after pushing the tag.
 * **Versions and releases:** one version everywhere (`tools/version.sh`; CI
   checks the files agree). User-visible changes go under a new top section of
   `CHANGELOG.md` as they land; a release is `tools/version.sh set X.Y.Z`, the
