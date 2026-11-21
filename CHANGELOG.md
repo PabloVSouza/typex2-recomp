@@ -7,6 +7,13 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Launcher on Windows:** compiling a game no longer fails with
+  `'x2/recomp.h' file not found`. The launcher handed the compiler its own
+  folder in a form (`\\?\C:\...`) where Windows doesn't read `/` as a folder
+  separator.
+
 ## 0.6.3 - 2026-11-20
 
 - **Android app:** "Allow access" opens Android's "All files access" page again

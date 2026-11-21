@@ -13,6 +13,9 @@ that isn't here? Report it in
 - **Save states** load only on the screen they were saved on, and only until
   the game is closed; none during movies. No rewind or run-ahead
   ([details](Save-States.md)).
+- **Launcher 0.6.3 and earlier on Windows:** compiling a game fails with
+  `'x2/recomp.h' file not found` (fixed in the next version). No workaround
+  in the launcher itself.
 - **RetroArch, switching games:** a closed game leaves 1-3 MB behind until
   RetroArch quits.
 - **Android app 0.6.2 and earlier:** "Allow access" shows "Java exception was

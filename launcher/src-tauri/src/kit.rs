@@ -53,6 +53,20 @@ fn is_source_tree(dir: &Path) -> bool {
     dir.join("runtime/CMakeLists.txt").is_file() && dir.join("runtime/include/x2/recomp.h").is_file()
 }
 
+/// Without Windows' extended-length prefix (`\\?\C:\...`, `\\?\UNC\server\...`), which Tauri's
+/// resource folder carries (a canonicalized path). Under that prefix Windows takes `/` literally,
+/// so clang never found `x2/recomp.h` below `-I \\?\...\runtime/include`.
+fn plain_path(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => p,
+    }
+}
+
 fn existing(path: PathBuf) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
@@ -72,7 +86,7 @@ pub fn find(resources: Option<PathBuf>) -> Option<Kit> {
     if let Some(root) = std::env::var_os("X2_REPO").map(PathBuf::from).filter(|p| is_source_tree(p)) {
         return Some(checkout(root));
     }
-    if let Some(kit) = resources.map(|r| r.join("kit")).filter(|k| is_source_tree(&k.join("source"))) {
+    if let Some(kit) = resources.map(|r| plain_path(r).join("kit")).filter(|k| is_source_tree(&k.join("source"))) {
         return Some(Kit {
             x2recomp: existing(kit.join("bin").join(format!("x2recomp{EXE}"))),
             player: existing(kit.join("bin").join(format!("x2-player{EXE}"))),
@@ -200,4 +214,19 @@ pub fn tools(kit: Option<&Kit>, data: &Path, ndk_setting: Option<&str>) -> Vec<T
     let (path, source) = pick(tc::adb_bin(data), crate::device::system_adb());
     v.push(Tool { id: "adb", name: "Android platform tools (adb)", path, source, for_what: "Sending exports to a device", download: offered("adb"), hint: "Android Studio → SDK Manager → SDK Tools → Platform-Tools" });
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain_path;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strips_extended_length_prefix() {
+        let p = |s: &str| plain_path(PathBuf::from(s)).to_string_lossy().to_string();
+        assert_eq!(p(r"\\?\C:\Program Files\Type X Recomp"), r"C:\Program Files\Type X Recomp");
+        assert_eq!(p(r"\\?\UNC\server\share\app"), r"\\server\share\app");
+        assert_eq!(p(r"\\?\Volume{1234}\app"), r"\\?\Volume{1234}\app");
+        assert_eq!(p("/Applications/Type X Recomp.app"), "/Applications/Type X Recomp.app");
+    }
 }
