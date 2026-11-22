@@ -20,7 +20,7 @@ game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 |---|---|---|
 | The King of Fighters XII | `kof12` | playable (macOS, Android standalone + RetroArch) |
 | The King of Fighters XIII | `kof13` | playable |
-| The King of Fighters XIII Climax | `kof13cl` | playable; Android: about 50 fps in fights on most stages (the green one holds 60) |
+| The King of Fighters XIII Climax | `kof13cl` | playable; Android: 60 fps in fights on every stage tested (since link-time optimisation) |
 | Super Street Fighter IV Arcade Edition | `ssf4ae` | playable; 60 fps on the test tablet with Vulkan (GL: a few stages 50-55 fps) |
 | BlazBlue Continuum Shift | `bbcs` | playable (macOS, RetroArch on Android): movie, arcade, versus; fights 60 fps on the tablet |
 | BlazBlue Calamity Trigger | `bbct` | playable (macOS, RetroArch on Android at 60 fps); ~0.25 s load pause at fight start |

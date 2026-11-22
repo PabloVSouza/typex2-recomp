@@ -13,17 +13,8 @@ that isn't here? Report it in
 - **Save states** load only on the screen they were saved on, and only until
   the game is closed; none during movies. No rewind or run-ahead
   ([details](Save-States.md)).
-- **Launcher 0.6.3 and earlier on Windows:** compiling a game fails with
-  `'x2/recomp.h' file not found` (fixed in 0.6.4: update the
-  launcher).
 - **RetroArch, switching games:** a closed game leaves 1-3 MB behind until
   RetroArch quits.
-- **Android app 0.6.2 and earlier:** "Allow access" shows "Java exception was
-  thrown" and does nothing (fixed in 0.6.3,
-  [#4](https://github.com/PabloVSouza/typex2-recomp/issues/4)). Grant it by
-  hand: Settings → Apps → Type X2 → Permissions → Files → "Allow management of
-  all files" (or Settings → Apps → Special app access → All files access →
-  Type X2), then tap Refresh in the app.
 
 ## Games
 
@@ -48,7 +39,8 @@ that isn't here? Report it in
 - **Super Street Fighter IV Arcade Edition:** on slower Android devices some
   stages still lose frames in fights: 1-7 late per 120 on the test tablet.
   These come from occasional 20-30 ms frames; the game thread averages
-  12-13.5 ms, and the GPU 10-12.5 ms. No link play; the opening
+  12-13.5 ms, and the GPU 10-12.5 ms. With OpenGL (devices without
+  Vulkan 1.3) a few stages run at 50-55 fps. No link play; the opening
   movie's English audio track isn't in the game's files
   ([details](Game-SSF4-AE.md#known-issues)).
 - **RetroArch on Android, two buttons at once** (SSF4's Focus Attack and
