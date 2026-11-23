@@ -4,7 +4,7 @@
 |---|---|
 | Board | Type X2 (2008, Arc System Works) |
 | `games/` id | `bbct` |
-| Status | **Playable** on macOS. **Playable, issues** in RetroArch on Android: 60 fps in attract mode and fights, 0.3-0.7 s pauses at character select and fight start. The Android app isn't tested. |
+| Status | **Playable** on macOS, and on Windows (a player's report with 0.6.5: Windows 10, NVIDIA RTX 4060 Ti, [#6](https://github.com/PabloVSouza/typex2-recomp/issues/6)). **Playable, issues** in RetroArch on Android: 60 fps in attract mode and fights, 0.3-0.7 s pauses at character select and fight start. The Android app isn't tested. |
 | Executable | `game.exe`: the arcade `launcher.exe` with the save paths changed (`d:\` → `sv\`); the code is identical |
 
 ## Controls

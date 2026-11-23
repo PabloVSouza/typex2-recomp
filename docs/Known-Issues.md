@@ -8,8 +8,11 @@ that isn't here? Report it in
 
 ## Everywhere
 
-- **Linux and Windows:** playing games there is untested: development
-  happens on a Mac. Reports are welcome, working or not.
+- **Linux and Windows:** playing games there is barely tested: development
+  happens on a Mac. On Windows, BlazBlue: Calamity Trigger has a player's
+  report of it working
+  ([#6](https://github.com/PabloVSouza/typex2-recomp/issues/6)); the other
+  games, and Linux, are untested. Reports are welcome, working or not.
 - **Save states** load only on the screen they were saved on, and only until
   the game is closed; none during movies. No rewind or run-ahead
   ([details](Save-States.md)).

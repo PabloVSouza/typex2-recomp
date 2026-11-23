@@ -211,6 +211,12 @@ if(X2_STANDALONE)
     if(MINGW) # nothing is dllexport-marked: export the runtime so the import library has it
       target_link_options(x2-player PRIVATE -Wl,--export-all-symbols)
     endif()
+    set(X2_PLAYER_ICON ${PROJECT_SOURCE_DIR}/launcher/src-tauri/icons/icon.ico)
+    if(WIN32 AND EXISTS ${X2_PLAYER_ICON}) # the launcher's icon on the exe and the game windows
+      enable_language(RC)
+      configure_file(res/x2-player.rc.in ${CMAKE_CURRENT_BINARY_DIR}/x2-player.rc @ONLY)
+      target_sources(x2-player PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/x2-player.rc)
+    endif()
   endif()
 endif()
 

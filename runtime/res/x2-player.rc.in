@@ -1,0 +1,2 @@
+// x2-player's icon on Windows: Explorer shows it, and SDL gives the exe's first icon to its windows.
+1 ICON "@X2_PLAYER_ICON@"

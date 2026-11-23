@@ -7,6 +7,11 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **Windows:** the game window and `x2-player.exe` show the launcher's icon,
+  not a blank one.
+
 ## 0.6.5 - 2026-11-23
 
 - **BlazBlue: Calamity Trigger** no longer crashes after a few fights
