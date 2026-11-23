@@ -181,6 +181,14 @@ static void surface_destroy(X2ComObj *o) {
     free(s->shadow);
     free(s);
 }
+/* a texture's level: its container's renderer texture stays; the pixels and the struct go */
+static void level_surface_destroy(X2ComObj *o) {
+    Surface *s = (Surface *)o;
+    if (surface_bound(s)) return;
+    x2_heap_free(x2_process_heap(), s->mem);
+    free(s->shadow);
+    free(s);
+}
 static void surface_free_guest(X2ComObj *o) {
     if (!surface_bound((Surface *)o)) x2_heap_free(x2_process_heap(), ((Surface *)o)->mem);
 }
@@ -206,6 +214,8 @@ static u32 make_surface(Device *d, u32 fmt, u32 w, u32 h, u32 usage, u32 pool, G
         s->com.destroy = surface_destroy;
         s->com.keep = true;
         s->com.free_guest = surface_free_guest;
+    } else {
+        s->com.destroy = level_surface_destroy;
     }
     s->tex = tex;
     return x2_com_wrap(&s->com, d && d->d3d8 ? vt_surface8 : vt_surface, "IDirect3DSurface9");
@@ -341,7 +351,11 @@ static void T_GetType(X2Cpu *c) { RET(3); /* D3DRTYPE_TEXTURE */ }
 static void texture_destroy(X2ComObj *o) {
     Texture *t = (Texture *)o;
     gfx_texture_destroy(t->id);
-    free(t);  /* level surfaces stay alive while the game holds references */
+    /* drop the texture's own reference on its levels: they go now unless the game still holds
+     * one (GetSurfaceLevel). Without this every released texture left its pixels in guest memory,
+     * and BlazBlue CT, which loads each fight's textures anew, ran out of it after a few fights. */
+    for (u32 i = 0; i < t->levels; i++) x2_com_release(t->surf[i]);
+    free(t);
 }
 
 static u32 make_texture(Device *d, u32 w, u32 h, u32 levels, u32 usage, u32 fmt, u32 pool) {
@@ -424,6 +438,8 @@ static void C_GetType(X2Cpu *c) { RET(5); /* D3DRTYPE_CUBETEXTURE */ }
 static void cube_destroy(X2ComObj *o) {
     CubeTexture *t = (CubeTexture *)o;
     gfx_texture_destroy(t->id);
+    for (u32 f = 0; f < 6; f++) /* the faces' levels, as texture_destroy */
+        for (u32 i = 0; i < t->levels; i++) x2_com_release(t->surf[f][i]);
     free(t);
 }
 static u32 make_cube(Device *d, u32 size, u32 levels, u32 usage, u32 fmt, u32 pool) {

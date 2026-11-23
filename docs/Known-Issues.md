@@ -18,6 +18,10 @@ that isn't here? Report it in
 
 ## Games
 
+- **BlazBlue: Calamity Trigger, 0.6.4 and earlier:** crashes after a few
+  fights, about three minutes of play ("vm_alloc ... failed" in the log;
+  fixed in the next version,
+  [#6](https://github.com/PabloVSouza/typex2-recomp/issues/6)).
 - **BlazBlue: Calamity Trigger:** on slower Android devices the fight start
   pauses for 0.3-0.6 s while the game loads it, mostly the game's own work
   ([details](Game-BlazBlue-CT.md#known-issues)).

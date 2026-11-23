@@ -48,6 +48,7 @@ X2ComObj *x2_com_next(u32 *id);
 /* Generic IUnknown methods operating on X2ComObj. */
 void x2_com_AddRef(X2Cpu *c);
 void x2_com_Release(X2Cpu *c);
+u32 x2_com_release(u32 guest);              /* Release from host code (an object's reference on another) */
 void x2_com_QueryInterface_self(X2Cpu *c);  /* returns `this` for any IID */
 
 #define S_OK 0u

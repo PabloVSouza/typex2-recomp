@@ -92,10 +92,12 @@ void x2_com_AddRef(X2Cpu *c) {
     RET(o ? ++o->refs : 0);
 }
 
-void x2_com_Release(X2Cpu *c) {
-    X2ComObj *o = x2_com_get(ARG(0));
-    if (!o) { RET(0); return; }
-    if (o->immortal) { RET(o->refs > 1 ? --o->refs : 1); return; }
+void x2_com_Release(X2Cpu *c) { RET(x2_com_release(ARG(0))); }
+
+u32 x2_com_release(u32 guest) {
+    X2ComObj *o = x2_com_get(guest);
+    if (!o) return 0;
+    if (o->immortal) return o->refs > 1 ? --o->refs : 1;
     u32 r = --o->refs;
     if (r == 0) {
         u32 g = o->guest;
@@ -120,7 +122,7 @@ void x2_com_Release(X2Cpu *c) {
         }
         x2_heap_free(0, g);
     }
-    RET(r);
+    return r;
 }
 
 void x2_com_QueryInterface_self(X2Cpu *c) {

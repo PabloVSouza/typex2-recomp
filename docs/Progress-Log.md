@@ -2,6 +2,25 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-23: Released textures free their levels (BlazBlue CT crash)
+
+- **Report (#6, Windows):** BlazBlue CT crashed after about 11,000 frames:
+  `vm_alloc(00000000, 100020, heap-large) failed`, then a host fault on the
+  NULL the game got back.
+- **Reproduced on macOS:** used guest memory grew by about 300 MiB per
+  attract-mode fight (1.25 GB by frame 27,000; the guest has 2 GB). The live
+  large blocks came in pairs from one loader (`0x415750`): a texture and its
+  system-memory staging copy, filled and copied with `UpdateTexture`.
+- **Cause:** a texture's level surfaces are COM objects holding a reference
+  from the texture and their pixels in guest memory. Releasing the texture
+  freed the texture but never dropped that reference, so every level stayed
+  alive. Every game leaked this way; CT loads each fight's textures anew.
+- **Fix:** destroying a texture (or cube texture) releases its levels
+  (`x2_com_release`), and a level frees its pixels when its last reference
+  goes. A level the game still holds (`GetSurfaceLevel`) lives on. With save
+  states in use the texture is kept as before and releases its levels when it
+  leaves the keep list. CT now levels off at about 400 MiB over 30,000 frames.
+
 ## 2026-11-19: RetroArch input on Android, SSF4's text on Vulkan
 
 - MP+MK (Focus Attack) failed in RetroArch with an arcade stick: the stick

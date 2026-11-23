@@ -7,6 +7,15 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **BlazBlue: Calamity Trigger** no longer crashes after a few fights
+  ("vm_alloc ... heap-large failed", then a host fault,
+  [#6](https://github.com/PabloVSouza/typex2-recomp/issues/6)). A released
+  texture kept its pixels in the game's memory, and Calamity Trigger, which
+  loads each fight's textures anew, used up its 2 GB. Every game frees them
+  now.
+
 ## 0.6.4 - 2026-11-21
 
 - **Launcher on Windows:** compiling a game no longer fails with
