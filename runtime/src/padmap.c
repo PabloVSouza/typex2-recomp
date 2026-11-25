@@ -18,9 +18,9 @@ static const struct {
     char key;
     uint16_t bit;
 } keys[] = {
-    /* KOF's A-D (cabinet SHOT1 SHOT4 SHOT2 SHOT5), or the cabinet button number */
-    {'a', X2_BTN_A}, {'b', X2_BTN_B}, {'c', X2_BTN_C}, {'d', X2_BTN_D}, {'1', JVS_B1},      {'2', JVS_B2},
-    {'3', JVS_B3},   {'4', JVS_B4},   {'5', JVS_B5},   {'6', JVS_B6},   {'t', X2_PAD_TEST}, {'v', JVS_SERVICE},
+    /* the cabinet button number (letters a-d: KOF's A-D, kof_button below) */
+    {'1', JVS_B1}, {'2', JVS_B2}, {'3', JVS_B3},      {'4', JVS_B4},
+    {'5', JVS_B5}, {'6', JVS_B6}, {'t', X2_PAD_TEST}, {'v', JVS_SERVICE},
 };
 
 static const char *game_id(void) { return x2_game && x2_game->id ? x2_game->id : ""; }
@@ -30,6 +30,14 @@ static bool is_sse(void) { return !strcmp(game_id(), "sse"); }
 static bool is_blazblue(void) { return !strcmp(game_id(), "bbcs") || !strcmp(game_id(), "bbct") || is_sse(); }
 /* Goketsuji Ichizoku: KOF's cabinet layout (SHOT1 SHOT2 over SHOT4 SHOT5) with punches above kicks */
 static bool is_goketsuji(void) { return !strcmp(game_id(), "goketsuji"); }
+/* KOF 2002 UM (NESiCAxLive) has A B C D on cabinet SHOT1-4 in a row, not KOF XII's 1 4 2 5 */
+static bool is_kof2002um(void) { return !strcmp(game_id(), "kof2002um"); }
+/* KOF's button A..D (0..3) as cabinet switch bits */
+static uint16_t kof_button(int i) {
+    static const uint16_t xii[4] = {X2_BTN_A, X2_BTN_B, X2_BTN_C, X2_BTN_D};
+    static const uint16_t row[4] = {JVS_B1, JVS_B2, JVS_B3, JVS_B4};
+    return is_kof2002um() ? row[i] : xii[i];
+}
 
 /* what each game calls cabinet SHOT1-6 (labels for frontends) */
 static const char *const *shot_names(void) {
@@ -38,6 +46,8 @@ static const char *const *shot_names(void) {
     static const char *const bb[6] = {"A", "B", "C", "D", "5", "6"};
     static const char *const sse[6] = {"A", "B", "C", "R", "5", "6"};
     static const char *const gok[6] = {"LP", "HP", "3", "LK", "HK", "6"};
+    static const char *const k2002[6] = {"A", "B", "C", "D", "5", "6"};
+    if (is_kof2002um()) return k2002;
     if (is_goketsuji()) return gok;
     if (!strcmp(game_id(), "ssf4ae")) return sf4;
     if (is_sse()) return sse;
@@ -61,8 +71,11 @@ static void parse(const char *spec) {
         }
         uint16_t v = 0;
         for (const char *p = eq + 1; *p; p++)
-            for (unsigned k = 0; k < sizeof keys / sizeof keys[0]; k++)
-                if ((*p | 0x20) == keys[k].key) v |= keys[k].bit;
+            if ((*p | 0x20) >= 'a' && (*p | 0x20) <= 'd')
+                v |= kof_button((*p | 0x20) - 'a');
+            else
+                for (unsigned k = 0; k < sizeof keys / sizeof keys[0]; k++)
+                    if ((*p | 0x20) == keys[k].key) v |= keys[k].bit;
         map[b] = v;
     }
 }
@@ -86,14 +99,14 @@ const uint16_t *x2_padmap(void) {
             map[X2P_L1] = JVS_B1 | JVS_B2 | JVS_B3;
             map[X2P_L2] = JVS_B1 | JVS_B2 | JVS_B3 | JVS_B4;
         } else {
-            map[X2P_WEST] = X2_BTN_A;  /* RetroPad Y */
-            map[X2P_SOUTH] = X2_BTN_B; /* RetroPad B */
-            map[X2P_NORTH] = X2_BTN_C; /* RetroPad X */
-            map[X2P_EAST] = X2_BTN_D;  /* RetroPad A */
-            map[X2P_R2] = X2_BTN_A | X2_BTN_B;
-            map[X2P_R1] = X2_BTN_C | X2_BTN_D;
-            map[X2P_L2] = X2_BTN_A | X2_BTN_B | X2_BTN_C;
-            map[X2P_L1] = X2_BTN_B | X2_BTN_C | X2_BTN_D;
+            map[X2P_WEST] = kof_button(0);  /* RetroPad Y */
+            map[X2P_SOUTH] = kof_button(1); /* RetroPad B */
+            map[X2P_NORTH] = kof_button(2); /* RetroPad X */
+            map[X2P_EAST] = kof_button(3);  /* RetroPad A */
+            map[X2P_R2] = kof_button(0) | kof_button(1);
+            map[X2P_R1] = kof_button(2) | kof_button(3);
+            map[X2P_L2] = kof_button(0) | kof_button(1) | kof_button(2);
+            map[X2P_L1] = kof_button(1) | kof_button(2) | kof_button(3);
         }
         /* L3 / R3 stay free: frontends commonly use them as hotkeys */
         const char *e = getenv("X2_PAD");
@@ -192,9 +205,9 @@ void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
         label[3] = "LK", bits[3] = JVS_B4;
         label[4] = "HK", bits[4] = JVS_B5;
     } else { /* KOF: C D above A B */
-        label[0] = "C", bits[0] = X2_BTN_C;
-        label[1] = "D", bits[1] = X2_BTN_D;
-        label[3] = "A", bits[3] = X2_BTN_A;
-        label[4] = "B", bits[4] = X2_BTN_B;
+        label[0] = "C", bits[0] = kof_button(2);
+        label[1] = "D", bits[1] = kof_button(3);
+        label[3] = "A", bits[3] = kof_button(0);
+        label[4] = "B", bits[4] = kof_button(1);
     }
 }

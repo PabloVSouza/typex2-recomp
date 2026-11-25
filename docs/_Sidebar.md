@@ -17,6 +17,7 @@
 - [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md)
 - [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md)
 - [Gouketsuji Matsuri](Game-Gouketsuji-Matsuri.md)
+- [KOF 2002 UM](Game-KOF-2002-UM.md)
 
 **Guides**
 - [Launcher](Launcher.md)

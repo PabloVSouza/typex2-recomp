@@ -864,6 +864,8 @@ void x2_d3dx_create_font_a(X2Cpu *c);
 void x2_d3dx_create_font_w(X2Cpu *c);
 static void D3DXCreateFontIndirectA(X2Cpu *c) { x2_d3dx_create_font_a(c); }
 static void D3DXCreateFontIndirectW(X2Cpu *c) { x2_d3dx_create_font_w(c); }
+void x2_d3dx_create_font_a_args(X2Cpu *c);
+static void D3DXCreateFontA(X2Cpu *c) { x2_d3dx_create_font_a_args(c); }
 
 /* ID3DXSprite: d3dx_sprite.c */
 void x2_d3dx_create_sprite(X2Cpu *c);
@@ -1019,6 +1021,7 @@ const X2Hle x2_hle_d3dx9[] = {
     {"D3DXGetShaderVersion", D3DXGetShaderVersion, 1},
     {"D3DXCreateFontIndirectA", D3DXCreateFontIndirectA, 3},
     {"D3DXCreateFontIndirectW", D3DXCreateFontIndirectW, 3},
+    {"D3DXCreateFontA", D3DXCreateFontA, 12},
     {"D3DXCreateSprite", D3DXCreateSprite, 2},
     {"D3DXSaveSurfaceToFileA", D3DXSaveSurfaceToFileA, 6},
     {"D3DXCreateEffectPool", D3DXCreateEffectPool, 1},

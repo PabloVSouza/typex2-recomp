@@ -66,10 +66,7 @@ static void RegisterWrite(X2Cpu *c) {
     if (ARG(3)) WR32(ARG(3), 0);
     RET(p ? 0 : 87);
 }
+/* cdecl: the callers pop the arguments (`add esp` after each call in both games) */
 const X2Hle x2_hle_idmac[] = {
-    {"#1", Open, 3},
-    {"#2", Close, 2},
-    {"#5", RegisterRead, 4},
-    {"#6", RegisterWrite, 4},
-    {NULL, NULL, 0},
+    {"#1", Open, -1}, {"#2", Close, -1}, {"#5", RegisterRead, -1}, {"#6", RegisterWrite, -1}, {NULL, NULL, 0},
 };

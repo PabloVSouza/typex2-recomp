@@ -199,10 +199,17 @@ bool x2_ttx_pipe_name(const char *n);
 u32 x2_ttx_pipe_open(void);
 void x2_ttx_pipe_write(u32 h, const u8 *data, u32 n);
 u32 x2_ttx_pipe_read(u32 h, u8 *dst, u32 n);
+bool x2_nesys_pipe_name(const char *n); /* nesys.c: the NESiCAxLive client's pipe */
+u32 x2_nesys_pipe_open(void);
+bool x2_nesys_pipe(u32 h);
+void x2_nesys_write(u32 h, const u8 *data, u32 n);
+bool x2_nesys_read(u32 h, u32 buf, u32 n, u32 count, u32 ov);
+bool x2_nesys_pending(u32 ov);
 
 static u32 create_file(const char *name, u32 acc, u32 disp) {
     int port;
     if (x2_ttx_pipe_name(name)) return x2_ttx_pipe_open();
+    if (x2_nesys_pipe_name(name)) return x2_nesys_pipe_open();
     if (is_comm_name(name, &port)) {
         Comm *cm = calloc(1, sizeof *cm);
         cm->port = port;
@@ -303,6 +310,10 @@ static void complete_overlapped(u32 ov, u32 bytes) {
 
 static void ReadFile(X2Cpu *c) {
     u32 h = ARG(0), buf = ARG(1), n = ARG(2), pread_ = ARG(3), ov = ARG(4);
+    if (x2_nesys_pipe(h)) {
+        RET(x2_nesys_read(h, buf, n, pread_, ov));
+        return;
+    }
     if (x2_handle_get(h, H_PIPE)) {
         u32 got = x2_ttx_pipe_read(h, (u8 *)X2P(buf), n);
         if (pread_) WR32(pread_, got);
@@ -360,6 +371,11 @@ static void ReadFileEx(X2Cpu *c) {
 }
 /* GetOverlappedResult(h, overlapped, *bytes, wait): everything completes synchronously */
 static void GetOverlappedResult(X2Cpu *c) {
+    if (x2_nesys_pending(ARG(1))) { /* a pipe read still waiting for data */
+        x2_set_last_error(996);     /* ERROR_IO_INCOMPLETE */
+        RET(0);
+        return;
+    }
     if (ARG(2)) WR32(ARG(2), RD32(ARG(1) + 4));
     if (RD32(ARG(1)) == 0) x2_set_last_error(0);
     RET(RD32(ARG(1)) == 0);
@@ -369,6 +385,13 @@ static void SetCurrentDirectoryW(X2Cpu *c) { RET(1); }
 
 static void WriteFile(X2Cpu *c) {
     u32 h = ARG(0), buf = ARG(1), n = ARG(2), pw = ARG(3), ov = ARG(4);
+    if (x2_nesys_pipe(h)) {
+        x2_nesys_write(h, (const u8 *)X2P(buf), n);
+        if (pw) WR32(pw, n);
+        if (ov) complete_overlapped(ov, n);
+        RET(1);
+        return;
+    }
     if (x2_handle_get(h, H_PIPE)) {
         x2_ttx_pipe_write(h, (const u8 *)X2P(buf), n);
         if (pw) WR32(pw, n);

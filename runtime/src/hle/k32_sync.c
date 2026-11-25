@@ -461,6 +461,16 @@ void x2_sync_broadcast(void) {
 }
 
 static u32 wait_many(u32 n, const u32 *hs, bool all, u32 ms) {
+    /* a handle that is no object (never created, or 0) fails at once, as on Windows: KOF 2002
+       UM tears down its NESiCAxLive client link, which was never opened, by waiting on its mutex.
+       The current process / thread pseudo-handles (-1, -2) are waitable. */
+    for (u32 i = 0; i < n && i < 64; i++)
+        if (hs[i] < 0xFFFFFFFEu && !x2_handle_get(hs[i], H_FREE)) {
+            static int said;
+            if (!said++) x2_log("wait on %08x, which is no object: WAIT_FAILED (logged once)", hs[i]);
+            x2_set_last_error(6); /* ERROR_INVALID_HANDLE */
+            return 0xFFFFFFFFu;   /* WAIT_FAILED */
+        }
     struct timespec dl;
     if (ms != INFINITE) {
         clock_gettime(CLOCK_REALTIME, &dl);

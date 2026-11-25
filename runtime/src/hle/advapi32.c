@@ -417,6 +417,7 @@ const X2Hle x2_hle_advapi32[] = {
     {"RegQueryValueExW", RegQueryValueExA, 6},
     {"RegCreateKeyExW", RegCreateKeyExW, 9},
     {"RegSetValueExW", RegSetValueExW, 6},
+    {"RegSetValueExA", RegSetValueExW, 6},
     {"RegEnumKeyExA", RegEnumKeyExA, 8},
     {"RegEnumValueA", RegEnumKeyExA, 8},
     {"RegCloseKey", RegCloseKey, 1},

@@ -2,6 +2,28 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-25: The King of Fighters 2002 Unlimited Match
+
+- **Second NESiCAxLive game the same day**, a TeknoParrot-format dump
+  ([page](Game-KOF-2002-UM.md)). After 24 missing imports (OLE Automation,
+  ANSI GDI fonts, named pipes, the debug D3DX), it would not start without the
+  NESiCAxLive client: it retries the pipe `\\.\pipe\nesys_games` every second.
+- **The client** (`hle/nesys.c`): a pipe whose overlapped reads stay pending
+  until a reply exists. The boot sequence's requests and the replies they wait
+  for came from the game's own code: its reply parser maps reply types to
+  events, each boot state marks the event it waits for and calls a sender that
+  pushes the request number. Empty payloads are enough (the game marks those
+  events done whatever they say); an empty `card_id` keeps it away from its
+  MSXML 4 requests.
+- **Along the way:** the iDmacDrv32 functions are cdecl (the HLE's stdcall
+  cleanup corrupted a saved `this`); waits on non-objects fail at once as on
+  Windows; a blank glyph is 0 bytes, not `GDI_ERROR` (which became a 4 GB `new`
+  and `std::bad_alloc`; `RaiseException` now names the C++ type and the guest
+  call chain); the NESiCA card reader on JVS (`0x26`, `0x61`, `0x62`); its A B C
+  D on cabinet SHOT1-4 (`kof_button` in `padmap.c`).
+- Metal and GL frames identical; the other ten games unchanged. On the tablet:
+  a scripted fight at 60 fps with about 1.3 ms of game work a frame.
+
 ## 2026-11-25: Gouketsuji Ichizoku Matsuri Senzo Kuyou; Vulkan write-after-write barriers
 
 - **New game** (requested on Discord), the NESiCAxLive build (version 1.0.1,

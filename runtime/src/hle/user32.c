@@ -7,7 +7,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "../core.h"
+#include "../com.h"
 #include "dsound.h"
 
 #define WM_CREATE 0x0001
@@ -479,6 +479,7 @@ const X2Hle x2_hle_user32[] = {
     {"DestroyMenu", ReturnTrue, 1},
     {"UnregisterClassA", ReturnTrue, 2},
     {"SendMessageA", SendMessageA, 4},
+    {"SendMessageW", SendMessageA, 4},
     {"GetClassLongA", ReturnZero, 2},
     {"ClipCursor", ReturnTrue, 1},
     {"SetMenu", ReturnTrue, 2},
@@ -590,6 +591,72 @@ static void CoInitialize(X2Cpu *c) { RET(0); }
 static void CoFreeUnusedLibraries(X2Cpu *c) {}
 static void CoTaskMemAlloc(X2Cpu *c) { RET(x2_heap_alloc(0, ARG(0) ? ARG(0) : 1, false)); }
 
+/* BSTRs: a 4-byte byte count, then the UTF-16 text and a 0 */
+static u32 bstr_new(u32 bytes) {
+    u32 p = x2_heap_alloc(0, bytes + 6, true);
+    WR32(p, bytes);
+    return p + 4;
+}
+static void SysAllocString(X2Cpu *c) { /* (const OLECHAR *) */
+    if (!ARG(0)) {
+        RET(0);
+        return;
+    }
+    u32 n = 0;
+    while (RD16(ARG(0) + 2 * n)) n++;
+    u32 b = bstr_new(2 * n);
+    memcpy(X2P(b), X2P(ARG(0)), 2 * n);
+    RET(b);
+}
+static void SysAllocStringByteLen(X2Cpu *c) { /* (const char *, UINT bytes) */
+    u32 b = bstr_new(ARG(1));
+    if (ARG(0)) memcpy(X2P(b), X2P(ARG(0)), ARG(1));
+    RET(b);
+}
+static void SysFreeString(X2Cpu *c) {
+    if (ARG(0)) x2_heap_free(0, ARG(0) - 4);
+}
+static void SysStringLen(X2Cpu *c) { RET(ARG(0) ? RD32(ARG(0) - 4) / 2 : 0); }
+static void SysStringByteLen(X2Cpu *c) { RET(ARG(0) ? RD32(ARG(0) - 4) : 0); }
+/* VARIANT: vt at 0, the value at 8 */
+static void VariantClear(X2Cpu *c) {
+    u32 v = ARG(0);
+    u16 vt = RD16(v);
+    if (vt == 8 && RD32(v + 8)) x2_heap_free(0, RD32(v + 8) - 4);          /* VT_BSTR */
+    if ((vt == 9 || vt == 13) && RD32(v + 8)) x2_com_release(RD32(v + 8)); /* VT_DISPATCH, VT_UNKNOWN */
+    WR16(v, 0);
+    RET(0);
+}
+/* (dest, src, flags, vt): the same type only (a copy); conversions are logged */
+static void VariantChangeType(X2Cpu *c) {
+    u32 d = ARG(0), s = ARG(1);
+    u16 vt = (u16)ARG(3);
+    if (RD16(s) != vt) {
+        x2_log("VariantChangeType %u -> %u not supported", RD16(s), vt);
+        RET(0x80004001u);
+        return;
+    }
+    if (d != s) memmove(X2P(d), X2P(s), 16);
+    if (vt == 8 && RD32(s + 8) && d != s) { /* the copy owns its own string */
+        u32 n = RD32(RD32(s + 8) - 4), b = bstr_new(n);
+        memcpy(X2P(b), X2P(RD32(s + 8)), n);
+        WR32(d + 8, b);
+    }
+    RET(0);
+}
+/* error objects: none */
+static void GetErrorInfo(X2Cpu *c) {
+    if (ARG(1)) WR32(ARG(1), 0);
+    RET(1); /* S_FALSE */
+}
+static void SetErrorInfo(X2Cpu *c) { RET(0); }
+static void CreateErrorInfo(X2Cpu *c) {
+    if (ARG(0)) WR32(ARG(0), 0);
+    RET(0x8007000Eu); /* E_OUTOFMEMORY */
+}
+/* OleRun(IUnknown *): objects we hand out are running already */
+static void OleRun(X2Cpu *c) { RET(0); }
+
 const X2Hle x2_hle_ole32[] = {
     {"CoInitialize", CoInitialize, 1},
     {"CoFreeUnusedLibraries", CoFreeUnusedLibraries, 0},
@@ -598,6 +665,7 @@ const X2Hle x2_hle_ole32[] = {
     {"CoUninitialize", CoUninitialize, 0},
     {"CoCreateInstance", CoCreateInstance, 5},
     {"CoTaskMemFree", CoTaskMemFree, 1},
+    {"OleRun", OleRun, 1},
     {NULL, NULL, 0},
 };
 
@@ -605,8 +673,12 @@ const X2Hle x2_hle_ole32[] = {
 static void VariantInit(X2Cpu *c) { WR16(ARG(0), 0); } /* VT_EMPTY */
 
 const X2Hle x2_hle_oleaut32[] = {
-    {"#8", VariantInit, 1},
-    {NULL, NULL, 0},
+    {"#8", VariantInit, 1},        {"#2", SysAllocString, 1},
+    {"#6", SysFreeString, 1},      {"#7", SysStringLen, 1},
+    {"#9", VariantClear, 1},       {"#12", VariantChangeType, 4},
+    {"#149", SysStringByteLen, 1}, {"#150", SysAllocStringByteLen, 2},
+    {"#200", GetErrorInfo, 2},     {"#201", SetErrorInfo, 2},
+    {"#202", CreateErrorInfo, 1},  {NULL, NULL, 0},
 };
 
 /* ---- dsound (by ordinal) -------------------------------------------------------- */

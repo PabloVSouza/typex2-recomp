@@ -23,7 +23,7 @@ static const FakeModule fake_modules[] = {
     {"d3dx9_37.dll", 0x4A100000u},   {"shell32.dll", 0x7C9C0000u},  {"imm32.dll", 0x76390000u},
     {"d3dx9_31.dll", 0x4A200000u},   {"d3dx9_36.dll", 0x4A300000u}, {"d3dx9d_36.dll", 0x4A400000u},
     {"msvcr80.dll", 0x78130000u},    {"d3dx9_29.dll", 0x4A500000u}, {"d3dx9_39.dll", 0x4A600000u},
-    {"idmacdrv32.dll", 0x4A700000u},
+    {"idmacdrv32.dll", 0x4A700000u}, {"d3dx9_42.dll", 0x4A800000u}, {"d3dx9d_42.dll", 0x4A900000u},
 };
 
 static const char *base_name(const char *p) {
@@ -663,6 +663,18 @@ static void RaiseException(X2Cpu *c) {
     }
     /* TODO: SEH dispatch through the fs:[0] chain. Needs non-local host stack
      * unwinding to land in __except blocks; not required for normal play. */
+    if (code == 0xE06D7363u && ARG(2) >= 3 && ARG(3)) { /* a C++ throw: name the type thrown */
+        u32 ti = RD32(ARG(3) + 8), cta = ti ? RD32(ti + 12) : 0, ct = cta && RD32(cta) ? RD32(cta + 4) : 0;
+        u32 td = ct ? RD32(ct + 4) : 0;
+        x2_log("C++ exception thrown: %s", td ? GSTR(td + 8) : "(unknown type)");
+    }
+    u32 fp = c->ebp; /* the guest's frame chain, for finding the thrower */
+    char chain[256] = "";
+    for (int i = 0; i < 12 && fp && fp < 0xFFFFF000u; i++, fp = RD32(fp)) {
+        size_t l = strlen(chain);
+        snprintf(chain + l, sizeof chain - l, " %08x", RD32(fp + 4));
+    }
+    x2_log("frames (return addresses):%s", chain);
     x2_fatal("RaiseException(%08x, flags %x, %u args) - structured exceptions are not supported yet", code, ARG(1),
              ARG(2));
 }
@@ -739,6 +751,30 @@ static void lstrcmpW(X2Cpu *c) {
 }
 static void DisconnectNamedPipe(X2Cpu *c) { RET(1); }
 static void SetNamedPipeHandleState(X2Cpu *c) { RET(1); }
+/* named pipes: the NESiCAxLive client's (KOF 2002 UM, Gouketsuji Ichizoku); it isn't there */
+static void WaitNamedPipeA(X2Cpu *c) {
+    x2_set_last_error(2); /* ERROR_FILE_NOT_FOUND: no such pipe */
+    RET(0);
+}
+static void CreateNamedPipeA(X2Cpu *c) {
+    x2_log("CreateNamedPipeA(\"%s\"): no pipe server", GSTR(ARG(0)));
+    x2_set_last_error(5);
+    RET(0xFFFFFFFFu);
+}
+static void ConnectNamedPipe(X2Cpu *c) {
+    x2_set_last_error(6); /* ERROR_INVALID_HANDLE */
+    RET(0);
+}
+static void SetConsoleCtrlHandler(X2Cpu *c) { RET(1); }
+/* code page 1252 (GetACP) has no lead bytes */
+static void IsDBCSLeadByte(X2Cpu *c) { RET(0); }
+static void FatalAppExitA(X2Cpu *c) { x2_fatal("FatalAppExitA: %s", ARG(1) ? GSTR(ARG(1)) : ""); }
+static void lstrlenW(X2Cpu *c) {
+    u32 n = 0;
+    if (ARG(0))
+        while (RD16(ARG(0) + 2 * n)) n++;
+    RET(n);
+}
 
 /* ---- resources (the executable's .rsrc, mapped with the image) -------------- */
 static u32 rsrc_root(void) {
@@ -800,6 +836,13 @@ const X2Hle x2_hle_kernel32[] = {
     {"lstrcmpW", lstrcmpW, 2},
     {"DisconnectNamedPipe", DisconnectNamedPipe, 1},
     {"SetNamedPipeHandleState", SetNamedPipeHandleState, 4},
+    {"WaitNamedPipeA", WaitNamedPipeA, 2},
+    {"CreateNamedPipeA", CreateNamedPipeA, 8},
+    {"ConnectNamedPipe", ConnectNamedPipe, 2},
+    {"SetConsoleCtrlHandler", SetConsoleCtrlHandler, 2},
+    {"IsDBCSLeadByte", IsDBCSLeadByte, 1},
+    {"FatalAppExitA", FatalAppExitA, 2},
+    {"lstrlenW", lstrlenW, 1},
     {"FindResourceW", FindResourceW, 3},
     {"LoadResource", LoadResource, 2},
     {"LockResource", LockResource, 1},

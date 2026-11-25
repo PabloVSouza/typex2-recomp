@@ -65,11 +65,9 @@ static void EnumFontFamiliesExW(X2Cpu *c) {
 
 /* CreateFontW(height, width, escapement, orientation, weight, italic, underline,
  *             strikeout, charset, outprec, clipprec, quality, pitch, face) */
-static void CreateFontW(X2Cpu *c) {
-    s32 height = (s32)ARG(0);
-    s32 weight = (s32)ARG(4);
-    char face[128];
-    utf16_to_utf8(ARG(13), face, sizeof face);
+/* a font handle for LOGFONT's height (negative: character height, positive: cell height),
+ * weight and face; 0 without a host font */
+static u32 create_font(s32 height, s32 weight, const char *face) {
     float em = height < 0 ? (float)-height : height > 0 ? (float)height : 16.0f;
     X2Font *f = x2_font_open(face, weight ? weight : 400, em);
     if (f && height > 0) { /* positive height = cell height: rescale to that */
@@ -82,9 +80,8 @@ static void CreateFontW(X2Cpu *c) {
         }
     }
     if (!f) {
-        x2_log("CreateFontW(\"%s\"): no host font", face);
-        RET(0);
-        return;
+        x2_log("CreateFont(\"%s\"): no host font", face);
+        return 0;
     }
     pthread_mutex_lock(&gdi_lock);
     u32 h = 0;
@@ -97,8 +94,19 @@ static void CreateFontW(X2Cpu *c) {
         }
     pthread_mutex_unlock(&gdi_lock);
     if (!h) x2_font_close(f);
-    X2_TRACE("CreateFontW(height %d, weight %d, \"%s\") -> %08x", height, weight, face, h);
-    RET(h);
+    X2_TRACE("CreateFont(height %d, weight %d, \"%s\") -> %08x", height, weight, face, h);
+    return h;
+}
+static void CreateFontW(X2Cpu *c) {
+    char face[128];
+    utf16_to_utf8(ARG(13), face, sizeof face);
+    RET(create_font((s32)ARG(0), (s32)ARG(4), face));
+}
+/* (LOGFONTA *): lfHeight at 0, lfWeight at 16, lfFaceName CHAR[32] at 28 */
+static void CreateFontIndirectA(X2Cpu *c) {
+    char face[33];
+    snprintf(face, sizeof face, "%.32s", GSTR(ARG(0) + 28));
+    RET(create_font((s32)RD32(ARG(0)), (s32)RD32(ARG(0) + 16), face));
 }
 
 static void SelectObject(X2Cpu *c) {
@@ -118,11 +126,11 @@ static void DeleteObject(X2Cpu *c) {
     RET(1);
 }
 
-static void GetTextMetricsW(X2Cpu *c) {
-    u32 tm = ARG(1);
+/* TEXTMETRICW of the selected font into tm (57 bytes) */
+static bool text_metrics(u32 tm) {
     memset(X2P(tm), 0, 57);
     Font *f = font_of(selected);
-    if (!f) { RET(0); return; }
+    if (!f) return false;
     X2FontMetrics m;
     x2_font_metrics(f->font, &m);
     s32 asc = (s32)ceilf(m.ascent), desc = (s32)ceilf(m.descent);
@@ -142,7 +150,23 @@ static void GetTextMetricsW(X2Cpu *c) {
     WR16(tm + 50, 0x20);                     /* tmBreakChar */
     WR8(tm + 55, 0x06);                      /* TMPF_VECTOR | TMPF_TRUETYPE */
     WR8(tm + 56, 128);                       /* SHIFTJIS_CHARSET */
-    RET(1);
+    return true;
+}
+static void GetTextMetricsW(X2Cpu *c) { RET(text_metrics(ARG(1))); }
+/* TEXTMETRICA: the W form with byte-sized characters (tmFirstChar .. tmBreakChar at 44-47, the
+   flag bytes from 48) */
+static void GetTextMetricsA(X2Cpu *c) {
+    static u32 scratch;
+    if (!scratch) scratch = x2_galloc(64);
+    u32 tm = ARG(1);
+    u8 w[57];
+    bool ok = text_metrics(scratch);
+    memcpy(w, X2P(scratch), sizeof w);
+    memcpy(X2P(tm), w, 44);
+    WR8(tm + 44, 0x20), WR8(tm + 45, 0xFF), WR8(tm + 46, 0x3F), WR8(tm + 47, 0x20); /* first last default break */
+    memcpy(X2P(tm + 48), w + 52, 5);
+    WR8(tm + 52, 0); /* ANSI_CHARSET */
+    RET(ok);
 }
 
 static void GetKerningPairsW(X2Cpu *c) { RET(0); }
@@ -214,7 +238,19 @@ static void GetGlyphOutlineW(X2Cpu *c) {
         pthread_mutex_lock(&gdi_lock);
         u8 *px = x2_font_raster(f->font, ch, &w, &h, &ox, &oy, &adv);
         pthread_mutex_unlock(&gdi_lock);
-        if (!px) { RET(GDI_ERROR); return; }
+        if (!px) { /* a blank glyph (a space): no bitmap, 0 bytes, as Windows answers; games
+                      allocate what the size query returns (KOF 2002 UM: GDI_ERROR -> bad_alloc) */
+            X2GlyphMetrics gm = {0};
+            pthread_mutex_lock(&gdi_lock);
+            x2_font_glyph(f->font, ch, &gm, NULL, NULL);
+            pthread_mutex_unlock(&gdi_lock);
+            if (gmp) {
+                memset(X2P(gmp), 0, 20);
+                WR16(gmp + 16, (u16)(s16)lrintf(gm.advance));
+            }
+            RET(0);
+            return;
+        }
         if (gmp) {
             WR32(gmp, (u32)w); WR32(gmp + 4, (u32)h);
             WR32(gmp + 8, (u32)ox); WR32(gmp + 12, (u32)oy);
@@ -317,5 +353,8 @@ const X2Hle x2_hle_gdi32[] = {
     {"GetTextMetricsW", GetTextMetricsW, 2},
     {"GetKerningPairsW", GetKerningPairsW, 3},
     {"GetGlyphOutlineW", GetGlyphOutlineW, 7},
+    {"CreateFontIndirectA", CreateFontIndirectA, 1},
+    {"GetTextMetricsA", GetTextMetricsA, 2},
+    {"GetGlyphOutlineA", GetGlyphOutlineW, 7}, /* character codes: code page 1252 (GetACP), Latin-1 = Unicode */
     {NULL, NULL, 0},
 };

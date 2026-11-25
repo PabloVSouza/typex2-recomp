@@ -19,6 +19,7 @@ const catalog: GameInfo[] = [
   { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", layouts: kof },
   { id: "sse", title: "Samurai Shodown: Edge of Destiny", board: "Type X2", year: 2008, publisher: "SNK Playmore", layouts: sse },
   { id: "goketsuji", title: "Gouketsuji Ichizoku Matsuri Senzo Kuyou", board: "Type X2", year: 2012, publisher: "Atlus", layouts: gok },
+  { id: "kof2002um", title: "The King of Fighters 2002 Unlimited Match", board: "Type X2", year: 2011, publisher: "SNK Playmore", layouts: kof },
 ];
 const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, touch: 0, env: "" };
 const entry = (id: string, state: "none" | "ready" | "stale") => ({

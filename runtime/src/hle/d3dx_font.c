@@ -239,7 +239,7 @@ static void destroy(X2ComObj *o) {
 }
 
 /* (device, desc, ppFont); desc's FaceName is CHAR[32] or WCHAR[32] */
-static void create(X2Cpu *c, bool wide) {
+static void create_font(X2Cpu *c, u32 dev, u32 d, u32 out, bool wide) {
     static u32 vt;
     if (!vt) {
         static const X2Method m[] = {
@@ -264,9 +264,8 @@ static void create(X2Cpu *c, bool wide) {
         };
         vt = x2_com_vtable("ID3DXFont", m, 18);
     }
-    u32 d = ARG(1);
     Font *f = calloc(1, sizeof *f);
-    f->dev = ARG(0);
+    f->dev = dev;
     f->height = (s32)RD32(d);
     f->weight = RD32(d + 8);
     if (wide) {
@@ -300,8 +299,19 @@ static void create(X2Cpu *c, bool wide) {
     }
     f->scratch = x2_galloc(32);
     f->com.destroy = destroy;
-    WR32(ARG(2), x2_com_wrap(&f->com, vt, "ID3DXFont"));
+    WR32(out, x2_com_wrap(&f->com, vt, "ID3DXFont"));
     RET(S_OK);
 }
-void x2_d3dx_create_font_a(X2Cpu *c) { create(c, false); }
-void x2_d3dx_create_font_w(X2Cpu *c) { create(c, true); }
+void x2_d3dx_create_font_a(X2Cpu *c) { create_font(c, ARG(0), ARG(1), ARG(2), false); }
+void x2_d3dx_create_font_w(X2Cpu *c) { create_font(c, ARG(0), ARG(1), ARG(2), true); }
+/* D3DXCreateFontA(device, Height, Width, Weight, MipLevels, Italic, CharSet, OutputPrecision,
+   Quality, PitchAndFamily, pFaceName, ppFont): the same through a D3DXFONT_DESCA */
+void x2_d3dx_create_font_a_args(X2Cpu *c) {
+    static u32 desc;
+    if (!desc) desc = x2_galloc(56);
+    memset(X2P(desc), 0, 56);
+    for (u32 i = 0; i < 5; i++) WR32(desc + 4 * i, ARG(1 + i));
+    for (u32 i = 0; i < 4; i++) WR8(desc + 20 + i, (u8)ARG(6 + i));
+    if (ARG(10)) snprintf((char *)X2P(desc + 24), 32, "%s", GSTR(ARG(10)));
+    create_font(c, ARG(0), desc, ARG(11), false);
+}

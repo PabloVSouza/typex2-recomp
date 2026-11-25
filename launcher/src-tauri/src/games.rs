@@ -63,6 +63,7 @@ pub const GAMES: &[Game] = &[
     Game { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", size: 0x1c3b000, entry: 0x79aba1, layouts: KOF },
     Game { id: "sse", title: "Samurai Shodown: Edge of Destiny", board: "Type X2", year: 2008, publisher: "SNK Playmore", size: 0x3344000, entry: 0x4d9fa0, layouts: SSE },
     Game { id: "goketsuji", title: "Gouketsuji Ichizoku Matsuri Senzo Kuyou", board: "Type X2", year: 2012, publisher: "Atlus", size: 0x106a6000, entry: 0x40390a, layouts: GOKETSUJI },
+    Game { id: "kof2002um", title: "The King of Fighters 2002 Unlimited Match", board: "Type X2", year: 2011, publisher: "SNK Playmore", size: 0xbe3b000, entry: 0x776987, layouts: KOF },
 ];
 
 impl Game {

@@ -28,8 +28,9 @@ game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 | The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
 | Samurai Shodown: Edge of Destiny | `sse` | fights run on macOS and Android (HD mode from the JVS feature list order, `.X` stage meshes, toon shading, shadow maps); in the launcher; Android runs it in SD (`X2_HD`) at 60 fps |
 | Gouketsuji Ichizoku Matsuri Senzo Kuyou | `goketsuji` | playable on macOS (NESiCAxLive build: iDmacDrv32 I/O board, ID3DXSprite / ID3DXFont, setjmp / longjmp task exits); Android app: scripted fights at 60 fps; not played by hand yet |
+| The King of Fighters 2002 Unlimited Match | `kof2002um` | playable on macOS (NESiCAxLive: an emulated nesys client on its pipe, the NESiCA card reader on JVS); Android app: scripted fights at 60 fps; not played by hand yet |
 
-Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress. Next: The King of Fighters 2002 Unlimited Match (added to the collection).
+Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress.
 
 Documentation lives in `docs/` (also published as the GitHub wiki by
 `tools/wiki_sync.sh`): `docs/Game-Status.md` tracks every Type X / X2 game,

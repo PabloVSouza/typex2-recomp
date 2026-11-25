@@ -183,6 +183,18 @@ static void handle(const u8 *d, u32 n) {
                 for (u8 ch = 0; ch < nc; ch++) { out[o++] = 0x80; out[o++] = 0x00; }
                 break;
             }
+            case 0x26: { /* general-purpose (misc) switch inputs: n bytes, all off (KOF 2002 UM asks) */
+                u8 nb = d[i++];
+                out[o++] = 0x01;
+                for (u8 k = 0; k < nb; k++) out[o++] = 0x00;
+                break;
+            }
+            case 0x61: /* NESiCA card reader (KOF 2002 UM's second JVS device): read the card: 8 bytes of
+                          card id and 16 more; no card (0x26 reports none present) */
+                out[o++] = 0x01;
+                for (int k = 0; k < 24; k++) out[o++] = 0x00;
+                break;
+            case 0x62: /* card reader: a command answered with its status alone */ out[o++] = 0x01; break;
             case 0x30: { /* decrease coins */
                 u8 s = d[i++];
                 u16 amt = (u16)(d[i] << 8 | d[i + 1]);
@@ -206,8 +218,11 @@ static void handle(const u8 *d, u32 n) {
             case 0x2F: /* retransmit */
                 out[o++] = 0x01;
                 break;
-            default:
-                x2_log("jvs: unknown command %02x", cmd);
+            default: {
+                char hex[3 * 32 + 1] = "";
+                for (u32 k = 0; k < n && k < 32; k++) snprintf(hex + 3 * k, 4, " %02x", d[k]);
+                x2_log("jvs: unknown command %02x (packet%s)", cmd, hex);
+            }
                 out[0] = 0x02; /* unknown command */
                 send_packet(out, o);
                 return;

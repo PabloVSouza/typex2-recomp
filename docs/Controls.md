@@ -31,7 +31,7 @@
 
 | Game | Layout |
 |---|---|
-| KOF XII / XIII / XIII Climax / '98 UM | FinalBurn Neo's Neo Geo "Modern" pad. Y B X A = A B C D. R2 = A+B, R1 = C+D, L2 = A+B+C, L1 = B+C+D. |
+| KOF XII / XIII / XIII Climax / '98 UM / 2002 UM | FinalBurn Neo's Neo Geo "Modern" pad. Y B X A = A B C D. R2 = A+B, R1 = C+D, L2 = A+B+C, L1 = B+C+D. |
 | SSF4 AE | LP MP HP on Y X R1, LK MK HK on B A R2. L1 = three punches, L2 = three kicks. |
 | BlazBlue CS / CT | A B C on Y X R1, D on B. A = B+C (throw), R2 = A+B (barrier), L1 = A+B+C, L2 = A+B+C+D. |
 | Samurai Shodown EoD | As BlazBlue, with R in place of D: A B C on Y X R1, R on B. A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+R. |
@@ -79,6 +79,7 @@ In RetroArch, remaps apply on top, exactly as with FBNeo.
 | Game | SHOT1 | SHOT2 | SHOT3 | SHOT4 | SHOT5 | SHOT6 |
 |---|---|---|---|---|---|---|
 | KOF XII / XIII / Climax / '98 UM | A | C | — | B | D | — |
+| KOF 2002 UM | A | B | C | D | — | — |
 | SSF4 AE | LP | MP | HP | LK | MK | HK |
 | BlazBlue CS / CT | A | B | C | D | — | — |
 | Samurai Shodown EoD | A | B | C | R | — | — |

@@ -117,6 +117,7 @@ static const X2HleModule hle_modules[] = {
     {"ddraw.dll", x2_hle_ddraw},       {"d3dx9_36.dll", x2_hle_d3dx9},    {"d3dx9d_36.dll", x2_hle_d3dx9},
     {"msvcr80.dll", x2_hle_msvcrt},    {"d3dx9_29.dll", x2_hle_d3dx9},    {"winmm.dll", x2_hle_mmio},
     {"d3dx9_39.dll", x2_hle_d3dx9},    {"idmacdrv32.dll", x2_hle_idmac},  {"d3d8.dll", x2_hle_d3d8},
+    {"d3dx9_42.dll", x2_hle_d3dx9},    {"d3dx9d_42.dll", x2_hle_d3dx9},
 };
 
 const X2Hle *x2_hle_find(const char *dll, const char *name) {
