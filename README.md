@@ -35,6 +35,33 @@ TeknoParrot-format dumps work here.
 releases: you point the launcher at your own copy, and the recompiling
 happens on your computer.
 
+## Screenshots
+
+Recompiled games running on a Mac (Metal); the same games run on Android and in RetroArch.
+
+<table>
+  <tr>
+    <td align="center"><a href="docs/Game-KOF-XII.md"><img src="docs/images/kof12.jpg" width="280" alt="The King of Fighters XII"></a><br><sub>The King of Fighters XII</sub></td>
+    <td align="center"><a href="docs/Game-KOF-XIII.md"><img src="docs/images/kof13.jpg" width="280" alt="The King of Fighters XIII"></a><br><sub>The King of Fighters XIII</sub></td>
+    <td align="center"><a href="docs/Game-KOF-XIII-Climax.md"><img src="docs/images/kof13cl.jpg" width="280" alt="The King of Fighters XIII Climax"></a><br><sub>The King of Fighters XIII Climax</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/Game-SSF4-AE.md"><img src="docs/images/ssf4ae.jpg" width="280" alt="Super Street Fighter IV Arcade Edition"></a><br><sub>Super Street Fighter IV Arcade Edition</sub></td>
+    <td align="center"><a href="docs/Game-BlazBlue-CS.md"><img src="docs/images/bbcs.jpg" width="280" alt="BlazBlue: Continuum Shift"></a><br><sub>BlazBlue: Continuum Shift</sub></td>
+    <td align="center"><a href="docs/Game-BlazBlue-CT.md"><img src="docs/images/bbct.jpg" width="280" alt="BlazBlue: Calamity Trigger"></a><br><sub>BlazBlue: Calamity Trigger</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/Game-KOF-98-UM.md"><img src="docs/images/kof98um.jpg" width="280" alt="The King of Fighters '98 Ultimate Match"></a><br><sub>The King of Fighters '98 Ultimate Match</sub></td>
+    <td align="center"><a href="docs/Game-KOF-MI-Regulation-A.md"><img src="docs/images/kofmira.jpg" width="280" alt="KOF Maximum Impact Regulation A"></a><br><sub>KOF Maximum Impact Regulation A</sub></td>
+    <td align="center"><a href="docs/Game-Samurai-Shodown-EoD.md"><img src="docs/images/sse.jpg" width="280" alt="Samurai Shodown: Edge of Destiny"></a><br><sub>Samurai Shodown: Edge of Destiny</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/Game-Gouketsuji-Matsuri.md"><img src="docs/images/goketsuji.jpg" width="280" alt="Gouketsuji Ichizoku Matsuri Senzo Kuyou"></a><br><sub>Gouketsuji Ichizoku Matsuri Senzo Kuyou</sub></td>
+    <td align="center"><a href="docs/Game-KOF-2002-UM.md"><img src="docs/images/kof2002um.jpg" width="280" alt="The King of Fighters 2002 Unlimited Match"></a><br><sub>The King of Fighters 2002 Unlimited Match</sub></td>
+    <td align="center"><a href="docs/Launcher.md"><img src="docs/images/launcher-library.jpg" width="280" alt="The launcher's library"></a><br><sub>The launcher</sub></td>
+  </tr>
+</table>
+
 ## Games
 
 | Game | Android | macOS | |
@@ -136,7 +163,7 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 typex2-recomp is an independent fan project. It is not affiliated with or
 endorsed by Taito, SNK, Capcom or Arc System Works, and contains no game code
-or assets. Game names and trademarks belong to their owners. Please own the
+or assets (the screenshots show the games running in it). Game names and trademarks belong to their owners. Please own the
 games you play.
 
 ## License

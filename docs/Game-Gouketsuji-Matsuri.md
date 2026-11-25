@@ -1,5 +1,7 @@
 # Gouketsuji Ichizoku Matsuri Senzo Kuyou
 
+![Gouketsuji Ichizoku Matsuri Senzo Kuyou, running in typex2-recomp](images/goketsuji.jpg)
+
 | | |
 |---|---|
 | Board | Type X2, NESiCAxLive (Atlus / Noise Factory; this build: version 1.0.1, 2011/12/1) |

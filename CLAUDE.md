@@ -44,9 +44,9 @@ gets an entry per milestone. Update them with the README.
   the launcher (`launcher/`) is Tauri: Rust and TypeScript.
 * **License: GPL-3.0-or-later** (`LICENSE`). A new dependency must be
   GPL-compatible and gets a row in `THIRD-PARTY.md`.
-* **Nothing copyrighted in git.** Game executables, assets, dumps, generated
-  code (`games/*/gen/`, gitignored) and screenshots of games never get
-  committed. Only our own source and docs.
+* **Nothing copyrighted in git.** Game executables, assets, dumps and generated
+  code (`games/*/gen/`, gitignored) never get committed. Screenshots of the
+  games running are fine in the docs and README (`docs/images/`).
 * **Commit after each verified milestone and push right after** (origin on
   GitHub; the maintainer wants the remote current). End commit messages with
   the co-author line the session gives you. CI (`.github/workflows/ci.yml`:

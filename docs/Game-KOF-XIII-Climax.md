@@ -1,5 +1,7 @@
 # The King of Fighters XIII Climax
 
+![The King of Fighters XIII Climax, running in typex2-recomp](images/kof13cl.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2012, SNK Playmore) |

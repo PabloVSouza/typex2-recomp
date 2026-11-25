@@ -1,5 +1,7 @@
 # Samurai Shodown: Edge of Destiny
 
+![Samurai Shodown: Edge of Destiny, running in typex2-recomp](images/sse.jpg)
+
 Samurai Shodown: Edge of Destiny (サムライスピリッツ閃, *Samurai Spirits
 Sen*), SNK Playmore, 2008, Taito Type X2. `games/sse`.
 

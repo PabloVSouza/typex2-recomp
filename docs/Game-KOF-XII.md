@@ -1,5 +1,7 @@
 # The King of Fighters XII
 
+![The King of Fighters XII, running in typex2-recomp](images/kof12.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2009, SNK Playmore) |

@@ -1,5 +1,7 @@
 # BlazBlue: Continuum Shift
 
+![BlazBlue: Continuum Shift, running in typex2-recomp](images/bbcs.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2009, Arc System Works) |

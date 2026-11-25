@@ -1,5 +1,7 @@
 # BlazBlue: Calamity Trigger
 
+![BlazBlue: Calamity Trigger, running in typex2-recomp](images/bbct.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2008, Arc System Works) |

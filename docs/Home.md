@@ -69,4 +69,4 @@ for contributors and coding agents are in [CLAUDE.md](../CLAUDE.md).
 
 The repository holds only the project's own code and documentation. You need
 your own copy of each game. Game executables, assets, generated C code
-(`games/*/gen/`) and screenshots are never committed.
+(`games/*/gen/`) are never committed; the screenshots show the games running.

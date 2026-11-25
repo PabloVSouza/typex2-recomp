@@ -1,5 +1,7 @@
 # Super Street Fighter IV Arcade Edition
 
+![Super Street Fighter IV Arcade Edition, running in typex2-recomp](images/ssf4ae.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2010, Capcom) |

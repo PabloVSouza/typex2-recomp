@@ -1,5 +1,7 @@
 # The King of Fighters XIII
 
+![The King of Fighters XIII, running in typex2-recomp](images/kof13.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2010, SNK Playmore) |

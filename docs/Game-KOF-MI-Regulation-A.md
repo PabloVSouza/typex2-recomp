@@ -1,5 +1,7 @@
 # The King of Fighters: Maximum Impact Regulation A
 
+![The King of Fighters: Maximum Impact Regulation A, running in typex2-recomp](images/kofmira.jpg)
+
 | | |
 |---|---|
 | Board | Type X2 (2007, SNK Playmore) |

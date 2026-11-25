@@ -1,5 +1,7 @@
 # The King of Fighters 2002 Unlimited Match
 
+![The King of Fighters 2002 Unlimited Match, running in typex2-recomp](images/kof2002um.jpg)
+
 | | |
 |---|---|
 | Board | Type X2, NESiCAxLive (SNK Playmore, 2011; this build: version 1.20, 2011/11/24) |

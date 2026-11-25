@@ -1,5 +1,7 @@
 # Launcher
 
+![The launcher's library on a Mac](images/launcher-library.jpg)
+
 The launcher is a desktop app for macOS, Linux and Windows, and the Type X2
 app on Android. On a computer it turns the games you own into native builds,
 without a terminal:

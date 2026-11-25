@@ -22,6 +22,8 @@ for f in "$root"/docs/*.md; do  # includes _Sidebar.md (wiki navigation)
     sed -e 's|](\.\./\([^)]*\))|]('"$blob"'/\1)|g' \
         -e 's|](\([A-Za-z0-9-]*\)\.md\(#[^)]*\)\{0,1\})|](\1\2)|g' "$f" > "$tmp/wiki/$(basename "$f")"
 done
+rm -rf "$tmp/wiki/images"  # screenshots: the pages link them as images/<name>
+[ -d "$root/docs/images" ] && cp -R "$root/docs/images" "$tmp/wiki/images"
 cd "$tmp/wiki"
 git add -A
 if git diff --cached --quiet; then

@@ -1,5 +1,7 @@
 # The King of Fighters '98 Ultimate Match
 
+![The King of Fighters '98 Ultimate Match, running in typex2-recomp](images/kof98um.jpg)
+
 | | |
 |---|---|
 | Board | Type X (2008, SNK Playmore): the first Type X game in the project |
