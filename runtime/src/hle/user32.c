@@ -251,6 +251,8 @@ static void LoadImageW(X2Cpu *c) { RET(0x00030030u); } /* cursor / icon: never d
 static void RegisterWindowMessageW(X2Cpu *c) { static u32 next = 0xC100; RET(next++); }
 static void SetCursor(X2Cpu *c) { RET(0); }
 static void LoadCursorA(X2Cpu *c) { RET(0x00010011u); } /* never drawn */
+/* the keyboard: inputs come through the I/O board, so no key is down */
+static void GetAsyncKeyState(X2Cpu *c) { RET(0); }
 static void PostThreadMessageA(X2Cpu *c) { RET(1); }
 static void MessageBoxA(X2Cpu *c) {
     x2_log("MessageBoxA(\"%s\", \"%s\")", ARG(2) ? GSTR(ARG(2)) : "", ARG(1) ? GSTR(ARG(1)) : "");
@@ -522,6 +524,8 @@ const X2Hle x2_hle_user32[] = {
     {"RegisterWindowMessageW", RegisterWindowMessageW, 1},
     {"SetCursor", SetCursor, 1},
     {"LoadCursorA", LoadCursorA, 2},
+    {"LoadCursorW", LoadCursorA, 2},
+    {"GetAsyncKeyState", GetAsyncKeyState, 1},
     {"PostThreadMessageA", PostThreadMessageA, 4},
     {"MessageBoxA", MessageBoxA, 4},
     {"RegisterWindowMessageA", RegisterWindowMessageW, 1},

@@ -17,12 +17,13 @@ typedef struct {
 } FakeModule;
 /* Handles for HLE'd system DLLs; values mimic XP load addresses. */
 static const FakeModule fake_modules[] = {
-    {"kernel32.dll", 0x7C800000u}, {"user32.dll", 0x7E410000u},   {"gdi32.dll", 0x77F10000u},
-    {"advapi32.dll", 0x77DD0000u}, {"ole32.dll", 0x774E0000u},    {"winmm.dll", 0x76B40000u},
-    {"shlwapi.dll", 0x77F60000u},  {"d3d9.dll", 0x4FDD0000u},     {"d3dx9_35.dll", 0x4A000000u},
-    {"d3dx9_37.dll", 0x4A100000u}, {"shell32.dll", 0x7C9C0000u},  {"imm32.dll", 0x76390000u},
-    {"d3dx9_31.dll", 0x4A200000u}, {"d3dx9_36.dll", 0x4A300000u}, {"d3dx9d_36.dll", 0x4A400000u},
-    {"msvcr80.dll", 0x78130000u},  {"d3dx9_29.dll", 0x4A500000u},
+    {"kernel32.dll", 0x7C800000u},   {"user32.dll", 0x7E410000u},   {"gdi32.dll", 0x77F10000u},
+    {"advapi32.dll", 0x77DD0000u},   {"ole32.dll", 0x774E0000u},    {"winmm.dll", 0x76B40000u},
+    {"shlwapi.dll", 0x77F60000u},    {"d3d9.dll", 0x4FDD0000u},     {"d3dx9_35.dll", 0x4A000000u},
+    {"d3dx9_37.dll", 0x4A100000u},   {"shell32.dll", 0x7C9C0000u},  {"imm32.dll", 0x76390000u},
+    {"d3dx9_31.dll", 0x4A200000u},   {"d3dx9_36.dll", 0x4A300000u}, {"d3dx9d_36.dll", 0x4A400000u},
+    {"msvcr80.dll", 0x78130000u},    {"d3dx9_29.dll", 0x4A500000u}, {"d3dx9_39.dll", 0x4A600000u},
+    {"idmacdrv32.dll", 0x4A700000u},
 };
 
 static const char *base_name(const char *p) {
@@ -66,12 +67,14 @@ static void FreeLibrary(X2Cpu *c) { RET(1); }
 static void GetProcAddress(X2Cpu *c) {
     u32 h = ARG(0), np = ARG(1);
     const char *mod = module_name(h);
-    if (np < 0x10000 || !mod) {
+    if (!mod) {
         x2_log("GetProcAddress(%08x, %s%u) -> NULL", h, np < 0x10000 ? "#" : "", np < 0x10000 ? np : 0);
         RET(0);
         return;
     }
-    const char *name = GSTR(np);
+    char ord[16]; /* by ordinal: the HLE tables name those "#n", as the import tables do */
+    snprintf(ord, sizeof ord, "#%u", np);
+    const char *name = np < 0x10000 ? ord : GSTR(np);
     const X2Hle *e = x2_hle_find(mod, name);
     if (!e) {
         x2_log("GetProcAddress(%s, %s) -> NULL (not implemented)", mod, name);
@@ -712,6 +715,8 @@ static void GetVersionExW(X2Cpu *c) {
     }
     RET(1);
 }
+/* the operator setting the clock from the test menu: the host's clock stays */
+static void SetLocalTime(X2Cpu *c) { RET(1); }
 static void GlobalAlloc(X2Cpu *c) {
     /* GMEM_MOVEABLE handles are returned as plain pointers (GlobalLock is the identity) */
     u32 p = x2_heap_alloc(0, ARG(1) ? ARG(1) : 1, (ARG(0) & 0x40) != 0);
@@ -789,6 +794,8 @@ const X2Hle x2_hle_kernel32[] = {
     {"GetModuleFileNameW", GetModuleFileNameW, 3},
     {"GetVersionExW", GetVersionExW, 1},
     {"GlobalAlloc", GlobalAlloc, 2},
+    {"LocalAlloc", GlobalAlloc, 2}, /* same flags: LMEM_ZEROINIT is 0x40 too */
+    {"SetLocalTime", SetLocalTime, 1},
     {"MulDiv", MulDiv, 3},
     {"lstrcmpW", lstrcmpW, 2},
     {"DisconnectNamedPipe", DisconnectNamedPipe, 1},

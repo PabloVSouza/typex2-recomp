@@ -15,6 +15,8 @@
 - [BlazBlue CT](Game-BlazBlue-CT.md)
 - [KOF '98 UM](Game-KOF-98-UM.md)
 - [KOF MI Reg. A](Game-KOF-MI-Regulation-A.md)
+- [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md)
+- [Gouketsuji Matsuri](Game-Gouketsuji-Matsuri.md)
 
 **Guides**
 - [Launcher](Launcher.md)

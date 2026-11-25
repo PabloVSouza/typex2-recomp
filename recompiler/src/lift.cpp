@@ -128,6 +128,15 @@ static void stack_plain(string& l) {
         p = q + 1;
     }
 }
+// MSVC's _setjmp3: saves ebp ebx edi esi esp and the return address into the buffer, then the
+// 'VC20' cookie (Goketsuji Ichizoku Matsuri Senzo Kuyou's task system longjmps to it)
+bool Lifter::is_setjmp3(uint32_t va) const {
+    static const uint8_t want[] = {0x8b, 0x54, 0x24, 0x04, 0x89, 0x2a, 0x89, 0x5a, 0x04, 0x89, 0x7a,
+                                   0x08, 0x89, 0x72, 0x0c, 0x89, 0x62, 0x10, 0x8b, 0x04, 0x24, 0x89,
+                                   0x42, 0x14, 0xc7, 0x42, 0x20, 0x30, 0x32, 0x43, 0x56};
+    return img_.avail(va) >= sizeof want && !std::memcmp(img_.ptr(va), want, sizeof want);
+}
+
 string Lifter::branch_to(uint32_t t, const Function& fn) const {
     if (fn.blocks.count(t)) {
         // loop back-edge: give the runtime a chance to yield (GIL) and keep
@@ -515,6 +524,15 @@ Lifter::Out Lifter::lift(const Insn& ins, const Function& fn, const vector<uint3
             string push = format("esp-=4; WR32(esp,0x{:x}u);", nxt);
             if (ins.target == nxt) {  // call $+5 get-PC idiom
                 o.lines = {push};
+                return o;
+            }
+            if (disc_.funcs.count(ins.target) && is_setjmp3(ins.target)) {
+                // a host setjmp in this frame too: a guest longjmp to nxt resumes after the call
+                // (X2_SETJMP in recomp.h), with the registers the guest longjmp restored
+                o.lines = {
+                    push,
+                    format("if (X2_SETJMP(x2_sj_slot(c,0x{:x}u,esp))) {{ {} goto L_{:08x}_sj; }}", nxt, RELOAD, nxt),
+                    format("{} f_{:08x}(c); {}", SPILL, ins.target, RELOAD), format("L_{:08x}_sj:;", nxt)};
                 return o;
             }
             if (disc_.funcs.count(ins.target))

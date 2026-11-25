@@ -62,6 +62,26 @@ void jvs_set_inputs(u8 system, u16 p1, u16 p2, bool coin1, bool coin2) {
     pthread_mutex_unlock(&jvs_lock);
 }
 
+/* the same state for I/O boards read as registers (idmac.c) */
+void jvs_get_switches(u8 *system, u16 *p1, u16 *p2) {
+    pthread_mutex_lock(&jvs_lock);
+    *system = sys_switches;
+    *p1 = player_switches[0];
+    *p2 = player_switches[1];
+    pthread_mutex_unlock(&jvs_lock);
+}
+u16 jvs_get_coins(int slot) {
+    pthread_mutex_lock(&jvs_lock);
+    u16 v = slot >= 0 && slot < 2 ? coins[slot] : 0;
+    pthread_mutex_unlock(&jvs_lock);
+    return v;
+}
+void jvs_add_coins(int slot, int delta) {
+    pthread_mutex_lock(&jvs_lock);
+    if (slot >= 0 && slot < 2) coins[slot] = (u16)(-delta > coins[slot] ? 0 : coins[slot] + delta);
+    pthread_mutex_unlock(&jvs_lock);
+}
+
 static void tx_byte(u8 b) {
     if (tx_tail - tx_head < sizeof tx) tx[tx_tail++ % sizeof tx] = b;
 }

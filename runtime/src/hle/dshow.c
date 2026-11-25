@@ -29,7 +29,7 @@ typedef struct {
 
 struct Graph {
     X2ComObj com;
-    u32 control, event, position, audio, basic_video, step, seeking, filter_vr, pin;
+    u32 control, event, position, audio, basic_video, window, step, seeking, filter_vr, pin;
     u32 event_handle;
     bool running, complete_pending;
     s32 volume;
@@ -44,7 +44,8 @@ struct Graph {
     bool connected, feeding;
 };
 
-static u32 vt_graph, vt_control, vt_event, vt_position, vt_audio, vt_video, vt_step, vt_filter, vt_pin, vt_enum;
+static u32 vt_graph, vt_control, vt_event, vt_position, vt_audio, vt_video, vt_window, vt_step, vt_filter, vt_pin,
+    vt_enum;
 
 static Graph *graph_of(u32 obj) {
     X2ComObj *o = x2_com_get(obj);
@@ -78,6 +79,7 @@ static void G_QueryInterface(X2Cpu *c) {
         case 0x36b73880u: ret_iface(c, g->seeking, out); return;   /* IMediaSeeking */
         case 0x56a868b3u: ret_iface(c, g->audio, out); return;     /* IBasicAudio */
         case 0x56a868b5u: case 0x329bb360u: ret_iface(c, g->basic_video, out); return; /* IBasicVideo(2) */
+        case 0x56a868b4u: ret_iface(c, g->window, out); return;                        /* IVideoWindow */
         case 0xe46a9787u: ret_iface(c, g->step, out); return;      /* IVideoFrameStep */
     }
     x2_log("dshow: QueryInterface for unsupported IID %08x", iid);
@@ -93,11 +95,13 @@ static void NotImpl(X2Cpu *c) { RET(E_NOTIMPL); }
 enum { BF_AddRef = 1, BF_Release = 2, BF_EnumPins = 10, BF_JoinFilterGraph = 13, EP_NextSlot = 3 };
 static u32 guest_method(u32 obj, int slot) { return RD32(RD32(obj) + 4u * (u32)slot); }
 
+static void stand_in_joined(X2ComObj *f, Graph *g);
 static void GB_AddFilter(X2Cpu *c) {
     u32 filter = ARG(1);
     X2ComObj *f = x2_com_get(filter);
     if (f) {
         f->refs++; /* the graph holds a reference to every filter */
+        stand_in_joined(f, graph_of(ARG(0)));
     } else if (filter) {
         /* a guest filter (e.g. the game's own video renderer): join it to the
          * graph and enumerate its pins, as connecting would; DirectShow base
@@ -438,7 +442,21 @@ static void ME_GetEvent(X2Cpu *c) {
     WR32(ARG(3), 0);
     RET(S_OK);
 }
+/* (this, msTimeout, pEvCode): EC_COMPLETE once the movie has played out (at once without one we
+   can decode), else E_ABORT when the timeout runs out; Goketsuji polls it with 0 every frame */
 static void ME_WaitForCompletion(X2Cpu *c) {
+    Graph *g = graph_of(ARG(0));
+    u32 ms = ARG(1), waited = 0;
+    while (!(g->completed || !g->video || x2_video_finished(g->video))) {
+        if (waited >= ms) {
+            WR32(ARG(2), 0);
+            RET(E_ABORT);
+            return;
+        }
+        struct timespec ts = {0, 5000000};
+        nanosleep(&ts, NULL);
+        waited += 5;
+    }
     WR32(ARG(2), EC_COMPLETE);
     RET(S_OK);
 }
@@ -599,6 +617,8 @@ typedef struct {
     bool grabber;
     u32 grabber_iface; /* ISampleGrabber tear-off (same host object) */
     u32 callback;
+    Graph *graph; /* the graph AddFilter put it in */
+    u32 subtype;  /* first word of the media subtype SetMediaType asked for (0: YV12) */
 } Filter;
 static u32 vt_sfilter, vt_grabber;
 
@@ -644,30 +664,59 @@ static void SG_SetCallback(X2Cpu *c) {
     filter_of(ARG(0))->callback = ARG(1);
     RET(S_OK);
 }
-/* AM_MEDIA_TYPE for 1280x720 RGB32 video with a VIDEOINFOHEADER */
+/* The grabber's frames: the format SetMediaType asked for (YV12 by default: KOF XII; RGB24 or
+ * RGB32 as bottom-up DIBs: Goketsuji Ichizoku Matsuri Senzo Kuyou), at the size of the movie
+ * its graph opened (1280x720 before one is open). */
+#define SUB_RGB24 0xe436eb7du
+#define SUB_RGB32 0xe436eb7eu
+static void stand_in_joined(X2ComObj *o, Graph *g) {
+    if (!strcmp(o->iface, "SampleGrabber") || !strcmp(o->iface, "NullRenderer")) ((Filter *)o)->graph = g;
+}
+static Graph *grab_graph(Filter *f) { return f->graph ? f->graph : active; }
+static void grab_format(Filter *f, u32 *w, u32 *h, u32 *bpp) {
+    Graph *g = grab_graph(f);
+    int vw = 1280, vh = 720;
+    double d;
+    if (g && g->video) x2_video_info(g->video, &vw, &vh, &d);
+    *w = (u32)vw;
+    *h = (u32)vh;
+    *bpp = f->subtype == SUB_RGB24 ? 24 : f->subtype == SUB_RGB32 ? 32 : 12;
+}
+static u32 grab_size(u32 w, u32 h, u32 bpp) { return bpp == 12 ? w * h * 3 / 2 : ((w * bpp / 8 + 3) & ~3u) * h; }
+
+/* AM_MEDIA_TYPE with a VIDEOINFOHEADER for the grabber's frames */
 static void SG_GetConnectedMediaType(X2Cpu *c) {
-    u32 mt = ARG(1);
+    Filter *f = filter_of(ARG(0));
+    u32 mt = ARG(1), w, h, bpp;
+    grab_format(f, &w, &h, &bpp);
+    u32 size = grab_size(w, h, bpp);
     memset(X2P(mt), 0, 72);
     static const u8 video[16] = {0x76, 0x69, 0x64, 0x73, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71};
-    /* MEDIASUBTYPE_YV12 {32315659-0000-0010-8000-00aa00389b71}: what KOF XII asks for */
-    static const u8 rgb32[16] = {0x59, 0x56, 0x31, 0x32, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71};
+    /* MEDIASUBTYPE_YV12 {32315659-0000-0010-8000-00aa00389b71}, MEDIASUBTYPE_RGB24/32 {e436eb7d/e-524f-11ce-9f53-0020af0ba770} */
+    static const u8 yv12[16] = {0x59, 0x56, 0x31, 0x32, 0x00, 0x00, 0x10, 0x00,
+                                0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71};
+    static const u8 rgb[16] = {0x7d, 0xeb, 0x36, 0xe4, 0x4f, 0x52, 0xce, 0x11,
+                               0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70};
     static const u8 vinfo[16] = {0x80, 0x9f, 0x58, 0x05, 0x56, 0xc3, 0xce, 0x11, 0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a};
     memcpy(X2P(mt), video, 16);
-    memcpy(X2P(mt + 16), rgb32, 16);
+    memcpy(X2P(mt + 16), bpp == 12 ? yv12 : rgb, 16);
+    if (bpp == 32) WR8(mt + 16, 0x7e);
     WR32(mt + 32, 1);                      /* bFixedSizeSamples */
-    WR32(mt + 40, 1280 * 720 * 3 / 2);     /* lSampleSize */
+    WR32(mt + 40, size);                   /* lSampleSize */
     memcpy(X2P(mt + 44), vinfo, 16);
     u32 vih = x2_galloc(88);
-    WR32(vih + 8, 1280); WR32(vih + 12, 720);           /* rcSource right/bottom */
-    WR32(vih + 24, 1280); WR32(vih + 28, 720);          /* rcTarget */
-    WR64(vih + 40, 333667);                             /* AvgTimePerFrame: 29.97 fps */
-    WR32(vih + 48, 40);                                 /* bmiHeader.biSize */
-    WR32(vih + 52, 1280);
-    WR32(vih + 56, 720);
+    WR32(vih + 8, w);
+    WR32(vih + 12, h); /* rcSource right/bottom */
+    WR32(vih + 24, w);
+    WR32(vih + 28, h);      /* rcTarget */
+    WR64(vih + 40, 333667); /* AvgTimePerFrame: 29.97 fps */
+    WR32(vih + 48, 40);     /* bmiHeader.biSize */
+    WR32(vih + 52, w);
+    WR32(vih + 56, h);
     WR16(vih + 60, 1);
-    WR16(vih + 62, 12);
-    WR32(vih + 64, 0x32315659u);           /* biCompression = 'YV12' */
-    WR32(vih + 68, 1280 * 720 * 3 / 2);
+    WR16(vih + 62, (u16)bpp);
+    WR32(vih + 64, bpp == 12 ? 0x32315659u : 0); /* biCompression: 'YV12' or BI_RGB */
+    WR32(vih + 68, size);
     WR32(mt + 64, 88);                     /* cbFormat */
     WR32(mt + 68, vih);                    /* pbFormat */
     RET(S_OK);
@@ -676,25 +725,35 @@ static void SG_GetConnectedMediaType(X2Cpu *c) {
 static void SF_Ok(X2Cpu *c) { RET(S_OK); }
 static void SG_SetMediaType(X2Cpu *c) {
     u32 mt = ARG(1);
+    filter_of(ARG(0))->subtype = RD32(mt + 16);
     x2_log("dshow: SampleGrabber::SetMediaType major %08x sub %08x-%04x format %08x cb %u", RD32(mt), RD32(mt + 16), RD16(mt + 20), RD32(mt + 44), RD32(mt + 64));
     RET(S_OK);
 }
 
 /* GetCurrentBuffer(this, long *size, long *buffer): size query when buffer is
- * NULL, else copy the latest frame. No decoder yet: frames are black. */
+ * NULL, else copy the latest frame (black until there is one) */
 static void SG_GetCurrentBuffer(X2Cpu *c) {
-    u32 need = 1280 * 720 * 3 / 2, psize = ARG(1), buf = ARG(2);
+    Filter *f = filter_of(ARG(0));
+    u32 psize = ARG(1), buf = ARG(2), w, h, bpp;
+    grab_format(f, &w, &h, &bpp);
+    u32 need = grab_size(w, h, bpp);
     if (!buf) { WR32(psize, need); RET(S_OK); return; }
     u32 have = RD32(psize);
     if (have < need) { RET(0x8007000Eu); return; }
-    if (!active || !active->video || !x2_video_frame_yv12(active->video, X2P(buf), have)) {
-        memset(X2P(buf), 16, 1280 * 720);              /* black: Y 16, U/V 128 */
-        memset(X2P(buf + 1280 * 720), 128, 1280 * 720 / 2);
+    Graph *g = grab_graph(f);
+    size_t n = (size_t)w * h * 3 / 2;
+    u8 *yv12 = bpp == 12 ? X2P(buf) : malloc(n);
+    if (!g || !g->video || !x2_video_frame_yv12(g->video, yv12, n)) {
+        memset(yv12, 16, (size_t)w * h); /* black: Y 16, U/V 128 */
+        memset(yv12 + (size_t)w * h, 128, (size_t)w * h / 2);
+    }
+    if (bpp != 12) {
+        yv12_to_dib(yv12, w, h, bpp, X2P(buf));
+        free(yv12);
     }
     WR32(psize, need);
     RET(S_OK);
 }
-
 /* pins of stand-in filters: { filter, direction } */
 typedef struct {
     X2ComObj com;
@@ -728,7 +787,8 @@ static void SP_QueryPinInfo(X2Cpu *c) {
 }
 static void SP_ConnectedTo(X2Cpu *c) { WR32(ARG(1), 0); RET(0x80040209u); }
 static void SP_ConnectionMediaType(X2Cpu *c) {
-    WR32(c->esp + 4, ARG(0)); /* same layout as ISampleGrabber::GetConnectedMediaType(this, mt) */
+    /* ISampleGrabber::GetConnectedMediaType(this, mt) with the pin's filter as this */
+    WR32(c->esp + 4, ((SPin *)x2_com_get(ARG(0)))->f->com.guest);
     SG_GetConnectedMediaType(c);
 }
 static void SE_Next(X2Cpu *c) {
@@ -884,6 +944,52 @@ static void init_vtables(void) {
         M(IsUsingDefaultDestination, Ok, 1),
     };
     vt_video = x2_com_vtable("IBasicVideo", bv, sizeof bv / sizeof *bv);
+    /* IVideoWindow: no window of its own (the games that ask draw the movie from a sample
+       grabber); settings are accepted, sizes are the movie's */
+    static const X2Method vw[] = {
+        TEAR_IUNKNOWN,
+        IDISPATCH,
+        M(put_Caption, Ok, 2),
+        M(get_Caption, BV_get_Zero, 2),
+        M(put_WindowStyle, Ok, 2),
+        M(get_WindowStyle, BV_get_Zero, 2),
+        M(put_WindowStyleEx, Ok, 2),
+        M(get_WindowStyleEx, BV_get_Zero, 2),
+        M(put_AutoShow, Ok, 2),
+        M(get_AutoShow, BV_get_Zero, 2),
+        M(put_WindowState, Ok, 2),
+        M(get_WindowState, BV_get_Zero, 2),
+        M(put_BackgroundPalette, Ok, 2),
+        M(get_BackgroundPalette, BV_get_Zero, 2),
+        M(put_Visible, Ok, 2),
+        M(get_Visible, BV_get_Zero, 2),
+        M(put_Left, Ok, 2),
+        M(get_Left, BV_get_Zero, 2),
+        M(put_Width, Ok, 2),
+        M(get_Width, BV_get_Width, 2),
+        M(put_Top, Ok, 2),
+        M(get_Top, BV_get_Zero, 2),
+        M(put_Height, Ok, 2),
+        M(get_Height, BV_get_Height, 2),
+        M(put_Owner, Ok, 2),
+        M(get_Owner, BV_get_Zero, 2),
+        M(put_MessageDrain, Ok, 2),
+        M(get_MessageDrain, BV_get_Zero, 2),
+        M(get_BorderColor, BV_get_Zero, 2),
+        M(put_BorderColor, Ok, 2),
+        M(get_FullScreenMode, BV_get_Zero, 2),
+        M(put_FullScreenMode, Ok, 2),
+        M(SetWindowForeground, Ok, 2),
+        M(NotifyOwnerMessage, Ok, 5),
+        M(SetWindowPosition, Ok, 5),
+        M(GetWindowPosition, BV_GetPosition, 5),
+        U(GetMinIdealImageSize, 3),
+        U(GetMaxIdealImageSize, 3),
+        M(GetRestorePosition, BV_GetPosition, 5),
+        M(HideCursor, Ok, 2),
+        M(IsCursorHidden, BV_get_Zero, 2),
+    };
+    vt_window = x2_com_vtable("IVideoWindow", vw, sizeof vw / sizeof *vw);
     static const X2Method vs[] = {TEAR_IUNKNOWN, M(Step, Ok, 3), M(CanStep, Ok, 3), M(CancelStep, Ok, 1)};
     vt_step = x2_com_vtable("IVideoFrameStep", vs, 6);
     static const X2Method bf[] = {
@@ -917,6 +1023,7 @@ u32 x2_dshow_create_graph(void) {
     g->seeking = tear(g, vt_seeking, "IMediaSeeking");
     g->audio = tear(g, vt_audio, "IBasicAudio");
     g->basic_video = tear(g, vt_video, "IBasicVideo");
+    g->window = tear(g, vt_window, "IVideoWindow");
     g->step = tear(g, vt_step, "IVideoFrameStep");
     g->filter_vr = tear(g, vt_filter, "IBaseFilter");
     g->pin = tear(g, vt_pin, "IPin");

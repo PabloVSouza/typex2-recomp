@@ -402,12 +402,21 @@ static void RegOpenKeyExA(X2Cpu *c) {
     RET(2);
 }
 static void RegQueryValueExA(X2Cpu *c) { RET(2); }
+/* keys can't be created either (Goketsuji's NESiCAxLive settings: the game keeps its defaults) */
+static void RegCreateKeyExW(X2Cpu *c) {
+    if (ARG(7)) WR32(ARG(7), 0);
+    RET(5); /* ERROR_ACCESS_DENIED */
+}
+static void RegSetValueExW(X2Cpu *c) { RET(5); }
 static void RegEnumKeyExA(X2Cpu *c) { RET(259); }
 static void RegCloseKey(X2Cpu *c) { RET(0); }
 
 const X2Hle x2_hle_advapi32[] = {
     {"RegOpenKeyExA", RegOpenKeyExA, 5},
     {"RegQueryValueExA", RegQueryValueExA, 6},
+    {"RegQueryValueExW", RegQueryValueExA, 6},
+    {"RegCreateKeyExW", RegCreateKeyExW, 9},
+    {"RegSetValueExW", RegSetValueExW, 6},
     {"RegEnumKeyExA", RegEnumKeyExA, 8},
     {"RegEnumValueA", RegEnumKeyExA, 8},
     {"RegCloseKey", RegCloseKey, 1},

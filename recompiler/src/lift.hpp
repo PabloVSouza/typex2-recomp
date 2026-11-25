@@ -61,6 +61,7 @@ private:
     std::vector<std::string> lift_x87(const cs_insn& d, const uint8_t* b, int opi);
     std::string branch_to(uint32_t target, const Function& fn) const;
     bool decode(uint32_t va);  // into ci_
+    bool is_setjmp3(uint32_t va) const;
 
     const Image& img_;
     Discovery& disc_;

@@ -47,6 +47,10 @@ const SSE: &[Layout] = &[
     DEFAULT,
     Layout { id: "stick-sse", label: "8-button stick: A B C over R", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" },
 ];
+const GOKETSUJI: &[Layout] = &[
+    DEFAULT,
+    Layout { id: "stick-gok", label: "8-button stick (L1 / L2 rows): punches over kicks", pad: "l1=1,west=2,north=12,r1=14,l2=4,south=5,east=45,r2=25" },
+];
 
 pub const GAMES: &[Game] = &[
     Game { id: "kof12", title: "The King of Fighters XII", board: "Type X2", year: 2009, publisher: "SNK Playmore", size: 0x2ec000, entry: 0x5f120b, layouts: KOF },
@@ -58,6 +62,7 @@ pub const GAMES: &[Game] = &[
     Game { id: "kof98um", title: "The King of Fighters '98 Ultimate Match", board: "Type X", year: 2008, publisher: "SNK Playmore", size: 0x18e5000, entry: 0x5b5250, layouts: KOF },
     Game { id: "kofmira", title: "The King of Fighters: Maximum Impact Regulation A", board: "Type X2", year: 2007, publisher: "SNK Playmore", size: 0x1c3b000, entry: 0x79aba1, layouts: KOF },
     Game { id: "sse", title: "Samurai Shodown: Edge of Destiny", board: "Type X2", year: 2008, publisher: "SNK Playmore", size: 0x3344000, entry: 0x4d9fa0, layouts: SSE },
+    Game { id: "goketsuji", title: "Gouketsuji Ichizoku Matsuri Senzo Kuyou", board: "Type X2", year: 2012, publisher: "Atlus", size: 0x106a6000, entry: 0x40390a, layouts: GOKETSUJI },
 ];
 
 impl Game {
@@ -94,14 +99,23 @@ pub fn pe_identity(path: &Path) -> Option<(u32, u32)> {
 /// The executables a game folder may hold, in the order the runtime tries them (game_exe.h).
 pub const EXE_NAMES: &[&str] = &["game.exe", "launcher.exe"];
 
+/// `name` in `dir`, matched without case as on Windows (Goketsuji Ichizoku's dump has `Game.exe`;
+/// Android's and Linux's storage is case-sensitive).
+pub fn find_exe(dir: &Path, name: &str) -> Option<PathBuf> {
+    let exact = dir.join(name);
+    if exact.is_file() {
+        return Some(exact);
+    }
+    std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.is_file() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case(name)))
+}
+
 /// The supported game in `dir` and its executable.
 pub fn identify(dir: &Path) -> Result<(&'static Game, PathBuf), String> {
     let mut seen = false;
     for name in EXE_NAMES {
-        let exe = dir.join(name);
-        if !exe.is_file() {
+        let Some(exe) = find_exe(dir, name) else {
             continue;
-        }
+        };
         seen = true;
         if let Some((size, entry)) = pe_identity(&exe) {
             if let Some(game) = GAMES.iter().find(|g| g.size == size && g.entry == entry) {
@@ -128,7 +142,7 @@ pub fn detect(dir: &Path) -> Option<Detected> {
     if let Ok((game, _)) = identify(dir) {
         return Some(Detected { id: game.id.into(), game: Some(game) });
     }
-    EXE_NAMES.iter().find_map(|name| pe_identity(&dir.join(name))).map(|(size, entry)| Detected { id: format!("other-{size:08x}-{entry:08x}"), game: None })
+    EXE_NAMES.iter().find_map(|name| find_exe(dir, name).and_then(|exe| pe_identity(&exe))).map(|(size, entry)| Detected { id: format!("other-{size:08x}-{entry:08x}"), game: None })
 }
 
 /// The name an unsupported game is listed under: its folder's, without ES-DE's `.x2`.
@@ -202,6 +216,18 @@ mod tests {
         assert_eq!(identify(&dir).unwrap().0.id, "bbct"); // unknown game.exe, known launcher.exe
         std::fs::remove_file(dir.join("launcher.exe")).unwrap();
         assert!(identify(&dir).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_executable_name_ignores_case() {
+        let dir = std::env::temp_dir().join(format!("x2-case-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Game.exe"), pe(0x400000, 0x0390a, 0x106a6000)).unwrap();
+        let (game, exe) = identify(&dir).unwrap();
+        assert_eq!(game.id, "goketsuji");
+        assert!(exe.file_name().unwrap().eq_ignore_ascii_case("game.exe")); // as stored on a case-sensitive disk
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

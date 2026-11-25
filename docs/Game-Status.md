@@ -43,6 +43,7 @@ Mali-G57 MC2) for Android.
 | The King of Fighters '98 Ultimate Match | Type X | 2008 | `kof98um` | Playable | Fights at 60 fps (scripted) | Playable | [KOF '98 UM](Game-KOF-98-UM.md) |
 | The King of Fighters: Maximum Impact Regulation A | Type X2 | 2007 | `kofmira` | Playable | Attract mode, 60 fps (not played yet) | Fights at 60 fps (scripted) | [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md) |
 | Samurai Shodown: Edge of Destiny | Type X2 | 2008 | `sse` | Arcade runs (scripted: wins, losses, continue) | Fights run, 60 fps (SD mode) | Fights at 60 fps (scripted) | [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md) |
+| Gouketsuji Ichizoku Matsuri Senzo Kuyou | Type X2 (NESiCAxLive) | 2012 | `goketsuji` | Playable | Fights at 60 fps (scripted) | not tested | [Gouketsuji Matsuri](Game-Gouketsuji-Matsuri.md) |
 
 Every supported game ships in the same RetroArch core and the same Android
 app. Both identify the game from its executable (`game.exe`, or `launcher.exe`
@@ -61,7 +62,7 @@ for KOF '98 UM).
 | Darius Burst: Another Chronicle | 2010 | Not started |
 | Elevator Action Death Parade | 2009 | Not started |
 | Gaia Attack 4 | 2010 | Not started |
-| Gouketsuji Ichizoku: Senzo Kuyou (Matsuri Senzo Kuyou) | 2009 | **Planned** (requested on Discord) |
+| Gouketsuji Ichizoku: Senzo Kuyou | 2009 | Not started |
 | Haunted Museum | 2009 | Not started |
 | Haunted Museum II | 2010 | Not started |
 | **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Playable** |
@@ -103,7 +104,7 @@ These builds may need a different loader than the disc / HDD releases above.
 | Elevator Action | 2014 | Not started |
 | EN-Eins Perfektewelt | 2012 | Not started |
 | Exception | 2011 | Not started |
-| Gouketsuji Ichizoku: Senzo Kuyou | 2012 | Not started |
+| **Gouketsuji Ichizoku Matsuri Senzo Kuyou** | 2012 | **Playable** (not played by hand yet) |
 | Homura | 2012 | Not started |
 | Hyper Street Fighter II: The Anniversary Edition | 2014 | Not started |
 | Ikaruga | 2013 | Not started |

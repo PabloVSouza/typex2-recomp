@@ -48,6 +48,9 @@ add_library(x2rt_common OBJECT
   src/hle/k32_sync.c
   src/hle/k32_file.c
   src/hle/k32_misc.c
+  src/hle/idmac.c
+  src/hle/d3dx_sprite.c
+  src/hle/d3dx_font.c
   src/com.c
   src/savestate.c
   src/jvs.c
@@ -297,6 +300,8 @@ function(x2_add_game target gen_dir)
     set(label "The King of Fighters Maximum Impact Regulation A")
   elseif(game STREQUAL "sse")
     set(label "Samurai Shodown: Edge of Destiny")
+  elseif(game STREQUAL "goketsuji")
+    set(label "Gouketsuji Ichizoku Matsuri Senzo Kuyou")
   endif()
   set_property(GLOBAL APPEND PROPERTY X2_GAMES_BUILT ${game})
   set_property(GLOBAL PROPERTY X2_GAME_LABEL_${game} "${label}")

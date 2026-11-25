@@ -36,6 +36,55 @@
 #define STD_OUT 0xFFFFFFF5u
 #define STD_ERR 0xFFFFFFF4u
 
+/* Windows paths ignore case; Android's and Linux's storage doesn't (Goketsuji Ichizoku asks for
+ * data\effect\ in its Data/Effect folder). When the path as given doesn't exist, each component
+ * below the game folder is matched without case against the folder's entries; a component that
+ * matches nothing (a file about to be created) is kept as given. Results are cached. */
+static pthread_mutex_t ci_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct {
+    char *from, *to;
+} ci_cache[256];
+static unsigned ci_next;
+static void resolve_case(char *path, size_t n, size_t base) {
+    if (access(path, F_OK) == 0) return;
+    pthread_mutex_lock(&ci_lock);
+    for (unsigned i = 0; i < 256; i++)
+        if (ci_cache[i].from && !strcmp(ci_cache[i].from, path)) {
+            snprintf(path, n, "%s", ci_cache[i].to);
+            pthread_mutex_unlock(&ci_lock);
+            return;
+        }
+    char *from = strdup(path);
+    size_t pos = base; /* path[pos] starts a component */
+    while (path[pos]) {
+        char *slash = strchr(path + pos, '/');
+        size_t end = slash ? (size_t)(slash - path) : strlen(path);
+        char save = path[end];
+        path[end] = 0;
+        if (access(path, F_OK) != 0) {
+            char dir[1024];
+            snprintf(dir, sizeof dir, "%.*s", pos > 0 ? (int)(pos - 1) : 0, path);
+            DIR *d = opendir(pos > 0 ? dir : ".");
+            struct dirent *e;
+            while (d && (e = readdir(d)))
+                if (strlen(e->d_name) == end - pos && !strcasecmp(e->d_name, path + pos)) {
+                    memcpy(path + pos, e->d_name, end - pos);
+                    break;
+                }
+            if (d) closedir(d);
+        }
+        path[end] = save;
+        if (!save) break;
+        pos = end + 1;
+    }
+    free(ci_cache[ci_next].from);
+    free(ci_cache[ci_next].to);
+    ci_cache[ci_next].from = from;
+    ci_cache[ci_next].to = strdup(path);
+    ci_next = (ci_next + 1) % 256;
+    pthread_mutex_unlock(&ci_lock);
+}
+
 void x2_host_path(const char *g, char *out, size_t n) {
     char tmp[1024];
     size_t k = 0;
@@ -62,6 +111,8 @@ void x2_host_path(const char *g, char *out, size_t n) {
     while (*p == '/') p++;
     if (drive) snprintf(out, n, "%s/drive_%c/%s", x2_module.game_dir, drive, p);
     else snprintf(out, n, "%s/%s", x2_module.game_dir, p);
+    size_t base = strlen(x2_module.game_dir) + 1;
+    if (strlen(out) > base) resolve_case(out, n, base);
 }
 
 static u32 errno_to_win(void) {
@@ -664,6 +715,223 @@ static void GetCommTimeouts(X2Cpu *c) {
     comm_ok(c);
 }
 
+static void CreateDirectoryW(X2Cpu *c) {
+    char n[1024], hp[1024];
+    x2_host_path(WARG(0, n), hp, sizeof hp);
+    mkdirs_for(hp);
+    if (x2_mkdir(hp) == 0) {
+        RET(1);
+        return;
+    }
+    x2_set_last_error(errno == EEXIST ? ERROR_ALREADY_EXISTS : errno_to_win());
+    RET(0);
+}
+static void GetFileAttributesW(X2Cpu *c) {
+    char n[1024], hp[1024];
+    struct stat st;
+    x2_host_path(WARG(0, n), hp, sizeof hp);
+    if (stat(hp, &st)) {
+        x2_set_last_error(errno_to_win());
+        RET(0xFFFFFFFFu);
+        return;
+    }
+    RET(S_ISDIR(st.st_mode) ? 0x10 : 0x80);
+}
+
+/* ---- .ini files (GetPrivateProfile* / WritePrivateProfile*) ----------------
+ * Sections and keys match without case; a file name without a folder would be in
+ * the Windows folder, which we map to the game's folder like any relative path. */
+static char *ini_load(const char *guest, char *hp, size_t n) {
+    x2_host_path(guest, hp, n);
+    FILE *f = fopen(hp, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *s = malloc((size_t)len + 1);
+    size_t got = fread(s, 1, (size_t)len, f);
+    fclose(f);
+    s[got] = 0;
+    if (got >= 2 && (u8)s[0] == 0xFF && (u8)s[1] == 0xFE) { /* UTF-16LE */
+        size_t nw = (got - 2) / 2;
+        u16 *w = calloc(nw + 1, 2);
+        memcpy(w, s + 2, nw * 2);
+        char *u = malloc(nw * 3 + 1);
+        x2_wstr_utf8(w, u, nw * 3 + 1);
+        free(w);
+        free(s);
+        return u;
+    }
+    return s;
+}
+/* the next line of s from *pos: [start, end) without the line break */
+static bool ini_line(const char *s, size_t *pos, size_t *start, size_t *end) {
+    if (!s[*pos]) return false;
+    *start = *pos;
+    while (s[*pos] && s[*pos] != '\n') (*pos)++;
+    *end = *pos;
+    if (*end > *start && s[*end - 1] == '\r') (*end)--;
+    if (s[*pos]) (*pos)++;
+    return true;
+}
+static void ini_trim(const char *s, size_t *a, size_t *b) {
+    while (*a < *b && (s[*a] == ' ' || s[*a] == '\t')) (*a)++;
+    while (*b > *a && (s[*b - 1] == ' ' || s[*b - 1] == '\t')) (*b)--;
+}
+static bool ini_is(const char *s, size_t a, size_t b, const char *name) {
+    return strlen(name) == b - a && !strncasecmp(s + a, name, b - a);
+}
+/* finds key in section: the value's range, and the ranges of the key's line and of the section's end
+   (where a new key goes) */
+typedef struct {
+    bool section, key;
+    size_t val_a, val_b, line_a, line_end, sect_end;
+} IniHit;
+static IniHit ini_find(const char *s, const char *sect, const char *key) {
+    IniHit h = {0};
+    size_t pos = 0, a, b;
+    bool in = false;
+    while (ini_line(s, &pos, &a, &b)) {
+        size_t ta = a, tb = b;
+        ini_trim(s, &ta, &tb);
+        if (ta < tb && s[ta] == '[') {
+            size_t ca = ta + 1, cb = ca;
+            while (cb < tb && s[cb] != ']') cb++;
+            ini_trim(s, &ca, &cb);
+            if (in) return h; /* the section ended without the key */
+            in = ini_is(s, ca, cb, sect);
+            if (in) h.section = true, h.sect_end = pos;
+            continue;
+        }
+        if (!in) continue;
+        if (ta < tb && s[ta] != ';') h.sect_end = pos;
+        const char *eq = memchr(s + ta, '=', tb - ta);
+        if (!eq || ta == tb || s[ta] == ';') continue;
+        size_t ka = ta, kb = (size_t)(eq - s);
+        ini_trim(s, &ka, &kb);
+        if (key && ini_is(s, ka, kb, key)) {
+            h.key = true;
+            h.val_a = kb + 1;
+            h.val_b = tb;
+            while (s[h.val_a] == '=') h.val_a++;
+            ini_trim(s, &h.val_a, &h.val_b);
+            h.line_a = a;
+            h.line_end = pos;
+            return h;
+        }
+    }
+    return h;
+}
+static void GetPrivateProfileIntW(X2Cpu *c) {
+    char sect[256], key[256], file[1024], hp[1024];
+    (void)WARG(0, sect), (void)WARG(1, key), (void)WARG(3, file);
+    char *s = ini_load(file, hp, sizeof hp);
+    u32 r = ARG(2);
+    if (s) {
+        IniHit h = ini_find(s, sect, key);
+        if (h.key) {
+            char v[64];
+            size_t n = h.val_b - h.val_a < sizeof v - 1 ? h.val_b - h.val_a : sizeof v - 1;
+            memcpy(v, s + h.val_a, n);
+            v[n] = 0;
+            r = (u32)strtol(v, NULL, !strncasecmp(v, "0x", 2) ? 16 : 10);
+        }
+        free(s);
+    }
+    RET(r);
+}
+/* (section, key, string, file): sets a key, or removes it (string NULL); removing a whole
+   section (key NULL) is not supported */
+static void WritePrivateProfileStringW(X2Cpu *c) {
+    char sect[256], key[256], val[1024], file[1024], hp[1024];
+    if (!ARG(0) || !ARG(1)) {
+        x2_log("WritePrivateProfileStringW: removing a section is not supported");
+        RET(1);
+        return;
+    }
+    (void)WARG(0, sect), (void)WARG(1, key), (void)WARG(3, file);
+    bool del = !ARG(2);
+    if (!del) WARG(2, val);
+    char *s = ini_load(file, hp, sizeof hp);
+    if (!s) s = calloc(1, 1);
+    size_t len = strlen(s);
+    IniHit h = ini_find(s, sect, key);
+    char line[1400];
+    snprintf(line, sizeof line, "%s=%s\r\n", key, del ? "" : val);
+    FILE *f = fopen(hp, "wb");
+    if (!f) {
+        x2_set_last_error(errno_to_win());
+        free(s);
+        RET(0);
+        return;
+    }
+    if (h.key) { /* replace (or drop) the key's line */
+        fwrite(s, 1, h.line_a, f);
+        if (!del) fputs(line, f);
+        fwrite(s + h.line_end, 1, len - h.line_end, f);
+    } else if (del) {
+        fwrite(s, 1, len, f);
+    } else if (h.section) { /* after the section's last key */
+        fwrite(s, 1, h.sect_end, f);
+        if (h.sect_end && s[h.sect_end - 1] != '\n') fputs("\r\n", f);
+        fputs(line, f);
+        fwrite(s + h.sect_end, 1, len - h.sect_end, f);
+    } else {
+        fwrite(s, 1, len, f);
+        if (len && s[len - 1] != '\n') fputs("\r\n", f);
+        fprintf(f, "[%s]\r\n%s", sect, line);
+    }
+    fclose(f);
+    free(s);
+    RET(1);
+}
+
+/* ---- file mappings: page-file backed (shared memory between processes; we have one) or a
+   read-only copy of a file. Named mappings opened twice share their memory. */
+typedef struct {
+    u32 mem, size;
+    char name[128];
+} Mapping;
+static Mapping *mappings[32];
+static void CreateFileMappingW(X2Cpu *c) {
+    u32 file = ARG(0), size = ARG(4);
+    char name[128] = "";
+    if (ARG(5)) WARG(5, name);
+    for (int i = 0; i < 32; i++)
+        if (mappings[i] && name[0] && !strcmp(mappings[i]->name, name)) {
+            x2_set_last_error(ERROR_ALREADY_EXISTS);
+            RET(x2_handle_new(H_MISC, mappings[i], NULL));
+            return;
+        }
+    int fd = file != INVALID_HANDLE ? fd_of(file) : -1;
+    struct stat st;
+    if (fd >= 0 && !size && fstat(fd, &st) == 0) size = (u32)st.st_size;
+    int slot = 0;
+    while (slot < 32 && mappings[slot]) slot++;
+    if (!size || slot == 32) {
+        x2_log("CreateFileMappingW(\"%s\", size %u): not supported", name, size);
+        RET(0);
+        return;
+    }
+    Mapping *m = calloc(1, sizeof *m);
+    m->size = size;
+    m->mem = x2_heap_alloc(0, size, true);
+    snprintf(m->name, sizeof m->name, "%s", name);
+    if (fd >= 0 && (lseek(fd, 0, SEEK_SET) < 0 || read(fd, X2P(m->mem), size) < 0))
+        x2_log("CreateFileMappingW: cannot read the file");
+    mappings[slot] = m;
+    x2_set_last_error(0);
+    RET(x2_handle_new(H_MISC, m, NULL));
+}
+/* (mapping, access, offset high, offset low, size) */
+static void MapViewOfFile(X2Cpu *c) {
+    X2Handle *h = x2_handle_get(ARG(0), H_MISC);
+    Mapping *m = NULL;
+    for (int i = 0; h && i < 32; i++)
+        if (mappings[i] == h->obj) m = h->obj;
+    RET(m && ARG(3) < m->size ? m->mem + ARG(3) : 0);
+}
+static void UnmapViewOfFile(X2Cpu *c) { RET(1); } /* the memory stays until exit */
 const X2Hle x2_hle_k32_file[] = {
     {"CreateFileA", CreateFileA, 7},
     {"CreateFileW", CreateFileW, 7},
@@ -690,6 +958,13 @@ const X2Hle x2_hle_k32_file[] = {
     {"MoveFileExA", MoveFileExA, 3},
     {"CreateDirectoryA", CreateDirectoryA, 2},
     {"GetFileAttributesA", GetFileAttributesA, 1},
+    {"CreateDirectoryW", CreateDirectoryW, 2},
+    {"GetFileAttributesW", GetFileAttributesW, 1},
+    {"GetPrivateProfileIntW", GetPrivateProfileIntW, 4},
+    {"WritePrivateProfileStringW", WritePrivateProfileStringW, 4},
+    {"CreateFileMappingW", CreateFileMappingW, 6},
+    {"MapViewOfFile", MapViewOfFile, 5},
+    {"UnmapViewOfFile", UnmapViewOfFile, 1},
     {"GetDriveTypeA", GetDriveTypeA, 1},
     {"GetDiskFreeSpaceExA", GetDiskFreeSpaceExA, 4},
     {"GetCurrentDirectoryA", GetCurrentDirectoryA, 2},

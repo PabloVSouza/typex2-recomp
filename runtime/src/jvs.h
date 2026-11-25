@@ -23,3 +23,7 @@ uint32_t jvs_read(uint8_t *out, uint32_t n);
 uint32_t jvs_pending(void);
 bool jvs_sense(void); /* true while unaddressed */
 void jvs_set_inputs(uint8_t system, uint16_t p1, uint16_t p2, bool coin1, bool coin2);
+/* the same inputs for I/O boards read as registers (iDmacDrv32, idmac.c) */
+void jvs_get_switches(uint8_t *system, uint16_t *p1, uint16_t *p2);
+uint16_t jvs_get_coins(int slot);
+void jvs_add_coins(int slot, int delta);

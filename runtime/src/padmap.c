@@ -28,6 +28,8 @@ static bool is_sse(void) { return !strcmp(game_id(), "sse"); }
 /* BlazBlue CT and CS share the panel: buttons A B C D on cabinet SHOT1-4;
  * Samurai Shodown EoD has the same four, called A B C R */
 static bool is_blazblue(void) { return !strcmp(game_id(), "bbcs") || !strcmp(game_id(), "bbct") || is_sse(); }
+/* Goketsuji Ichizoku: KOF's cabinet layout (SHOT1 SHOT2 over SHOT4 SHOT5) with punches above kicks */
+static bool is_goketsuji(void) { return !strcmp(game_id(), "goketsuji"); }
 
 /* what each game calls cabinet SHOT1-6 (labels for frontends) */
 static const char *const *shot_names(void) {
@@ -35,6 +37,8 @@ static const char *const *shot_names(void) {
     static const char *const sf4[6] = {"LP", "MP", "HP", "LK", "MK", "HK"};
     static const char *const bb[6] = {"A", "B", "C", "D", "5", "6"};
     static const char *const sse[6] = {"A", "B", "C", "R", "5", "6"};
+    static const char *const gok[6] = {"LP", "HP", "3", "LK", "HK", "6"};
+    if (is_goketsuji()) return gok;
     if (!strcmp(game_id(), "ssf4ae")) return sf4;
     if (is_sse()) return sse;
     if (is_blazblue()) return bb;
@@ -182,6 +186,11 @@ void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
         label[1] = "B", bits[1] = JVS_B2;
         label[2] = "C", bits[2] = JVS_B3;
         label[3] = is_sse() ? "R" : "D", bits[3] = JVS_B4;
+    } else if (is_goketsuji()) { /* weak and strong punch above the kicks */
+        label[0] = "LP", bits[0] = JVS_B1;
+        label[1] = "HP", bits[1] = JVS_B2;
+        label[3] = "LK", bits[3] = JVS_B4;
+        label[4] = "HK", bits[4] = JVS_B5;
     } else { /* KOF: C D above A B */
         label[0] = "C", bits[0] = X2_BTN_C;
         label[1] = "D", bits[1] = X2_BTN_D;

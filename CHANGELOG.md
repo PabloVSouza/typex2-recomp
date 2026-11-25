@@ -9,6 +9,21 @@ games are recompiled on your computer from your own files.
 
 ## Unreleased
 
+- **New game: Gouketsuji Ichizoku Matsuri Senzo Kuyou** (Type X2, NESiCAxLive). Attract mode
+  with its opening movie, coin / start, character select, fights with sound and the test menu
+  on macOS; scripted fights at 60 fps in the Android app. Not played by hand yet:
+  [page](docs/Game-Gouketsuji-Matsuri.md).
+- **Vulkan (Android, Windows, Linux):** two writes in a row to the same image (a game's
+  `StretchRect` into the same target, texture uploads) now wait for each other. Khronos'
+  validation layer reported them in BlazBlue: Calamity Trigger; a desktop driver may run them
+  out of order. A possible cause of the box of missing effects on Windows with NVIDIA
+  ([#7](https://github.com/PabloVSouza/typex2-recomp/issues/7)).
+- **Movies:** games that wait for a movie with `WaitForCompletion` now wait for its end (it
+  reported the end at once), and a sample grabber hands out the format and size the game asked
+  for.
+- **Android and Linux:** game files are found whatever the case of their names, as on Windows.
+- `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
+  (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,
   not a blank one.
 

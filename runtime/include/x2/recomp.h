@@ -97,6 +97,24 @@ void x2_dispatch_call_ic(X2Cpu *c, u32 target, u64 *ic);
         else                                                                                                           \
             x2_dispatch_call_ic((c), (t), &ic_);                                                                       \
     } while (0)
+/* Guest setjmp / longjmp (MSVC _setjmp3, recognised by the lifter). Each call to it also takes a
+ * host setjmp, in the calling function's frame, keyed by the call's return address; when the
+ * guest longjmp jumps back to that address the dispatcher longjmps the host there, with the
+ * guest registers already restored. Only jumps up the same stack (a task system's exit). The
+ * C library's _setjmp is declared here, not taken from <setjmp.h>: generated code also builds
+ * without an OS SDK. x86-64 Windows has no _setjmp but supports clang's builtin. */
+void *x2_sj_slot(X2Cpu *c, u32 ret, u32 esp);
+#if defined(_WIN32)
+#define X2_SETJMP(buf) __builtin_setjmp((void **)(buf))
+#else /* libc's _setjmp under our own name (a <setjmp.h> included elsewhere declares it differently) */
+#if defined(__APPLE__)
+#define X2_LIBC_SYM(name) "_" name
+#else
+#define X2_LIBC_SYM(name) name
+#endif
+int x2_c_setjmp(void *) __asm__(X2_LIBC_SYM("_setjmp")) __attribute__((returns_twice));
+#define X2_SETJMP(buf) x2_c_setjmp(buf)
+#endif
 void x2_unimpl(X2Cpu *c, u32 va, const char *text) __attribute__((noreturn));
 /* native replacements x2recomp emits for recognised library routines (natives.c) */
 void x2n_inflate_fast(X2Cpu *c, u32 msg_far, u32 msg_dist, u32 msg_len);

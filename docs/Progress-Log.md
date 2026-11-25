@@ -2,6 +2,36 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-25: Gouketsuji Ichizoku Matsuri Senzo Kuyou; Vulkan write-after-write barriers
+
+- **New game** (requested on Discord), the NESiCAxLive build (version 1.0.1,
+  2011/12/1). From first run to fights in one day; details on
+  [its page](Game-Gouketsuji-Matsuri.md):
+  - 18 missing imports (wide-character file, registry and ini calls, file
+    mappings, `d3dx9_39.dll`), then Taito's `iDmacDrv32.dll` I/O board, read
+    as registers (`hle/idmac.c`): both nodes must read as linked or the game
+    shows FAST IO INITIALIZE ERROR; one node per player.
+  - Its task system leaves tasks with `longjmp`. The lifter pairs each call to
+    MSVC's `_setjmp3` with a host `setjmp`; the dispatcher resumes there when
+    the guest jumps back.
+  - Everything is drawn with `ID3DXSprite`, the test menu with `ID3DXFont`:
+    both are real now (`hle/d3dx_sprite.c`, `hle/d3dx_font.c`).
+  - The opening movie: the sample grabber reported KOF XII's 1280×720 YV12
+    whatever was asked (the game copied 720 rows into its 480-row texture,
+    found with a store watchpoint), and `WaitForCompletion` said "done" at once.
+  - Metal and GL frames are byte-identical; the other nine games' attract
+    modes unchanged. On the tablet: scripted fights at 60 fps in the app.
+- **Vulkan validation (#7):** `X2_VK_VALIDATE=1` runs Khronos' layer with
+  synchronisation checks. On the tablet (the debug app with the layer in its
+  data folder) BlazBlue CT showed WRITE_AFTER_WRITE: a `StretchRect` into a
+  target still in `TRANSFER_DST`, and texture uploads in a row, got no
+  barrier, since `transition()` records nothing when the layout doesn't
+  change. `to_transfer_dst()` adds the write-to-write barrier; the layer is
+  silent now through a fight, and CT still holds 60 fps with no late frames.
+  NVIDIA's desktop driver may have been running those writes out of order.
+- **Android packs carry the runtime:** a runtime fix needs the packs rebuilt
+  and pushed; rebuilding the app (`x2app`) alone changes only the launcher.
+
 ## 2026-11-23: Released textures free their levels (BlazBlue CT crash)
 
 - **Report (#6, Windows):** BlazBlue CT crashed after about 11,000 frames:

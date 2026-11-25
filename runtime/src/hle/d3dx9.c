@@ -801,13 +801,13 @@ static void D3DXCreateCubeTextureFromFileInMemoryEx(X2Cpu *c) {
 }
 
 /* (pDevice, pSrcFile, Width, Height, MipLevels, Usage, Format, Pool, Filter,
- *  MipFilter, ColorKey, pSrcInfo, pPalette, ppTexture) */
-static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
+ *  MipFilter, ColorKey, pSrcInfo, pPalette, ppTexture), the file name already UTF-8 */
+static void texture_from_file(X2Cpu *c, const char *name, const char *fn) {
     char hp[1024];
-    x2_host_path(GSTR(ARG(1)), hp, sizeof hp);
+    x2_host_path(name, hp, sizeof hp);
     FILE *f = fopen(hp, "rb");
     if (!f) {
-        x2_log("d3dx9: D3DXCreateTextureFromFileExA(\"%s\"): file not found", GSTR(ARG(1)));
+        x2_log("d3dx9: %s(\"%s\"): file not found", fn, name);
         RET(0x88760B59u);
         return;
     }
@@ -820,17 +820,27 @@ static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
     RET(create_from_memory(ARG(0), data, got, ARG(2), ARG(3), ARG(4), ARG(5), ARG(6), ARG(7), ARG(10), ARG(11), ARG(13)));
     free(data);
 }
+static void D3DXCreateTextureFromFileExA(X2Cpu *c) {
+    texture_from_file(c, GSTR(ARG(1)), "D3DXCreateTextureFromFileExA");
+}
+static void D3DXCreateTextureFromFileExW(X2Cpu *c) {
+    char n[1024];
+    x2_wstr_utf8(GWSTR(ARG(1)), n, sizeof n);
+    texture_from_file(c, n, "D3DXCreateTextureFromFileExW");
+}
 /* (pDevice, pSrcFile, ppTexture): the Ex form with every default */
-static void D3DXCreateTextureFromFileA(X2Cpu *c) {
+static void texture_from_file_defaults(X2Cpu *c, void (*ex)(X2Cpu *)) {
     u32 dev = ARG(0), file = ARG(1), out = ARG(2), save = c->esp;
     const u32 args[14] = {
         dev,         file,        0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0,  0 /* D3DFMT_UNKNOWN */, 1 /* MANAGED */,
         0xFFFFFFFFu, 0xFFFFFFFFu, 0,           0,           0,           out};
     c->esp -= 4 * 16; /* a fresh argument frame wholly below the caller's return address */
     for (u32 i = 0; i < 14; i++) WR32(c->esp + 4 + 4 * i, args[i]);
-    D3DXCreateTextureFromFileExA(c);
+    ex(c);
     c->esp = save;
 }
+static void D3DXCreateTextureFromFileA(X2Cpu *c) { texture_from_file_defaults(c, D3DXCreateTextureFromFileExA); }
+static void D3DXCreateTextureFromFileW(X2Cpu *c) { texture_from_file_defaults(c, D3DXCreateTextureFromFileExW); }
 
 /* D3DXGetShaderVersion(function): the version token that starts the bytecode */
 static void D3DXGetShaderVersion(X2Cpu *c) { RET(ARG(0) ? RD32(ARG(0)) : 0); }
@@ -849,40 +859,15 @@ static void D3DXCreateTexture(X2Cpu *c) {
     RET(0);
 }
 
-/* ---- ID3DXFont: debug text only; draws nothing ------------------------------ */
-static u32 vt_font;
-static void F_Ok(X2Cpu *c) { RET(0); }
-static void F_GetDC(X2Cpu *c) { RET(0); }
-static void F_DrawText(X2Cpu *c) { RET(0); } /* height of the text drawn */
-static void D3DXCreateFontIndirectA(X2Cpu *c) {
-    if (!vt_font) {
-        static const X2Method m[] = {
-            {"QueryInterface", x2_com_QueryInterface_self, 3},
-            {"AddRef", x2_com_AddRef, 1},
-            {"Release", x2_com_Release, 1},
-            {"GetDevice", F_Ok, 2},
-            {"GetDescA", F_Ok, 2},
-            {"GetDescW", F_Ok, 2},
-            {"GetTextMetricsA", F_Ok, 2},
-            {"GetTextMetricsW", F_Ok, 2},
-            {"GetDC", F_GetDC, 1},
-            {"GetGlyphData", F_Ok, 5},
-            {"PreloadCharacters", F_Ok, 3},
-            {"PreloadGlyphs", F_Ok, 3},
-            {"PreloadTextA", F_Ok, 3},
-            {"PreloadTextW", F_Ok, 3},
-            {"DrawTextA", F_DrawText, 7},
-            {"DrawTextW", F_DrawText, 7},
-            {"OnLostDevice", F_Ok, 1},
-            {"OnResetDevice", F_Ok, 1},
-        };
-        vt_font = x2_com_vtable("ID3DXFont", m, 18);
-    }
-    X2ComObj *o = calloc(1, sizeof *o);
-    WR32(ARG(2), x2_com_wrap(o, vt_font, "ID3DXFont"));
-    RET(0);
-}
+/* ID3DXFont: d3dx_font.c */
+void x2_d3dx_create_font_a(X2Cpu *c);
+void x2_d3dx_create_font_w(X2Cpu *c);
+static void D3DXCreateFontIndirectA(X2Cpu *c) { x2_d3dx_create_font_a(c); }
+static void D3DXCreateFontIndirectW(X2Cpu *c) { x2_d3dx_create_font_w(c); }
 
+/* ID3DXSprite: d3dx_sprite.c */
+void x2_d3dx_create_sprite(X2Cpu *c);
+static void D3DXCreateSprite(X2Cpu *c) { x2_d3dx_create_sprite(c); }
 /* screenshots from the game's test menu: not saved */
 static void D3DXSaveSurfaceToFileA(X2Cpu *c) {
     x2_log("d3dx9: D3DXSaveSurfaceToFileA(\"%s\") ignored", GSTR(ARG(0)));
@@ -1033,12 +1018,16 @@ const X2Hle x2_hle_d3dx9[] = {
     {"D3DXCreateTexture", D3DXCreateTexture, 8},
     {"D3DXGetShaderVersion", D3DXGetShaderVersion, 1},
     {"D3DXCreateFontIndirectA", D3DXCreateFontIndirectA, 3},
+    {"D3DXCreateFontIndirectW", D3DXCreateFontIndirectW, 3},
+    {"D3DXCreateSprite", D3DXCreateSprite, 2},
     {"D3DXSaveSurfaceToFileA", D3DXSaveSurfaceToFileA, 6},
     {"D3DXCreateEffectPool", D3DXCreateEffectPool, 1},
     {"D3DXCreateEffect", D3DXCreateEffect, 9},
     {"D3DXCreateTextureFromFileInMemoryEx", D3DXCreateTextureFromFileInMemoryEx, 15},
     {"D3DXCreateTextureFromFileExA", D3DXCreateTextureFromFileExA, 14},
     {"D3DXCreateTextureFromFileA", D3DXCreateTextureFromFileA, 3},
+    {"D3DXCreateTextureFromFileW", D3DXCreateTextureFromFileW, 3},
+    {"D3DXCreateTextureFromFileExW", D3DXCreateTextureFromFileExW, 14},
     {"D3DXLoadSurfaceFromMemory", D3DXLoadSurfaceFromMemory, 10},
     {"D3DXCompileShader", D3DXCompileShader, 10},
     {"D3DXAssembleShader", D3DXAssembleShader, 7},

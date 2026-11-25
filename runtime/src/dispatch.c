@@ -149,6 +149,39 @@ const char *x2_thunk_name(u32 addr) {
     return t ? t->name : NULL;
 }
 
+/* guest setjmp sites (X2_SETJMP in recomp.h): per thread, the host jump buffer of each call
+ * site's frame, with the guest esp the guest longjmp restores */
+typedef struct {
+    u32 ret, esp;
+    long buf[64]; /* larger than any libc's jmp_buf; Windows' builtin uses 5 pointers */
+} SjSlot;
+static _Thread_local SjSlot sj_slots[16];
+static _Thread_local unsigned sj_next;
+void *x2_sj_slot(X2Cpu *c, u32 ret, u32 esp) {
+    (void)c;
+    SjSlot *s = NULL;
+    for (unsigned i = 0; i < 16 && !s; i++)
+        if (sj_slots[i].ret == ret) s = &sj_slots[i];
+    if (!s) s = &sj_slots[sj_next++ % 16];
+    s->ret = ret;
+    s->esp = esp + 4; /* after the guest longjmp's return to `ret` */
+    return s->buf;
+}
+#if !defined(_WIN32)
+void x2_c_longjmp(void *, int) __asm__(X2_LIBC_SYM("_longjmp")) __attribute__((noreturn)); /* as x2_c_setjmp */
+#endif
+/* a guest longjmp landing on a setjmp site of this thread with the same stack: resume there */
+static void sj_resume(X2Cpu *c, u32 target) {
+    for (unsigned i = 0; i < 16; i++)
+        if (sj_slots[i].ret == target && sj_slots[i].esp == c->esp) {
+#if defined(_WIN32)
+            __builtin_longjmp((void **)sj_slots[i].buf, 1);
+#else
+            x2_c_longjmp(sj_slots[i].buf, 1);
+#endif
+        }
+}
+
 /* Runs `target` as if just called: the return address is already on the
  * guest stack. Returns when the guest function executes its `ret`. */
 static void run(X2Cpu *c, u32 target, bool tail) {
@@ -177,6 +210,7 @@ static void run(X2Cpu *c, u32 target, bool tail) {
         c->esp += 4 + (t->nargs > 0 ? 4 * (u32)t->nargs : 0);
         return;
     }
+    if (tail) sj_resume(c, target);
     x2_fatal("%s to unknown guest address %08x (return address %08x)", tail ? "jump" : "call", target, RD32(c->esp));
 }
 

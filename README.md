@@ -37,6 +37,7 @@ happens on your computer.
 | The King of Fighters '98 Ultimate Match | ✅ | ✅ | [page](docs/Game-KOF-98-UM.md) |
 | The King of Fighters Maximum Impact Regulation A | fights tested (scripted) | ✅ | [page](docs/Game-KOF-MI-Regulation-A.md) |
 | Samurai Shodown: Edge of Destiny | fights run, 60 fps (SD mode) | arcade runs (scripted) | [page](docs/Game-Samurai-Shodown-EoD.md) |
+| Gouketsuji Ichizoku Matsuri Senzo Kuyou | fights at 60 fps (scripted) | ✅ | [page](docs/Game-Gouketsuji-Matsuri.md) |
 
 ✅ playable start to finish. Android is tested on a Samsung Galaxy Tab A11
 (Helio G99, Mali-G57), where these games run at 60 fps. The status of every

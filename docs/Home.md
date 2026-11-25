@@ -38,6 +38,8 @@ Game pages:
 - [BlazBlue CT](Game-BlazBlue-CT.md)
 - [KOF '98 UM](Game-KOF-98-UM.md)
 - [KOF MI Regulation A](Game-KOF-MI-Regulation-A.md)
+- [Samurai Shodown EoD](Game-Samurai-Shodown-EoD.md)
+- [Gouketsuji Ichizoku Matsuri](Game-Gouketsuji-Matsuri.md)
 
 ## Quick start
 
