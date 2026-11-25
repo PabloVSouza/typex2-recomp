@@ -49,6 +49,24 @@ It is a Tauri app (Rust back end, React front end) in `launcher/`.
 3. **Exports:** the project's own CMake build over the generated code
    (`-DX2_GAMES_DIR`, `-DX2_GAMES`). For Android it uses the NDK toolchain.
 
+## RetroArch on a computer
+
+The core holds no games until you build it: it is not an emulator that reads
+any `game.exe`, but the recompiled code of the games chosen at export.
+
+1. In the launcher, add your game folders (only supported games can be
+   chosen; the others are listed as *Not supported yet*).
+2. Export → **RetroArch core for this computer**, pick the games.
+3. Copy `typex2_libretro.dll` (Windows), `.so` (Linux) or `.dylib` (macOS)
+   into RetroArch's `cores` folder, and `typex2_libretro.info` into its
+   `info` folder.
+4. In RetroArch, Load Core → *Taito - Type X2 (Type X2 recomp)*, then Load
+   Content → the game's `game.exe` (`launcher.exe` for KOF '98 UM). The core
+   recognises the game from it and runs that game's code.
+
+To add a game later, export the core again with it. On computers the core is
+untested so far (development and testing happen with the Android core).
+
 ## Build tools, kept inside the launcher
 
 The launcher downloads pinned versions into its own `tools/` folder, checks
@@ -85,9 +103,11 @@ stays in the launcher's data folder, apart from the exports the user makes.
   - Building with the downloaded clang: KOF '98 UM.
   - Exporting the Android RetroArch core with the downloaded CMake, Ninja and
     NDK.
-- **Linux:** untested.
-- **Windows:** untested, and there is no `x2-player` yet, so Windows can
-  export but not play.
+- **Linux:** builds in CI; untested.
+- **Windows:** builds in CI and plays games with `x2-player.exe`; one
+  player's report so far (BlazBlue: Calamity Trigger,
+  [#6](https://github.com/PabloVSouza/typex2-recomp/issues/6)). The RetroArch
+  core for this computer (`typex2_libretro.dll`) is untested.
 - **Android:** the app is built in CI with Tauri (`launcher/src-tauri/gen/android`); on the device it hides Export and Build tools, and the game page shows the pack instead of the build.
 
 ## Developing

@@ -28,7 +28,7 @@ game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 | The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
 | Samurai Shodown: Edge of Destiny | `sse` | fights run on macOS and Android (HD mode from the JVS feature list order, `.X` stage meshes, toon shading, shadow maps); in the launcher; Android runs it in SD (`X2_HD`) at 60 fps |
 
-Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress.
+Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress. Planned next: Gouketsuji Ichizoku Matsuri Senzo Kuyou (Type X2, 2009; requested on Discord, not in the collection yet).
 
 Documentation lives in `docs/` (also published as the GitHub wiki by
 `tools/wiki_sync.sh`): `docs/Game-Status.md` tracks every Type X / X2 game,

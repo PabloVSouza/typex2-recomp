@@ -61,7 +61,7 @@ for KOF '98 UM).
 | Darius Burst: Another Chronicle | 2010 | Not started |
 | Elevator Action Death Parade | 2009 | Not started |
 | Gaia Attack 4 | 2010 | Not started |
-| Gouketsuji Ichizoku: Senzo Kuyou | 2009 | Not started |
+| Gouketsuji Ichizoku: Senzo Kuyou (Matsuri Senzo Kuyou) | 2009 | **Planned** (requested on Discord) |
 | Haunted Museum | 2009 | Not started |
 | Haunted Museum II | 2010 | Not started |
 | **The King of Fighters: Maximum Impact Regulation A** | 2007 | **Playable** |
