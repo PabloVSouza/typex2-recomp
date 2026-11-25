@@ -45,6 +45,9 @@ games are recompiled on your computer from your own files.
 - **OpenGL ES (Android devices without Vulkan 1.3, or the OpenGL renderer chosen):** 16-bit
   textures with alpha (A1R5G5B5, A4R4G4B4) are converted for OpenGL ES, which can't take them
   as they are. KOF '98 UM's palettized sprites (title logo, fights) were black.
+- **Android app:** a game whose folder was found before the app supported it (listed as not
+  supported yet) no longer stays in the library as a second card without Play once a newer app
+  supports it.
 - `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
   (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,

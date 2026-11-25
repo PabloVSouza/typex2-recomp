@@ -200,6 +200,13 @@ pub fn sync(config: &mut Config) -> bool {
             }
         }
     }
+    // A folder seen by an app that didn't know its game yet was listed as unsupported
+    // ("other-..."); once a later app supports it, it is listed again under its id, and the old
+    // entry would stay as a second card without Play.
+    let supported: Vec<String> = config.games.iter().filter(|g| games::by_id(&g.id).is_some()).map(|g| g.path.clone()).collect();
+    let before = config.games.len();
+    config.games.retain(|g| games::by_id(&g.id).is_some() || !supported.contains(&g.path));
+    changed |= config.games.len() != before;
     changed
 }
 

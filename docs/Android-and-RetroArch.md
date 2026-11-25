@@ -45,6 +45,17 @@ cd launcher && ANDROID_HOME=... NDK_HOME=$ANDROID_NDK npx tauri android build --
 carries no game code: each game's code comes as a **game pack**, built on a
 computer.
 
+<table>
+  <tr>
+    <td><img src="images/android-library.jpg" width="400" alt="The Android app's library"></td>
+    <td><img src="images/android-game.jpg" width="400" alt="A game's page in the Android app"></td>
+  </tr>
+  <tr>
+    <td><img src="images/android-settings.jpg" width="400" alt="Display settings: FPS counter, render scale, touch pad and touch buttons"></td>
+    <td><img src="images/android-controls.jpg" width="400" alt="Control settings: a layout preset and each button's assignment"></td>
+  </tr>
+</table>
+
 1. **Install the app** from the releases page (`typex2-android.apk`). On
    first start, allow "All files access": the app reads the ROMs folder and
    writes each game's `x2.env`. Coming from a Type X2 app older than 0.2.0, uninstall
