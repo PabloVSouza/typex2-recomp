@@ -621,6 +621,24 @@ static void transition(VTex *t, VkImageLayout to) {
     t->layout = to;
 }
 
+/* before a copy or blit into t: the layout change, or, when t is a transfer target already (the
+   last command wrote it too: no layout change, so transition records nothing), a barrier between
+   the two writes. Without it the validation layer reports WRITE_AFTER_WRITE (BlazBlue CT's
+   StretchRects and texture uploads), and a driver may overlap the writes */
+static void to_transfer_dst(VTex *t) {
+    if (t->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        transition(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        return;
+    }
+    end_rendering();
+    VkImageMemoryBarrier2 b = layout_barrier(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    b.srcStageMask = b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+    b.srcAccessMask = b.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    VkDependencyInfo di = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    di.imageMemoryBarrierCount = 1;
+    di.pImageMemoryBarriers = &b;
+    pvkCmdPipelineBarrier2(cmd, &di);
+}
 static VkImageView make_view(VTex *t, VkComponentMapping sw, VkImageAspectFlags aspect) {
     VkImageViewCreateInfo vi = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
     vi.image = t->img;
@@ -782,7 +800,7 @@ static void upload(VTex *t, u32 level, u32 face, u32 x, u32 y, u32 w, u32 h, con
     }
     free(tmp);
     end_rendering(); /* copies happen outside rendering */
-    transition(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    to_transfer_dst(t);
     VkBufferImageCopy c = {0};
     c.bufferOffset = off;
     c.imageSubresource = (VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT, level, face, 1};
@@ -857,7 +875,7 @@ static void tex_upload_now(const TexUpload *k) {
                 for (u32 r = 0; r < h; r++)
                     memcpy((u8 *)ring_ptr(off) + (size_t)r * w * px, full + (size_t)r * k->w * px, w * px);
                 end_rendering();
-                transition(t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                to_transfer_dst(t);
                 VkBufferImageCopy c = {0};
                 c.bufferOffset = off;
                 c.imageSubresource = (VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT, level, face, 1};
@@ -2150,7 +2168,7 @@ static void do_blit(const Blit *k) {
     if (!s || !d || s == d || !d->rt) return;
     end_rendering();
     transition(s, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    transition(d, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    to_transfer_dst(d);
     u32 ss = s->scale, ds = d->scale;
 #define SP(v, sc) (s32) gfx_scale_px((v), (sc))
     VkImageBlit b = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
@@ -3485,6 +3503,58 @@ static void setup(u32 w, u32 h) {
 }
 
 #ifdef X2_VK_SDL
+/* X2_VK_VALIDATE=1: Khronos' validation layer (installed with the Vulkan SDK) with synchronisation checks, its
+   messages in our log; each message id is logged a few times only */
+static VKAPI_ATTR VkBool32 VKAPI_CALL validation_msg(VkDebugUtilsMessageSeverityFlagBitsEXT sev,
+                                                     VkDebugUtilsMessageTypeFlagsEXT type,
+                                                     const VkDebugUtilsMessengerCallbackDataEXT *d, void *user) {
+    (void)type, (void)user;
+    enum { IDS = 256, EACH = 3, TOTAL = 500 };
+    static int32_t ids[IDS];
+    static u8 seen[IDS];
+    static u32 nids, total;
+    static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&mu);
+    u32 i = 0;
+    while (i < nids && ids[i] != d->messageIdNumber) i++;
+    if (i == nids && nids < IDS) ids[nids++] = d->messageIdNumber;
+    bool show = total < TOTAL && (i == IDS || seen[i]++ < EACH);
+    if (show) total++;
+    pthread_mutex_unlock(&mu);
+    if (show)
+        x2_log("vulkan validation (%s, frame %u): %s",
+               sev >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT ? "error" : "warning", st_frames + 2,
+               d->pMessage ? d->pMessage : "?");
+    return VK_FALSE;
+}
+
+/* adds the layer and VK_EXT_debug_utils to the instance when X2_VK_VALIDATE is set and the layer is installed */
+static bool validation_wanted(void) {
+    if (!getenv("X2_VK_VALIDATE") || !atoi(getenv("X2_VK_VALIDATE"))) return false;
+    u32 n = 0;
+    vkEnumerateInstanceLayerProperties(&n, NULL);
+    VkLayerProperties *lp = calloc(n ? n : 1, sizeof *lp);
+    vkEnumerateInstanceLayerProperties(&n, lp);
+    bool found = false;
+    for (u32 i = 0; i < n; i++) found |= !strcmp(lp[i].layerName, "VK_LAYER_KHRONOS_validation");
+    free(lp);
+    if (!found) x2_log("vulkan: X2_VK_VALIDATE: VK_LAYER_KHRONOS_validation is not installed (Vulkan SDK)");
+    return found;
+}
+
+static void validation_start(void) {
+    PFN_vkCreateDebugUtilsMessengerEXT create =
+        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(inst, "vkCreateDebugUtilsMessengerEXT");
+    VkDebugUtilsMessengerCreateInfoEXT mi = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
+    mi.messageSeverity =
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    mi.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+    mi.pfnUserCallback = validation_msg;
+    VkDebugUtilsMessengerEXT m;
+    if (create && create(inst, &mi, NULL, &m) == VK_SUCCESS)
+        x2_log("vulkan: validation layer on, with synchronisation checks");
+}
+
 /* false when there is no usable Vulkan 1.3 device (the caller falls back to GL) */
 bool gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
     Uint32 next = 0;
@@ -3494,10 +3564,25 @@ bool gfx_vk_init(SDL_Window *win, u32 w, u32 h) {
     ii.pApplicationInfo = &app;
     ii.enabledExtensionCount = next;
     ii.ppEnabledExtensionNames = ext;
+    bool validate = ext && validation_wanted();
+    const char *vext[16], *layer = "VK_LAYER_KHRONOS_validation";
+    VkValidationFeatureEnableEXT vfe = VK_VALIDATION_FEATURE_ENABLE_SYNCHRONIZATION_VALIDATION_EXT;
+    VkValidationFeaturesEXT vf = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT, NULL, 1, &vfe};
+    if (validate && next < 15) {
+        memcpy(vext, ext, next * sizeof *ext);
+        vext[next] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+        ii.enabledExtensionCount = next + 1;
+        ii.ppEnabledExtensionNames = vext;
+        ii.enabledLayerCount = 1;
+        ii.ppEnabledLayerNames = &layer;
+        ii.pNext = &vf;
+    } else
+        validate = false;
     if (!ext || vkCreateInstance(&ii, NULL, &inst) != VK_SUCCESS) {
         x2_log("vulkan: no instance");
         return false;
     }
+    if (validate) validation_start();
     const char *why = NULL;
     u32 np = 1;
     VkResult er;
@@ -3577,7 +3662,7 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     VkCommandBuffer saved = cmd;
     cmd = o->cb; /* transition() records into cmd */
     transition(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    transition(o->t, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    to_transfer_dst(o->t);
     VkImageCopy c = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                      {0, (s32)y0, 0},
                      {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
