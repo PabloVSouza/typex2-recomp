@@ -395,12 +395,12 @@ static int SDLCALL audio_thread(void *ud) {
 /* ---- touch controls -------------------------------------------------------------
  * On-screen pad for touch screens (player 1): a stick on the left (8-way, slide
  * between directions), the game's buttons on the right, punches above kicks (KOF: A C top
- * row, B D bottom, staggered; padmap.c: x2_touch_buttons), COIN / START at the top and a small TEST button
+ * row, B D bottom, staggered; padmap.c: x2_touch_buttons), COIN / START at the bottom in the middle and a small TEST button
  * in the top-right corner. Shown on touch devices while no gamepad is
  * connected; X2_TOUCH=1 forces it on (e.g. to try it with a mouse-less tablet
  * plus a pad), X2_TOUCH=0 off. Multi-touch: each finger holds one control. */
-/* TC_BTN..TC_BTN+5: the game's attack buttons (padmap.c: x2_touch_buttons) */
-enum { TC_STICK, TC_BTN, TC_COIN = TC_BTN + 6, TC_START, TC_TEST, TC_COUNT };
+/* TC_BTN..TC_BTN+7: the game's attack buttons, two rows of four (padmap.c: x2_touch_buttons) */
+enum { TC_STICK, TC_BTN, TC_COIN = TC_BTN + 8, TC_START, TC_TEST, TC_COUNT };
 typedef struct {
     float x, y, r; /* centre and radius, window pixels (r 0: not shown) */
     const char *label;
@@ -424,9 +424,9 @@ static bool touch_visible(void) {
     return (n > 0 || touch_seen) && !x2_pad0();
 }
 
-/* An upright screen (a phone, a tablet held upright) with the touch pad: COIN / START / TEST in
- * a strip at the top, the picture under it in the top 60%, the stick and buttons in the rest,
- * side by side. Sideways, the picture fills the window and the pad lies over it. */
+/* An upright screen (a phone, a tablet held upright) with the touch pad: TEST in a strip at the
+ * top, the picture under it in the top 60%, the stick and buttons in the rest, side by side, COIN /
+ * START at the bottom between them. Sideways, the picture fills the window and the pad lies over it. */
 static bool portrait_pad(int ww, int wh) { return ww < wh && touch_visible(); }
 static void present_area_update(int ww, int wh) {
     if (portrait_pad(ww, wh)) {
@@ -439,31 +439,33 @@ static void present_area_update(int ww, int wh) {
 
 static void touch_layout(int ww, int wh) {
     float s = (float)(ww < wh ? ww : wh);
-    float br = s * 0.085f, sr = s * 0.19f, sx = s * 0.30f, sy = wh - s * 0.30f;
-    const char *label[6];
-    u16 bits[6];
+    float br = s * 0.085f, sr = s * 0.19f, sx = sr * 1.3f, sy = wh - s * 0.30f; /* the stick near the left edge */
+    const char *label[8];
+    u16 bits[8];
     x2_touch_buttons(label, bits);
-    bool three = label[2] || label[5];
+    int ncol = 2; /* columns in use: at least two, as the layout was drawn for */
+    for (int i = 0; i < 8; i++)
+        if (label[i] && i % 4 + 1 > ncol) ncol = i % 4 + 1;
     float dx, bx, by;
     if (ww < wh) { /* the bottom 40%, under the picture */
         float y0 = (float)wh * 0.6f, ah = (float)wh - y0;
         sr = fminf(ww * 0.18f, ah * 0.34f);
         br = fminf(ww * 0.075f, ah * 0.13f);
-        sx = ww * 0.25f;
+        sx = sr * 1.25f;
         sy = y0 + ah * 0.5f;
         dx = br * 2.3f;
-        bx = ww - br * 1.8f - dx * (three ? 2 : 1); /* the top row sits br * 0.4 to the right */
+        bx = ww - br * 1.7f - dx * (float)(ncol - 1); /* near the right edge; the top row sits br * 0.4 further */
         by = sy + br * 1.15f;
     } else {
         dx = br * 2.3f;
-        bx = ww - s * (three ? 0.70f : 0.62f);
-        by = wh - s * 0.16f;
+        bx = ww - br * 1.7f - dx * (float)(ncol - 1); /* near the right edge */
+        by = wh - br * 1.5f;
     }
     tctl[TC_STICK] = (TouchCtl){sx, sy, sr, NULL, tctl[TC_STICK].tex, 0, 0, 0};
-    /* two rows of up to three, each column a little higher than the last (an arcade panel's curve) */
-    for (int i = 0; i < 6; i++) {
+    /* two rows of up to four, each column a little higher than the last (an arcade panel's curve) */
+    for (int i = 0; i < 8; i++) {
         TouchCtl *c = &tctl[TC_BTN + i];
-        int col = i % 3, top = i < 3;
+        int col = i % 4, top = i < 4;
         c->x = bx + col * dx + (top ? br * 0.4f : 0);
         c->y = by - col * br * 0.5f - (top ? br * 2.3f : 0);
         c->r = label[i] ? br : 0;
@@ -471,8 +473,21 @@ static void touch_layout(int ww, int wh) {
         c->bits = bits[i];
     }
     float tr = s * 0.055f;
-    tctl[TC_COIN].x = ww * 0.5f - tr * 1.6f; tctl[TC_COIN].y = tr * 1.3f; tctl[TC_COIN].r = tr; tctl[TC_COIN].label = "COIN";
-    tctl[TC_START].x = ww * 0.5f + tr * 1.6f; tctl[TC_START].y = tr * 1.3f; tctl[TC_START].r = tr; tctl[TC_START].label = "START";
+    /* COIN and START at the bottom, in the gap between the stick and the buttons; at the top in the
+       middle when the buttons leave no room (three or four columns on a narrow screen) */
+    float left = sx + sr * 1.15f, right = (float)ww;
+    for (int i = 0; i < 8; i++)
+        if (label[i]) right = fminf(right, tctl[TC_BTN + i].x - br * 1.1f);
+    bool fits = right - left >= tr * 5.6f; /* the two buttons span 5.2 radii */
+    float cx = fits ? (left + right) * 0.5f : (float)ww * 0.5f, cy = fits ? (float)wh - tr * 1.4f : tr * 1.3f;
+    tctl[TC_COIN].x = cx - tr * 1.6f;
+    tctl[TC_COIN].y = cy;
+    tctl[TC_COIN].r = tr;
+    tctl[TC_COIN].label = "COIN";
+    tctl[TC_START].x = cx + tr * 1.6f;
+    tctl[TC_START].y = cy;
+    tctl[TC_START].r = tr;
+    tctl[TC_START].label = "START";
     tctl[TC_TEST].x = ww - tr * 1.3f; tctl[TC_TEST].y = tr * 1.3f; tctl[TC_TEST].r = tr * 0.8f; tctl[TC_TEST].label = "TEST";
 }
 
@@ -533,7 +548,7 @@ static void touch_event(const SDL_Event *e, int ww, int wh) {
         /* a button finger slides onto a neighbouring button (e.g. A -> B) */
         if (fingers[slot].ctl != TC_STICK) {
             int c = touch_hit(x, y);
-            if (c >= TC_BTN && c < TC_BTN + 6) fingers[slot].ctl = c;
+            if (c >= TC_BTN && c < TC_BTN + 8) fingers[slot].ctl = c;
         }
     } else if ((e->type == SDL_EVENT_FINGER_UP || e->type == SDL_EVENT_FINGER_CANCELED) && slot >= 0) {
         fingers[slot].on = false;

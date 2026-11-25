@@ -111,7 +111,15 @@
       "touchText": "Automatic shows it on touch screens while no pad is connected.",
       "touchAuto": "Automatic",
       "touchAlways": "Always",
-      "touchNever": "Never"
+      "touchNever": "Never",
+      "touchButtons": "Touch buttons",
+      "touchButtonsText": "Which buttons the touch pad shows, and where.",
+      "touchButtonsDefault": "This project's layout",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D in a row)",
+      "touchButtonsCustom": "Custom",
+      "touchSlotNone": "None",
+      "touchSlot": "Touch button {{n}}",
+      "touchCustomText": "Two rows of four, as on screen: pick what each button presses."
     },
     "advanced": {
       "title": "Advanced",

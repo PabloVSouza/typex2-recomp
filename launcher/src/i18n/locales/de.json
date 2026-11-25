@@ -111,7 +111,15 @@
       "touchText": "Automatisch zeigt sie auf Touchscreens, solange kein Controller verbunden ist.",
       "touchAuto": "Automatisch",
       "touchAlways": "Immer",
-      "touchNever": "Nie"
+      "touchNever": "Nie",
+      "touchButtons": "Touch-Tasten",
+      "touchButtonsText": "Welche Tasten das Touch-Pad zeigt und wo.",
+      "touchButtonsDefault": "Layout dieses Projekts",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D in einer Reihe)",
+      "touchButtonsCustom": "Eigenes",
+      "touchSlotNone": "Keine",
+      "touchSlot": "Touch-Taste {{n}}",
+      "touchCustomText": "Zwei Reihen zu vier, wie auf dem Bildschirm: wähle, was jede Taste drückt."
     },
     "advanced": {
       "title": "Erweitert",

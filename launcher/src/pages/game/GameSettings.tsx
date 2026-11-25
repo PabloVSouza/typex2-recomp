@@ -18,7 +18,7 @@ export function GameSettings({ game }: { game: GameEntry }) {
   const edit = (patch: Partial<Settings>) => setS({ ...s, ...patch });
   return (
     <>
-      <DisplaySettings s={s} set={set} />
+      <DisplaySettings game={game.id} s={s} set={set} />
       <ControlSettings game={game} s={s} set={set} />
       <AdvancedSettings s={s} set={set} edit={edit} />
     </>

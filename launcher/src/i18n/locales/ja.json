@@ -110,7 +110,15 @@
       "touchText": "自動では、コントローラーが接続されていない間、タッチスクリーンに表示します。",
       "touchAuto": "自動",
       "touchAlways": "常に表示",
-      "touchNever": "表示しない"
+      "touchNever": "表示しない",
+      "touchButtons": "タッチボタン",
+      "touchButtonsText": "タッチパッドに表示するボタンとその位置。",
+      "touchButtonsDefault": "このプロジェクトの配置",
+      "touchButtonsNeoGeo": "ネオジオ（A B C D 横一列）",
+      "touchButtonsCustom": "カスタム",
+      "touchSlotNone": "なし",
+      "touchSlot": "タッチボタン {{n}}",
+      "touchCustomText": "画面と同じ 4 個 × 2 段：各ボタンが押す内容を選びます。"
     },
     "advanced": {
       "title": "詳細設定",

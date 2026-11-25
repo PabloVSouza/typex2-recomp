@@ -110,7 +110,15 @@
       "touchText": "자동은 컨트롤러가 연결되지 않은 동안 터치스크린에 표시합니다.",
       "touchAuto": "자동",
       "touchAlways": "항상",
-      "touchNever": "사용 안 함"
+      "touchNever": "사용 안 함",
+      "touchButtons": "터치 버튼",
+      "touchButtonsText": "터치 패드에 표시할 버튼과 위치.",
+      "touchButtonsDefault": "이 프로젝트의 배치",
+      "touchButtonsNeoGeo": "네오지오 (A B C D 한 줄)",
+      "touchButtonsCustom": "사용자 지정",
+      "touchSlotNone": "없음",
+      "touchSlot": "터치 버튼 {{n}}",
+      "touchCustomText": "화면과 같은 4개씩 두 줄: 각 버튼이 누를 것을 고르세요."
     },
     "advanced": {
       "title": "고급",

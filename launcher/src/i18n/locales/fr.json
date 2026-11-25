@@ -112,7 +112,15 @@
       "touchText": "Automatique l’affiche sur les écrans tactiles tant qu’aucune manette n’est connectée.",
       "touchAuto": "Automatique",
       "touchAlways": "Toujours",
-      "touchNever": "Jamais"
+      "touchNever": "Jamais",
+      "touchButtons": "Boutons tactiles",
+      "touchButtonsText": "Les boutons affichés par la manette tactile, et leur place.",
+      "touchButtonsDefault": "Disposition du projet",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D en ligne)",
+      "touchButtonsCustom": "Personnalisée",
+      "touchSlotNone": "Aucun",
+      "touchSlot": "Bouton tactile {{n}}",
+      "touchCustomText": "Deux rangées de quatre, comme à l'écran : choisissez ce que chaque bouton appuie."
     },
     "advanced": {
       "title": "Avancé",

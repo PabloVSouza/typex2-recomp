@@ -110,7 +110,15 @@
       "touchText": "自动：在触摸屏上且未连接手柄时显示。",
       "touchAuto": "自动",
       "touchAlways": "始终",
-      "touchNever": "从不"
+      "touchNever": "从不",
+      "touchButtons": "触屏按钮",
+      "touchButtonsText": "触屏手柄显示哪些按钮以及位置。",
+      "touchButtonsDefault": "本项目的布局",
+      "touchButtonsNeoGeo": "Neo Geo（A B C D 一排）",
+      "touchButtonsCustom": "自定义",
+      "touchSlotNone": "无",
+      "touchSlot": "触屏按钮 {{n}}",
+      "touchCustomText": "与屏幕相同的两排各四个：选择每个按钮按下什么。"
     },
     "advanced": {
       "title": "高级",

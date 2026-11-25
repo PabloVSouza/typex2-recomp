@@ -30,6 +30,11 @@ games are recompiled on your computer from your own files.
 - **KOF on touch screens:** the on-screen buttons put punches over kicks, as for SSF4: A C (light
   and heavy punch) on the top row, B D (light and heavy kick) below. Pads and the stick preset
   already did. In KOF 2002 UM the keyboard's Z X C V now press its A B C D.
+- **Touch buttons (Android app):** a game's settings choose the on-screen buttons: this
+  project's layout (the default), Neo Geo (A B C D in a row; not for SSF4) or a custom one,
+  two rows of four where each button presses a game button or a combination
+  (`X2_TOUCH_BUTTONS`). The buttons sit closer to the screen's edge, and COIN / START at the
+  bottom in the middle (at the top when the buttons leave no room).
 - `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
   (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,

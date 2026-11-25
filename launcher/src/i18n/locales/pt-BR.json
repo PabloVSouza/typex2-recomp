@@ -112,7 +112,15 @@
       "touchText": "Automático mostra em telas de toque enquanto nenhum controle estiver conectado.",
       "touchAuto": "Automático",
       "touchAlways": "Sempre",
-      "touchNever": "Nunca"
+      "touchNever": "Nunca",
+      "touchButtons": "Botões de toque",
+      "touchButtonsText": "Quais botões o controle de toque mostra, e onde.",
+      "touchButtonsDefault": "Layout do projeto",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D em linha)",
+      "touchButtonsCustom": "Personalizado",
+      "touchSlotNone": "Nenhum",
+      "touchSlot": "Botão de toque {{n}}",
+      "touchCustomText": "Duas fileiras de quatro, como na tela: escolha o que cada botão aperta."
     },
     "advanced": {
       "title": "Avançado",

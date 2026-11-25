@@ -20,6 +20,9 @@ pub struct GameSettings {
     pub log_level: u8,
     /// On-screen touch pad: 0 automatic (touch screens without a pad), 1 always, 2 never (X2_TOUCH).
     pub touch: u8,
+    /// The touch pad's buttons (X2_TOUCH_BUTTONS): "" the game's layout (punches over kicks), "neogeo"
+    /// A B C D in a row, or a custom list "1=a,2=c,5=b,..." (slots 1-4 the top row, 5-8 the bottom).
+    pub touch_buttons: String,
     /// Extra environment, one KEY=VALUE per line.
     pub env: String,
 }
@@ -99,6 +102,9 @@ impl GameSettings {
             2 => env.push(("X2_TOUCH".into(), "0".into())),
             _ => {}
         }
+        if !self.touch_buttons.trim().is_empty() {
+            env.push(("X2_TOUCH_BUTTONS".into(), self.touch_buttons.trim().into()));
+        }
         for line in self.env.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
             if let Some((k, v)) = line.split_once('=') {
                 env.push((k.trim().into(), v.trim().into()));
@@ -141,6 +147,7 @@ impl GameSettings {
                 "X2_BB_SCALE" => s.scale = v.parse().unwrap_or(0),
                 "X2_VSYNC" => s.vsync = v != "0",
                 "X2_TOUCH" => s.touch = if v == "0" { 2 } else { 1 },
+                "X2_TOUCH_BUTTONS" => s.touch_buttons = v.into(),
                 "X2_LOG" => s.log_level = v.parse::<u8>().unwrap_or(0).min(3),
                 _ => extra.push(line),
             }
@@ -169,14 +176,15 @@ mod tests {
 
     #[test]
     fn env_files_round_trip_through_settings() {
-        let text = "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\n# mine\nX2_TOUCH=0\nX2_PACELOG=1\n";
+        let text = "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\n# mine\nX2_TOUCH=0\nX2_TOUCH_BUTTONS=neogeo\nX2_PACELOG=1\n";
         let s = GameSettings::from_env_file(text);
         assert!(s.fps);
         assert_eq!(s.pad, "l1=a,west=c");
         assert_eq!(s.touch, 2);
+        assert_eq!(s.touch_buttons, "neogeo");
         assert_eq!(s.env, "# mine\nX2_PACELOG=1");
         assert_eq!(s.log_level, 2);
-        assert_eq!(s.env_file(), "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\nX2_TOUCH=0\nX2_PACELOG=1\n");
+        assert_eq!(s.env_file(), "X2_LOG=2\nX2_FPS=1\nX2_PAD=l1=a,west=c\nX2_TOUCH=0\nX2_TOUCH_BUTTONS=neogeo\nX2_PACELOG=1\n");
         assert_eq!(GameSettings::default().env_file(), "");
     }
 

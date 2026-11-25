@@ -112,7 +112,15 @@
       "touchText": "Automático lo muestra en pantallas táctiles mientras no haya un mando conectado.",
       "touchAuto": "Automático",
       "touchAlways": "Siempre",
-      "touchNever": "Nunca"
+      "touchNever": "Nunca",
+      "touchButtons": "Botones táctiles",
+      "touchButtonsText": "Qué botones muestra el mando táctil y dónde.",
+      "touchButtonsDefault": "Disposición del proyecto",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D en fila)",
+      "touchButtonsCustom": "Personalizada",
+      "touchSlotNone": "Ninguno",
+      "touchSlot": "Botón táctil {{n}}",
+      "touchCustomText": "Dos filas de cuatro, como en pantalla: elige qué pulsa cada botón."
     },
     "advanced": {
       "title": "Avanzado",

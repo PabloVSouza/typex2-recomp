@@ -21,7 +21,7 @@ const catalog: GameInfo[] = [
   { id: "goketsuji", title: "Gouketsuji Ichizoku Matsuri Senzo Kuyou", board: "Type X2", year: 2012, publisher: "Atlus", layouts: gok },
   { id: "kof2002um", title: "The King of Fighters 2002 Unlimited Match", board: "Type X2", year: 2011, publisher: "SNK Playmore", layouts: kof },
 ];
-const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, touch: 0, env: "" };
+const settings = { fullscreen: false, fps: false, pad: "", scale: 0, vsync: false, log_level: 0, touch: 0, touch_buttons: "", env: "" };
 const entry = (id: string, state: "none" | "ready" | "stale") => ({
   id, path: `/Games/${catalog.find((g) => g.id === id)!.title}`, title: catalog.find((g) => g.id === id)!.title, supported: true, settings, info: catalog.find((g) => g.id === id)!, found: true,
   library: { state, built: state === "none" ? null : { built: 1763000000, seconds: 74, size: 11228104, functions: 10967 } },

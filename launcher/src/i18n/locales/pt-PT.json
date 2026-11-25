@@ -112,7 +112,15 @@
       "touchText": "Automático mostra-o em ecrãs táteis enquanto nenhum comando estiver ligado.",
       "touchAuto": "Automático",
       "touchAlways": "Sempre",
-      "touchNever": "Nunca"
+      "touchNever": "Nunca",
+      "touchButtons": "Botões táteis",
+      "touchButtonsText": "Que botões o comando tátil mostra, e onde.",
+      "touchButtonsDefault": "Disposição do projeto",
+      "touchButtonsNeoGeo": "Neo Geo (A B C D em linha)",
+      "touchButtonsCustom": "Personalizada",
+      "touchSlotNone": "Nenhum",
+      "touchSlot": "Botão tátil {{n}}",
+      "touchCustomText": "Duas filas de quatro, como no ecrã: escolha o que cada botão carrega."
     },
     "advanced": {
       "title": "Avançado",

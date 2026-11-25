@@ -1,6 +1,6 @@
 /** Controller layouts: what each game's cabinet buttons are called, its default layout (as
  *  runtime/src/padmap.c has it), and X2_PAD strings to and from a full button -> action map.
- *  X2_PAD keys: a b c d = KOF's A-D (cabinet buttons 1, 4, 2, 5), 1-6 = cabinet buttons 1-6,
+ *  X2_PAD keys: a b c d = KOF's A-D (cabinet buttons 1, 4, 2, 5; 1-4 in KOF 2002 UM), 1-6 = cabinet buttons 1-6,
  *  t = Test, v = Service. Button and action names are shown as they are; hints are i18n keys. */
 import type { ParseKeys } from "i18next";
 
@@ -76,7 +76,7 @@ const DEFAULTS: Record<Family, string> = {
 
 function family(game: string): Family {
   if (game === "ssf4ae") return "sf4";
-  if (game === "bbcs" || game === "bbct") return "bb";
+  if (game === "bbcs" || game === "bbct" || game === "sse") return "bb"; // Samurai Shodown EoD: the same panel
   return "kof";
 }
 
@@ -128,3 +128,31 @@ export function resetAction(game: string, layout: Layout, keys: string): Layout 
   }
   return next;
 }
+
+/** The touch pad's buttons (X2_TOUCH_BUTTONS, runtime/src/padmap.c x2_touch_buttons): eight slots,
+ *  0-3 the top row and 4-7 the bottom, each the X2_PAD keys it presses ("" none). */
+export type TouchSlots = string[];
+
+/** The games' own touch layouts as custom lists: punches over kicks (KOF A C over B D, SF4 LP MP
+ *  HP over LK MK HK), BlazBlue's A B C over D. */
+const TOUCH_DEFAULTS: Record<Family, string> = {
+  kof: "1=a,2=c,5=b,6=d",
+  sf4: "1=1,2=2,3=3,5=4,6=5,7=6",
+  bb: "1=1,2=2,3=3,5=4",
+};
+export const touchDefault = (game: string) => TOUCH_DEFAULTS[family(game)];
+/** Whether the game has a Neo Geo row (four buttons): not SF4's six. */
+export const touchHasNeoGeo = (game: string) => family(game) !== "sf4";
+/** The custom actions a touch slot can press: the game's own, without Test / Service. */
+export const touchActions = (game: string) => actionsFor(game).filter((a) => a.keys !== "t" && a.keys !== "v");
+
+export function touchSlots(spec: string): TouchSlots {
+  const slots: TouchSlots = Array(8).fill("");
+  for (const part of spec.split(/[,\s]+/)) {
+    const [n, keys] = part.split("=");
+    const i = Number(n) - 1;
+    if (keys !== undefined && i >= 0 && i < 8) slots[i] = norm(keys);
+  }
+  return slots;
+}
+export const touchSpec = (slots: TouchSlots) => slots.map((k, i) => (k ? `${i + 1}=${k}` : "")).filter(Boolean).join(",");

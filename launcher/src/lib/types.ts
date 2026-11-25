@@ -1,7 +1,8 @@
 export interface Layout { id: string; label: string; pad: string }
 export interface GameInfo { id: string; title: string; board: string; year: number; publisher: string; layouts: Layout[] }
-/** touch: the on-screen touch pad, 0 automatic, 1 always, 2 never */
-export interface GameSettings { fullscreen: boolean; fps: boolean; pad: string; scale: number; vsync: boolean; log_level: number; touch: number; env: string }
+/** touch: the on-screen touch pad, 0 automatic, 1 always, 2 never; touch_buttons: its buttons (X2_TOUCH_BUTTONS:
+ *  "" the game's layout, "neogeo" A B C D in a row, or "1=a,2=c,..." slots 1-4 top row, 5-8 bottom) */
+export interface GameSettings { fullscreen: boolean; fps: boolean; pad: string; scale: number; vsync: boolean; log_level: number; touch: number; touch_buttons: string; env: string }
 export interface LibraryRecord { built: number; seconds: number; size: number; functions: number }
 export interface LibraryStatus { state: "none" | "ready" | "stale"; built: LibraryRecord | null }
 /** info: null for a game not supported yet (title: its folder's name) */

@@ -86,6 +86,7 @@ Environment variables, read once at start. On Android put them in the game folde
 | `X2_RING_SPILL=0` | Vulkan: a full upload ring waits for the GPU (as before) instead of continuing in a new ring |
 | `X2_HEAP_MID=0` | libretro core (ELF): 4-256 KB blocks from the system allocator instead of the instance's releasable size-class chunks (A/B) |
 | `X2_TOUCH=0/1` | on-screen touch pad off / on |
+| `X2_TOUCH_BUTTONS=neogeo` / `1=a,2=c,5=b,6=d` | touch pad buttons: unset the game's layout; `neogeo` A B C D in a row (not SSF4); or slots 1-4 (top row) and 5-8 (bottom) each pressing keys as in `X2_PAD` |
 | `X2_PAD=south=b,east=ab,...` | gamepad buttons (south east west north l1 r1 l2 r2 l3 r3) → cabinet buttons (any of a b c d = KOF's A-D, 1-6 = cabinet SHOT1-6, t test, v service, `-` for none; each game has a default); see `runtime/src/padmap.h` |
 | `X2_PADLOG=1` | RetroArch core: log each change of the directions and RetroPad buttons the frontend reports and the cabinet buttons they press (finds remaps that move buttons; against `adb shell getevent -lt`, presses or motions the frontend split or dropped) |
 | `X2_INPUT="600:c,606:-,700:s"` | scripted input (c coin, s start, udlr, a b x y 5 6 = cabinet SHOT1-6 (KOF: A C - B D -), t test, v service, p F9 capture; upper case C S U D L R A B X Y = player 2) |

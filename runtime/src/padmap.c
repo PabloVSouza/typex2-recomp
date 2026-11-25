@@ -56,6 +56,18 @@ static const char *const *shot_names(void) {
     return kof;
 }
 
+/* an X2_PAD value ("ab", "1", "t", ...) as cabinet switch bits */
+static uint16_t keys_bits(const char *s) {
+    uint16_t v = 0;
+    for (const char *p = s; *p; p++)
+        if ((*p | 0x20) >= 'a' && (*p | 0x20) <= 'd')
+            v |= kof_button((*p | 0x20) - 'a');
+        else
+            for (unsigned k = 0; k < sizeof keys / sizeof keys[0]; k++)
+                if ((*p | 0x20) == keys[k].key) v |= keys[k].bit;
+    return v;
+}
+
 static void parse(const char *spec) {
     char buf[256];
     snprintf(buf, sizeof buf, "%s", spec);
@@ -70,14 +82,7 @@ static void parse(const char *spec) {
             x2_log("X2_PAD: unknown button '%s'", tok);
             continue;
         }
-        uint16_t v = 0;
-        for (const char *p = eq + 1; *p; p++)
-            if ((*p | 0x20) >= 'a' && (*p | 0x20) <= 'd')
-                v |= kof_button((*p | 0x20) - 'a');
-            else
-                for (unsigned k = 0; k < sizeof keys / sizeof keys[0]; k++)
-                    if ((*p | 0x20) == keys[k].key) v |= keys[k].bit;
-        map[b] = v;
+        map[b] = keys_bits(eq + 1);
     }
 }
 
@@ -189,26 +194,75 @@ bool x2_script_input(uint64_t frame, uint16_t *p1, bool *coin1, uint16_t *p2, bo
     return test;
 }
 
-void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
-    for (int i = 0; i < 6; i++) label[i] = NULL, bits[i] = 0;
+/* a touch button's label from its X2_PAD keys, in the order given: "AB", "ABC" (single letters
+   joined, as FinalBurn Neo writes them), names otherwise spaced ("LP MP"); the overlay font has
+   no "+" */
+static void key_label(const char *keys, char out[16]) {
+    const char *const *nm = shot_names();
+    const char *part[8];
+    int n = 0;
+    bool longer = false;
+    static const char *const letter[4] = {"A", "B", "C", "D"};
+    for (const char *p = keys; *p && n < 8; p++) {
+        int c = *p | 0x20;
+        const char *s = c >= 'a' && c <= 'd' ? letter[c - 'a'] : *p >= '1' && *p <= '6' ? nm[*p - '1'] : NULL;
+        if (!s) continue;
+        part[n++] = s;
+        longer |= strlen(s) > 1;
+    }
+    out[0] = 0;
+    for (int i = 0; i < n; i++) {
+        size_t l = strlen(out);
+        snprintf(out + l, 16 - l, "%s%s", i && longer ? " " : "", part[i]);
+    }
+}
+
+/* The on-screen pad's buttons: two rows of up to four, slots 0-3 the top row and 4-7 the bottom,
+ * left to right (label NULL: no button there), with the cabinet buttons each presses.
+ * X2_TOUCH_BUTTONS chooses: unset, the game's layout (punches above kicks); "neogeo", the four
+ * buttons in one row in their order (KOF's A B C D, as on a Neo Geo panel); or a list
+ * "N=keys,..." with N 1-8 (1-4 the top row) and keys as in X2_PAD ("a", "ab", "1", ...). */
+void x2_touch_buttons(const char *label[8], uint16_t bits[8]) {
+    for (int i = 0; i < 8; i++) label[i] = NULL, bits[i] = 0;
+    const char *e = getenv("X2_TOUCH_BUTTONS");
+    bool neogeo = e && !strcasecmp(e, "neogeo") && strcmp(game_id(), "ssf4ae"); /* SSF4 has six */
+    if (e && *e && !neogeo && strchr(e, '=')) {                                 /* a custom list */
+        static char text[8][16];
+        char buf[256];
+        snprintf(buf, sizeof buf, "%s", e);
+        for (char *save = NULL, *tok = strtok_r(buf, ", ", &save); tok; tok = strtok_r(NULL, ", ", &save)) {
+            char *eq = strchr(tok, '=');
+            int n = eq ? atoi(tok) : 0;
+            if (n < 1 || n > 8) continue;
+            uint16_t b = keys_bits(eq + 1);
+            if (!b) continue;
+            bits[n - 1] = b;
+            key_label(eq + 1, text[n - 1]);
+            label[n - 1] = text[n - 1];
+        }
+        return;
+    }
     if (!strcmp(game_id(), "ssf4ae")) { /* punches above kicks, light to heavy */
         static const char *const l[6] = {"LP", "MP", "HP", "LK", "MK", "HK"};
         static const uint16_t b[6] = {JVS_B1, JVS_B2, JVS_B3, JVS_B4, JVS_B5, JVS_B6};
-        for (int i = 0; i < 6; i++) label[i] = l[i], bits[i] = b[i];
-    } else if (is_blazblue()) { /* the "Type B" panel: A B C above, D under A */
-        label[0] = "A", bits[0] = JVS_B1;
-        label[1] = "B", bits[1] = JVS_B2;
-        label[2] = "C", bits[2] = JVS_B3;
-        label[3] = is_sse() ? "R" : "D", bits[3] = JVS_B4;
+        for (int i = 0; i < 6; i++) label[i < 3 ? i : i + 1] = l[i], bits[i < 3 ? i : i + 1] = b[i];
+    } else if (is_blazblue()) {
+        static const char *const l[4] = {"A", "B", "C", "D"};
+        for (int i = 0; i < 4; i++) label[neogeo ? 4 + i : i] = i == 3 && is_sse() ? "R" : l[i];
+        for (int i = 0; i < 4; i++) bits[neogeo ? 4 + i : i] = (uint16_t)(JVS_B1 >> i);
+        if (!neogeo) label[4] = label[3], bits[4] = bits[3], label[3] = NULL, bits[3] = 0; /* D under A */
+    } else if (neogeo) { /* KOF (and Gouketsuji): A B C D in a row */
+        static const char *const kof[4] = {"A", "B", "C", "D"}, *const gok[4] = {"LP", "LK", "HP", "HK"};
+        for (int i = 0; i < 4; i++) label[4 + i] = is_goketsuji() ? gok[i] : kof[i], bits[4 + i] = kof_button(i);
     } else if (is_goketsuji()) { /* weak and strong punch above the kicks */
-        label[0] = "LP", bits[0] = JVS_B1;
-        label[1] = "HP", bits[1] = JVS_B2;
-        label[3] = "LK", bits[3] = JVS_B4;
-        label[4] = "HK", bits[4] = JVS_B5;
+        label[0] = "LP", bits[0] = kof_button(0);
+        label[1] = "HP", bits[1] = kof_button(2);
+        label[4] = "LK", bits[4] = kof_button(1);
+        label[5] = "HK", bits[5] = kof_button(3);
     } else { /* KOF: punches above kicks, as SSF4's: A (light punch) C (heavy) over B D */
         label[0] = "A", bits[0] = kof_button(0);
         label[1] = "C", bits[1] = kof_button(2);
-        label[3] = "B", bits[3] = kof_button(1);
-        label[4] = "D", bits[4] = kof_button(3);
+        label[4] = "B", bits[4] = kof_button(1);
+        label[5] = "D", bits[5] = kof_button(3);
     }
 }
