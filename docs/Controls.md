@@ -29,7 +29,7 @@
   stick and buttons sit below it.
   The Neo Geo layout puts A B C D in a row; a custom one sets each of eight
   buttons (two rows of four) to a button or a combination (the launcher's
-  game settings, or `X2_TOUCH_BUTTONS`). COIN and START sit at the bottom
+  game settings, the RetroArch core's options, or `X2_TOUCH_BUTTONS`). COIN and START sit at the bottom
   in the middle.
 
 ### Default layouts

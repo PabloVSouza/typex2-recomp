@@ -3148,8 +3148,8 @@ static void ov_upload(VkCommandBuffer c) {
 }
 
 /* the queued quads (inside the present's rendering) */
-static void ov_draw(VkCommandBuffer c) {
-    VkRect2D sc = {{0, 0}, sc_extent};
+static void ov_draw(VkCommandBuffer c, VkExtent2D extent) {
+    VkRect2D sc = {{0, 0}, extent};
     vkCmdSetScissor(c, 0, 1, &sc);
     for (u32 i = 0; i < ovq_n; i++) {
         const OvQuad *q = &ovq[i];
@@ -3222,7 +3222,7 @@ void gfx_vk_present(u32 ww, u32 wh) {
     vkCmdSetScissor(c, 0, 1, &sc);
     static const float white[4] = {1, 1, 1, 1};
     ov_quad_draw(c, ov_lin, t->view, 2, white, (float)x0, (float)yy0 - (full_h - (float)vh) / 2, (float)vw, full_h);
-    ov_draw(c);
+    ov_draw(c, sc_extent);
     pvkCmdEndRendering(c);
     barrier_raw(c, sc_img[idx], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
     VK_CHECK(vkEndCommandBuffer(c));
@@ -3637,10 +3637,16 @@ typedef struct {
 } OutSlot;
 static OutSlot outs[INFLIGHT];
 static u32 out_i;
-bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageViewCreateInfo *ci, u32 *ow, u32 *oh) {
+/* The image the core hands the frontend: rows [v0, v1) of the game's image (the band), placed at
+ * (ix, iy) in a cw x ch output (0 x 0: the band's own size). A larger output carries the overlays
+ * out to the screen's edges, the margins black. */
+bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, VkImage *img, VkImageView *view,
+                   VkImageViewCreateInfo *ci, u32 *ow, u32 *oh) {
     VTex *src = shown();
     u32 w = src->w, y0 = (u32)(v0 * src->h), y1 = (u32)(v1 * src->h), h = y1 - y0;
     if (!w || !h) return false;
+    if (cw < w + ix || ch < h + iy) cw = w, ch = h, ix = iy = 0;
+    bool framed = cw != w || ch != h;
     OutSlot *o = &outs[out_i++ % INFLIGHT];
     if (!o->cb) {
         VkCommandBufferAllocateInfo ai = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, cpool,
@@ -3651,9 +3657,9 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     }
     VK_CHECK(vkWaitForFences(dev, 1, &o->fence, VK_TRUE, UINT64_MAX));
     VK_CHECK(vkResetFences(dev, 1, &o->fence));
-    if (!o->t || o->t->w != w || o->t->h != h) {
+    if (!o->t || o->t->w != cw || o->t->h != ch) {
         if (o->t) tex_free(o->t); /* destroyed once its last use is done */
-        o->t = tex_new(GFX_FMT_BGRA8, w, h, 1, true, false, GFX_SCALE_ONE, false, false);
+        o->t = tex_new(GFX_FMT_BGRA8, cw, ch, 1, true, false, GFX_SCALE_ONE, false, false);
     }
     VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                    VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, NULL};
@@ -3661,15 +3667,43 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     VK_CHECK(vkBeginCommandBuffer(o->cb, &bi));
     VkCommandBuffer saved = cmd;
     cmd = o->cb; /* transition() records into cmd */
-    transition(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    to_transfer_dst(o->t);
-    VkImageCopy c = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {0, (s32)y0, 0},
-                     {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-                     {0, 0, 0},
-                     {w, h, 1}};
-    vkCmdCopyImage(o->cb, src->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, o->t->img,
-                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+    if (!ovq_n && !framed) { /* the band, copied */
+        transition(src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        to_transfer_dst(o->t);
+        VkImageCopy c = {{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                         {0, (s32)y0, 0},
+                         {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                         {0, 0, 0},
+                         {w, h, 1}};
+        vkCmdCopyImage(o->cb, src->img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, o->t->img,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &c);
+    } else { /* overlays (the core's FPS counter, touch pad): the band drawn, the quads over it */
+        transition(src, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        ov_init(o->t->vf);
+        ov_upload(o->cb);
+        transition(o->t, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkRenderingAttachmentInfo ca = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+        ca.imageView = o->t->view;
+        ca.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        ca.loadOp =
+            framed ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_DONT_CARE; /* else the band covers it */
+        ca.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        ca.clearValue.color = (VkClearColorValue){{0, 0, 0, 1}};
+        VkRenderingInfo ri = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+        ri.renderArea.extent = (VkExtent2D){cw, ch};
+        ri.layerCount = 1;
+        ri.colorAttachmentCount = 1;
+        ri.pColorAttachments = &ca;
+        pvkCmdBeginRendering(o->cb, &ri);
+        vkCmdBindPipeline(o->cb, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_pipe);
+        VkRect2D sc = {{(s32)ix, (s32)iy}, {w, h}}; /* the band only */
+        vkCmdSetScissor(o->cb, 0, 1, &sc);
+        static const float white[4] = {1, 1, 1, 1};
+        ov_quad_draw(o->cb, ov_samp, src->view, 2, white, (float)ix, (float)iy - (float)y0, (float)w,
+                     (float)src->h); /* 1:1 */
+        ov_draw(o->cb, (VkExtent2D){cw, ch});
+        pvkCmdEndRendering(o->cb);
+    }
     transition(o->t, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     cmd = saved;
     VK_CHECK(vkEndCommandBuffer(o->cb));
@@ -3686,8 +3720,8 @@ bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageV
     ci->viewType = VK_IMAGE_VIEW_TYPE_2D;
     ci->format = o->t->vf;
     ci->subresourceRange = (VkImageSubresourceRange){VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    *ow = w;
-    *oh = h;
+    *ow = cw;
+    *oh = ch;
     return true;
 }
 

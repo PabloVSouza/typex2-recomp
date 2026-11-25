@@ -47,8 +47,21 @@ static void gl_format(u32 f, GLint *ifmt, GLenum *fmt, GLenum *type, bool *swizz
         case GFX_FMT_BGRA8: case GFX_FMT_BGRX8:
             *ifmt = GL_RGBA8; *fmt = GL_RGBA; *type = GL_UNSIGNED_BYTE; *swizzle_bgra = true; return;
         case GFX_FMT_B5G6R5: *ifmt = GL_RGB565; *fmt = GL_RGB; *type = GL_UNSIGNED_SHORT_5_6_5; return;
+#ifdef X2_GLES /* no BGRA / reversed 16-bit uploads: do_tex_upload converts to these */
+        case GFX_FMT_BGR5A1:
+            *ifmt = GL_RGB5_A1;
+            *fmt = GL_RGBA;
+            *type = GL_UNSIGNED_SHORT_5_5_5_1;
+            return;
+        case GFX_FMT_BGRA4:
+            *ifmt = GL_RGBA4;
+            *fmt = GL_RGBA;
+            *type = GL_UNSIGNED_SHORT_4_4_4_4;
+            return;
+#else
         case GFX_FMT_BGR5A1: *ifmt = GL_RGB5_A1; *fmt = GL_BGRA; *type = GL_UNSIGNED_SHORT_1_5_5_5_REV; return;
         case GFX_FMT_BGRA4: *ifmt = GL_RGBA4; *fmt = GL_BGRA; *type = GL_UNSIGNED_SHORT_4_4_4_4_REV; return;
+#endif
         case GFX_FMT_A8: *ifmt = GL_R8; *fmt = GL_RED; *type = GL_UNSIGNED_BYTE; return;
         case GFX_FMT_L8: *ifmt = GL_R8; *fmt = GL_RED; *type = GL_UNSIGNED_BYTE; return;
         case GFX_FMT_A8L8: *ifmt = GL_RG8; *fmt = GL_RG; *type = GL_UNSIGNED_BYTE; return;
@@ -211,6 +224,23 @@ static void do_tex_upload(const TexUpload *k) {
     } else {
         u32 bw, bpp = gfx_fmt_block_bytes(t->fmt, &bw);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(k->pitch / bpp));
+#ifdef X2_GLES
+        if (t->fmt == GFX_FMT_BGR5A1 || t->fmt == GFX_FMT_BGRA4) {
+            /* D3D's A1R5G5B5 / A4R4G4B4 into GLES's R5G5B5A1 / R4G4B4A4: alpha from the top bits to the
+             * bottom. KOF '98 UM's palettes are A1R5G5B5; uploaded as BGRA they were rejected (black). */
+            u16 *cv = malloc((size_t)k->w * k->h * 2);
+            for (u32 y = 0; y < k->h; y++) {
+                const u16 *s = (const u16 *)(data + (size_t)y * k->pitch);
+                u16 *d = cv + (size_t)y * k->w;
+                if (t->fmt == GFX_FMT_BGR5A1)
+                    for (u32 x = 0; x < k->w; x++) d[x] = (u16)(s[x] << 1 | s[x] >> 15);
+                else
+                    for (u32 x = 0; x < k->w; x++) d[x] = (u16)(s[x] << 4 | s[x] >> 12);
+            }
+            data = (const u8 *)(tmp = (u8 *)cv);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        }
+#endif
         if (bgra && !t->bgra_swizzle) {
             /* swap B and R into a temporary: GLES has no GL_BGRA upload */
             u32 n = k->bytes / 4;

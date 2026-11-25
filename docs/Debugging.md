@@ -71,7 +71,9 @@ called from a QueryPerformanceCounter loop.
 ## Switches
 
 Environment variables, read once at start. On Android put them in the game folder's
-`x2.env` (one `KEY=VALUE` per line); logs go to logcat with the tag `x2`.
+`x2.env` (one `KEY=VALUE` per line); logs go to logcat with the tag `x2`. The
+RetroArch core takes `X2_RENDERER`, `X2_BB_SCALE`, `X2_FPS`, `X2_PAD`, `X2_TOUCH`,
+`X2_TOUCH_BUTTONS` and `X2_LOG` from its Core Options instead of `x2.env`.
 
 | Variable | Effect |
 |---|---|

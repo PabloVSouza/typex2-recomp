@@ -35,6 +35,16 @@ games are recompiled on your computer from your own files.
   two rows of four where each button presses a game button or a combination
   (`X2_TOUCH_BUTTONS`). The buttons sit closer to the screen's edge, and COIN / START at the
   bottom in the middle (at the top when the buttons leave no room).
+- **RetroArch core: every setting of the app, per game.** *Quick Menu → Core Options* has the
+  renderer, render scale, FPS counter, button layout, on-screen touch pad, touch buttons
+  (including a custom pad) and log detail. Each game keeps its own settings, saved as they
+  change, with no "Save Game Options" needed. The core no longer reads the app's settings from
+  `x2.env`. Needs RetroArch 1.15 or later for per-game settings.
+- **RetroArch core: the touch pad and the FPS counter**, the same as in the app, out to the
+  screen's edges with Vulkan or OpenGL. Turn RetroArch's own overlay off to use the touch pad.
+- **OpenGL ES (Android devices without Vulkan 1.3, or the OpenGL renderer chosen):** 16-bit
+  textures with alpha (A1R5G5B5, A4R4G4B4) are converted for OpenGL ES, which can't take them
+  as they are. KOF '98 UM's palettized sprites (title logo, fights) were black.
 - `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
   (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,

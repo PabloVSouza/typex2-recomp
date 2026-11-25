@@ -79,12 +79,27 @@ computer.
    Android only loads cores from RetroArch's own data folder.
 
 Settings and limits:
+- **Settings** are in *Quick Menu → Core Options*, with what the app offers on
+  a game's page: renderer, render scale, FPS counter, button layout (the
+  game's default or the 8-button stick), on-screen touch pad, touch buttons
+  (this project's layout, Neo Geo or custom, button by button) and log
+  detail. Each game keeps its own: the core saves every change to
+  `<saves>/typex2/<game>.opt` and loads it when the game starts (the defaults
+  for a game never changed), so there's no need for RetroArch's "Save Game
+  Options". The core doesn't read the app's settings: in `x2.env`, only
+  debugging switches still apply. Renderer, render scale and log detail take
+  effect at the next start; the rest at once. Needs RetroArch 1.15 or later
+  (older versions keep one setting for every game).
+- **Touch pad.** The core draws the same touch pad as the app, out to the
+  screen's edges. Turn RetroArch's own overlay off (*Settings → On-Screen Display →
+  On-Screen Overlay*) to use it. On *Automatic* it shows once the screen is
+  touched and hides when a controller button is pressed.
 - **Video.** The core and the app render with Vulkan 1.3 (most devices from
   2022 on, with Android 13 or later). RetroArch switches to its `vulkan`
   driver by itself while "Allow driver switching" (Settings → Drivers) is
   on, the default. Older devices use OpenGL ES instead: the app switches by
   itself when Vulkan 1.3 is missing; in RetroArch, set the video driver to
-  `gl` and put `X2_RENDERER=gl` in the game's `x2.env`. Both renderers draw
+  `gl` and set the core option Renderer to OpenGL. Both renderers draw
   the same; OpenGL ES is usually slower on the same GPU.
 - **Clock.** RetroArch's frame loop clocks the game, so pause, fast-forward
   and slow motion work.

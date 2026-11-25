@@ -45,6 +45,7 @@
 
 #include "libretro/libretro_vulkan.h"
 #endif
+#include "overlay.h"
 #include "padmap.h"
 #include "x2_core_games.h" /* generated: x2_core_games[] = {name, tables} */
 
@@ -81,7 +82,8 @@ void gfx_vk_init_external(VkInstance i, VkPhysicalDevice g, VkDevice d, VkQueue 
                           void (*unlock)(void *), void *handle, u32 w, u32 h);
 bool gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_shown_size(u32 *w, u32 *h);
-bool gfx_vk_output(float v0, float v1, VkImage *img, VkImageView *view, VkImageViewCreateInfo *ci, u32 *ow, u32 *oh);
+bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, VkImage *img, VkImageView *view,
+                   VkImageViewCreateInfo *ci, u32 *ow, u32 *oh);
 
 static const VkApplicationInfo *vk_app_info(void) {
     static const VkApplicationInfo app = {
@@ -259,9 +261,9 @@ static void blit_init(void) {
     glGenVertexArrays(1, &blit_vao);
 }
 
-/* draw rows [v0, v1) (texture space, 0 = top) of the game image into the
- * frontend's w x h framebuffer region (bottom-left origin) */
-static void blit(GLuint tex, u32 w, u32 h, float v0, float v1) {
+/* draw rows [v0, v1) (texture space, 0 = top) of the game image as a w x h picture at (x, y) (top-left
+ * origin) of the frontend's cw x ch framebuffer region (bottom-left origin), the rest black */
+static void blit(GLuint tex, u32 cw, u32 ch, u32 x, u32 y, u32 w, u32 h, float v0, float v1) {
     glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)hw_render.get_current_framebuffer());
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
@@ -269,12 +271,13 @@ static void blit(GLuint tex, u32 w, u32 h, float v0, float v1) {
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     glColorMask(1, 1, 1, 1);
-    glViewport(0, 0, (GLsizei)w, (GLsizei)h);
-    if (!tex) {
+    glViewport(0, 0, (GLsizei)cw, (GLsizei)ch);
+    if (!tex || cw != w || ch != h) {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
-        return;
+        if (!tex) return;
     }
+    glViewport((GLint)x, (GLint)(ch - y - h), (GLsizei)w, (GLsizei)h);
     glUseProgram(blit_prog);
     glUniform2f(blit_rows, v0, v1);
     glActiveTexture(GL_TEXTURE0);
@@ -305,6 +308,7 @@ static void context_reset(void) {
     x2_log("libretro: GL %s / %s", glGetString(GL_VERSION), glGetString(GL_RENDERER));
     gfx_gl_init(1280, 720);
     blit_init();
+    x2_ov_lost(); /* the overlay's GL objects, if any, were the old context's */
     x2_thread_perf("x2-render", true);
 }
 
@@ -370,13 +374,22 @@ static u16 player_bits(unsigned port) {
     return v;
 }
 
+static void touch_poll(bool pad_pressed); /* the touch pad, below */
+
 static void update_inputs(void) {
     input_poll_cb();
     u16 p1 = player_bits(0), p2 = player_bits(1);
+    bool coin_btn = btn(0, RETRO_DEVICE_ID_JOYPAD_SELECT) || btn(1, RETRO_DEVICE_ID_JOYPAD_SELECT);
+    touch_poll(p1 || p2 || coin_btn);
+    u16 tbits;
+    bool tcoin, ttest;
+    x2_touch_state(&tbits, &tcoin, &ttest);
+    p1 |= tbits;
     bool coin1 = btn(0, RETRO_DEVICE_ID_JOYPAD_SELECT), coin2 = btn(1, RETRO_DEVICE_ID_JOYPAD_SELECT);
     /* Test: a button mapped to it, or coin held down */
     bool held1 = x2_padmap_hold_test(0, coin1), held2 = x2_padmap_hold_test(1, coin2);
-    bool test = ((p1 | p2) & X2_PAD_TEST) || held1 || held2;
+    coin1 |= tcoin;
+    bool test = ((p1 | p2) & X2_PAD_TEST) || held1 || held2 || ttest;
     p1 &= (u16)~X2_PAD_TEST;
     p2 &= (u16)~X2_PAD_TEST;
     test |= x2_script_input(gfx_frame_count(), &p1, &coin1, &p2, &coin2); /* X2_INPUT (tests), see padmap.h */
@@ -403,6 +416,495 @@ static void set_input_descriptors(void) {
     }
     desc[n] = (struct retro_input_descriptor){0};
     environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, desc);
+}
+
+/* ---- core options: the game's settings, as the Android app has them ----------------------
+ * RetroArch's Core Options menu, independent of the app: the settings the app writes into a
+ * game's x2.env (X2_FPS, X2_PAD, X2_TOUCH, ...) are the core's own here and override x2.env,
+ * which keeps its debugging switches. Each game keeps its own settings: the core stores them
+ * in <saves>/typex2/<game>.opt, loads them (or the defaults) when the game starts and shows
+ * them in the menu (RETRO_ENVIRONMENT_SET_VARIABLE), and saves each change. */
+enum { FAM_KOF, FAM_SF4, FAM_BB, FAM_COUNT };
+static const char *const fam_ids[FAM_COUNT] = {"kof", "sf4", "bb"};
+/* what a custom touch button can press (the launcher's actions, launcher/src/lib/data/controls.ts) */
+static const struct retro_core_option_value fam_actions[FAM_COUNT][10] = {
+    {{"a", "A"},
+     {"b", "B"},
+     {"c", "C"},
+     {"d", "D"},
+     {"ab", "A + B"},
+     {"cd", "C + D"},
+     {"bc", "B + C"},
+     {"abc", "A + B + C"},
+     {"bcd", "B + C + D"},
+     {NULL, NULL}},
+    {{"1", "LP"},
+     {"2", "MP"},
+     {"3", "HP"},
+     {"4", "LK"},
+     {"5", "MK"},
+     {"6", "HK"},
+     {"123", "LP + MP + HP"},
+     {"456", "LK + MK + HK"},
+     {NULL, NULL}},
+    {{"1", "A"},
+     {"2", "B"},
+     {"3", "C"},
+     {"4", "D"},
+     {"12", "A + B"},
+     {"23", "B + C"},
+     {"123", "A + B + C"},
+     {"1234", "A + B + C + D"},
+     {NULL, NULL}},
+};
+/* a custom pad starts as the game's own: KOF A C over B D, SF4 LP MP HP over LK MK HK, BlazBlue A B C over D */
+static const char *const fam_touch_default[FAM_COUNT][8] = {
+    {"a", "c", "-", "-", "b", "d", "-", "-"},
+    {"1", "2", "3", "-", "4", "5", "6", "-"},
+    {"1", "2", "3", "-", "4", "-", "-", "-"},
+};
+/* the launcher's 8-button stick layouts (launcher/src-tauri/src/games.rs) */
+static const struct {
+    const char *games, *pad;
+} stick_presets[] = {
+    {" kof12 kof13 kof13cl kof98um kofmira kof2002um ", "l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc"},
+    {" ssf4ae ", "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456"},
+    {" bbcs bbct sse ", "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234"},
+    {" goketsuji ", "l1=1,west=2,north=12,r1=14,l2=4,south=5,east=45,r2=25"},
+};
+
+static int game_family(void) {
+    if (!game) return FAM_KOF;
+    if (!strcmp(game->tables->id, "ssf4ae")) return FAM_SF4;
+    if (!strcmp(game->tables->id, "bbcs") || !strcmp(game->tables->id, "bbct") || !strcmp(game->tables->id, "sse"))
+        return FAM_BB;
+    return FAM_KOF;
+}
+
+enum { BASE_OPTIONS = 8, OPTIONS = BASE_OPTIONS + FAM_COUNT * 8 };
+static struct retro_core_option_definition opt_defs[OPTIONS + 1];
+static char slot_keys[FAM_COUNT * 8][24], slot_descs[FAM_COUNT * 8][48];
+
+static void build_options(void) {
+    static bool built;
+    if (built) return;
+    built = true;
+    static const struct retro_core_option_definition base[BASE_OPTIONS] = {
+        {"typex2_renderer",
+         "Renderer (next start)",
+         "Vulkan, or OpenGL for devices whose Vulkan driver misbehaves. Takes effect when a game starts.",
+         {{"vulkan", "Vulkan"}, {"gl", "OpenGL"}, {NULL, NULL}},
+         "vulkan"},
+        {"typex2_scale",
+         "Render scale (next start)",
+         "The game's picture drawn at this multiple of its own resolution. Automatic picks one for the display. "
+         "Takes effect when a game starts.",
+         {{"auto", "Automatic"}, {"1", "Original"}, {"2", "2x"}, {"3", "3x"}, {"4", "4x"}, {NULL, NULL}},
+         "auto"},
+        {"typex2_fps",
+         "FPS counter",
+         "Game frames, frames shown and the game's work per frame, in a corner.",
+         {{"off", "Off"}, {"on", "On"}, {NULL, NULL}},
+         "off"},
+        {"typex2_layout",
+         "Button layout",
+         "Game default: the usual pad layout. 8-button stick: L1 and L2 lead each row, punches over kicks (KOF A C "
+         "over B D, SSF4 LP MP HP over LK MK HK, BlazBlue A B C over D). RetroArch's remapping applies on top.",
+         {{"default", "Game default"}, {"stick", "8-button stick (L1 / L2 rows)"}, {NULL, NULL}},
+         "default"},
+        {"typex2_touch",
+         "On-screen touch pad",
+         "Automatic shows it once the screen is touched, until a controller button is pressed. Turn RetroArch's own "
+         "overlay off to use it.",
+         {{"auto", "Automatic"}, {"on", "Always"}, {"off", "Never"}, {NULL, NULL}},
+         "auto"},
+        {"typex2_touch_buttons",
+         "Touch buttons",
+         "Which buttons the touch pad shows: this project's layout (punches over kicks), Neo Geo (A B C D in a row; "
+         "not for SSF4) or a custom one, set button by button below.",
+         {{"default", "This project's layout"},
+          {"neogeo", "Neo Geo (A B C D in a row)"},
+          {"custom", "Custom"},
+          {NULL, NULL}},
+         "default"},
+        {"typex2_log",
+         "Log detail (next start)",
+         "More detail in the log, for bug reports.",
+         {{"0", "Normal"}, {"1", "Verbose"}, {"2", "More verbose"}, {"3", "Everything"}, {NULL, NULL}},
+         "0"},
+        {NULL, NULL, NULL, {{NULL, NULL}}, NULL}, /* the slot options follow */
+    };
+    int n = 0;
+    for (int i = 0; i < BASE_OPTIONS && base[i].key; i++) opt_defs[n++] = base[i];
+    for (int f = 0; f < FAM_COUNT; f++)
+        for (int s = 0; s < 8; s++) {
+            int k = f * 8 + s;
+            snprintf(slot_keys[k], sizeof slot_keys[k], "typex2_touch_%s_%d", fam_ids[f], s + 1);
+            snprintf(slot_descs[k], sizeof slot_descs[k], "Custom touch button %d (%s row)", s + 1,
+                     s < 4 ? "top" : "bottom");
+            struct retro_core_option_definition *d = &opt_defs[n++];
+            d->key = slot_keys[k];
+            d->desc = slot_descs[k];
+            d->info = "What this touch button presses, with Touch buttons set to Custom. Buttons 1-4 are the top row, "
+                      "5-8 the bottom row, as on screen.";
+            d->values[0] = (struct retro_core_option_value){"-", "None"};
+            for (int a = 0; fam_actions[f][a].value; a++) d->values[a + 1] = fam_actions[f][a];
+            d->default_value = fam_touch_default[f][s];
+        }
+    opt_defs[n] = (struct retro_core_option_definition){0};
+}
+
+static void set_core_options(retro_environment_t cb) {
+    build_options();
+    unsigned version = 0;
+    if (cb(RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION, &version) && version >= 1) {
+        cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS, (void *)opt_defs);
+        return;
+    }
+    /* older frontends: "Description; first|second|..." with the default first */
+    static char text[OPTIONS][320];
+    static struct retro_variable vars[OPTIONS + 1];
+    size_t n = 0;
+    for (const struct retro_core_option_definition *o = opt_defs; o->key; o++, n++) {
+        int len = snprintf(text[n], sizeof text[n], "%s; %s", o->desc, o->default_value);
+        for (const struct retro_core_option_value *v = o->values; v->value; v++)
+            if (strcmp(v->value, o->default_value) && len < (int)sizeof text[n])
+                len += snprintf(text[n] + len, sizeof text[n] - (size_t)len, "|%s", v->value);
+        vars[n] = (struct retro_variable){o->key, text[n]};
+    }
+    vars[n] = (struct retro_variable){NULL, NULL};
+    cb(RETRO_ENVIRONMENT_SET_VARIABLES, vars);
+}
+
+static const char *core_option(const char *key) {
+    struct retro_variable v = {key, NULL};
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &v) && v.value) return v.value;
+    for (const struct retro_core_option_definition *o = opt_defs; o->key; o++) /* the default */
+        if (!strcmp(o->key, key)) return o->default_value;
+    return "";
+}
+static bool option_is(const char *key, const char *value) { return !strcmp(core_option(key), value); }
+
+/* only the current game's custom touch buttons are listed */
+static void show_options(void) {
+    bool custom = option_is("typex2_touch_buttons", "custom");
+    int fam = game_family();
+    for (int k = 0; k < FAM_COUNT * 8; k++) {
+        struct retro_core_option_display d = {slot_keys[k], custom && k / 8 == fam};
+        environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &d);
+    }
+}
+
+/* the settings into the environment the runtime reads (after each read of x2.env: x2_env_override) */
+static void apply_core_options(void) {
+    setenv("X2_RENDERER", core_option("typex2_renderer"), 1);
+    if (option_is("typex2_scale", "auto"))
+        unsetenv("X2_BB_SCALE");
+    else
+        setenv("X2_BB_SCALE", core_option("typex2_scale"), 1);
+    unsetenv("X2_PAD");
+    if (option_is("typex2_layout", "stick") && game) {
+        char key[40];
+        snprintf(key, sizeof key, " %s ", game->tables->id);
+        for (size_t i = 0; i < sizeof stick_presets / sizeof stick_presets[0]; i++)
+            if (strstr(stick_presets[i].games, key)) setenv("X2_PAD", stick_presets[i].pad, 1);
+    }
+    if (option_is("typex2_touch_buttons", "default"))
+        unsetenv("X2_TOUCH_BUTTONS");
+    else if (option_is("typex2_touch_buttons", "neogeo"))
+        setenv("X2_TOUCH_BUTTONS", "neogeo", 1);
+    else {
+        char spec[160] = "", key[24];
+        int fam = game_family();
+        for (int s = 0; s < 8; s++) {
+            snprintf(key, sizeof key, "typex2_touch_%s_%d", fam_ids[fam], s + 1);
+            const char *v = core_option(key);
+            if (strcmp(v, "-")) {
+                size_t l = strlen(spec);
+                snprintf(spec + l, sizeof spec - l, "%s%d=%s", l ? "," : "", s + 1, v);
+            }
+        }
+        setenv("X2_TOUCH_BUTTONS", spec[0] ? spec : "1=-", 1); /* an empty custom pad stays empty */
+    }
+    if (!option_is("typex2_log", "0")) setenv("X2_LOG", core_option("typex2_log"), 1);
+}
+
+static void options_path(char *out, size_t n, bool make_dir) {
+    const char *sd = NULL;
+    if (!environ_cb(RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY, &sd) || !sd)
+        environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sd);
+    if (!sd || !game) {
+        out[0] = 0;
+        return;
+    }
+    snprintf(out, n, "%s/typex2", sd);
+    if (make_dir) mkdir(out, 0755);
+    size_t l = strlen(out);
+    snprintf(out + l, n - l, "/%s.opt", game->tables->id);
+}
+
+/* this game's settings (or the defaults) into RetroArch's menu */
+static void options_load(void) {
+    char path[1100], line[256];
+    options_path(path, sizeof path, false);
+    static char vals[OPTIONS][24];
+    int n = 0;
+    for (const struct retro_core_option_definition *o = opt_defs; o->key; o++, n++)
+        snprintf(vals[n], sizeof vals[n], "%s", o->default_value);
+    FILE *f = path[0] ? fopen(path, "r") : NULL;
+    while (f && fgets(line, sizeof line, f)) {
+        line[strcspn(line, "\r\n")] = 0;
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = 0;
+        n = 0;
+        for (const struct retro_core_option_definition *o = opt_defs; o->key; o++, n++) {
+            if (strcmp(o->key, line)) continue;
+            for (const struct retro_core_option_value *v = o->values; v->value; v++)
+                if (!strcmp(v->value, eq + 1)) snprintf(vals[n], sizeof vals[n], "%s", v->value);
+        }
+    }
+    x2_log("libretro: settings: %s", f ? path : "defaults (none saved for this game)");
+    if (f) fclose(f);
+    n = 0;
+    bool pushed = true;
+    for (const struct retro_core_option_definition *o = opt_defs; o->key; o++, n++) {
+        struct retro_variable v = {o->key, vals[n]};
+        pushed &= environ_cb(RETRO_ENVIRONMENT_SET_VARIABLE, &v);
+    }
+    if (!pushed)
+        x2_log("libretro: the frontend cannot set core options; per-game settings need RetroArch 1.15 or later");
+    show_options();
+}
+
+/* the menu's values, as this game's settings (only those not at their default) */
+static void options_save(void) {
+    char path[1100];
+    options_path(path, sizeof path, true);
+    if (!path[0]) return;
+    FILE *f = NULL;
+    for (const struct retro_core_option_definition *o = opt_defs; o->key; o++) {
+        const char *v = core_option(o->key);
+        if (!strcmp(v, o->default_value)) continue;
+        if (!f && !(f = fopen(path, "w"))) return;
+        fprintf(f, "%s=%s\n", o->key, v);
+    }
+    if (f)
+        fclose(f);
+    else
+        remove(path);
+}
+
+/* ---- the core's touch pad and FPS counter (overlay.c), over its output image ---------------
+ * RetroArch's pointer: up to ten touches, positions over the picture. It numbers them by order,
+ * not identity (lifting the first renumbers the rest), so each touch is matched to the nearest
+ * finger of the previous frame. */
+/* the picture's place in the output (frame_layout, below), and whether the output is upright with the pad
+ * under the picture */
+static u32 img_x, img_y;
+static bool frame_portrait;
+static bool touch_recent; /* touched since the last controller button (Automatic) */
+static struct {
+    u64 id;
+    float x, y;
+    bool on;
+} tfing[10];
+
+static bool touch_shown(void) {
+    if (option_is("typex2_touch", "off")) return false;
+    return option_is("typex2_touch", "on") || touch_recent;
+}
+
+static void touch_poll(bool pad_pressed) {
+    static u64 next_id = 1;
+    if (pad_pressed) touch_recent = false;
+    float px[10], py[10];
+    int n = 0;
+    for (unsigned i = 0; i < 10; i++) {
+        if (!input_state_cb(0, RETRO_DEVICE_POINTER, i, RETRO_DEVICE_ID_POINTER_PRESSED)) break;
+        if (input_state_cb(0, RETRO_DEVICE_POINTER, i, RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN)) continue;
+        int x = input_state_cb(0, RETRO_DEVICE_POINTER, i, RETRO_DEVICE_ID_POINTER_X);
+        int y = input_state_cb(0, RETRO_DEVICE_POINTER, i, RETRO_DEVICE_ID_POINTER_Y);
+        px[n] = (float)(x + 0x7fff) / 65534.f * (float)out_w; /* the whole output: picture and frame */
+        py[n] = (float)(y + 0x7fff) / 65534.f * (float)out_h;
+        n++;
+    }
+    if (n) touch_recent = true;
+    if (!touch_shown()) {
+        bool any = false;
+        for (int i = 0; i < 10; i++) any |= tfing[i].on, tfing[i].on = false;
+        if (any) x2_touch_release_all();
+        return;
+    }
+    x2_touch_layout((int)out_w, (int)out_h, frame_portrait);
+    bool used[10] = {0};
+    float reach = (float)(out_w < out_h ? out_w : out_h) * 0.3f;
+    for (int f = 0; f < 10; f++) {
+        if (!tfing[f].on) continue;
+        int best = -1;
+        float bd = reach * reach;
+        for (int i = 0; i < n; i++) {
+            float dx = px[i] - tfing[f].x, dy = py[i] - tfing[f].y, d = dx * dx + dy * dy;
+            if (!used[i] && d <= bd) best = i, bd = d;
+        }
+        if (best < 0) {
+            tfing[f].on = false;
+            x2_touch_finger(tfing[f].id, X2_FINGER_UP, tfing[f].x, tfing[f].y);
+            continue;
+        }
+        used[best] = true;
+        tfing[f].x = px[best];
+        tfing[f].y = py[best];
+        x2_touch_finger(tfing[f].id, X2_FINGER_MOVE, px[best], py[best]);
+    }
+    for (int i = 0; i < n; i++) {
+        if (used[i]) continue;
+        for (int f = 0; f < 10; f++)
+            if (!tfing[f].on) {
+                tfing[f] = (typeof(tfing[0])){next_id++, px[i], py[i], true};
+                x2_touch_finger(tfing[f].id, X2_FINGER_DOWN, px[i], py[i]);
+                break;
+            }
+    }
+}
+
+/* over the output image, before it goes to the frontend (GL: drawn into its framebuffer at once;
+ * Vulkan: queued for gfx_vk_output) */
+static void overlays_draw(void) {
+    x2_ov_api(use_vk ? X2_OV_VULKAN : X2_OV_GL);
+    x2_fps_tick(true);
+    if (option_is("typex2_fps", "on")) x2_fps_draw((int)out_w, (int)out_h);
+    if (touch_shown()) {
+        x2_touch_layout((int)out_w, (int)out_h, frame_portrait);
+        x2_touch_draw((int)out_w, (int)out_h);
+    }
+}
+
+/* ---- the output: the game's picture, or a frame of the screen's shape around it ------------------
+ * RetroArch scales the core's image to the screen, letterboxed, and overlays drawn into the picture
+ * end at its edges. While the touch pad or the FPS counter shows, the image takes the screen's shape
+ * (Android: the display's size, from Java), the picture centred in it, upright at the top with the
+ * pad below as in the app, so the overlays reach the screen's edges. */
+#ifdef __ANDROID__
+#include <jni.h>
+/* width / height of the display (0: unknown), checked once a second (the device may turn) */
+static float screen_aspect(void) {
+    static float aspect;
+    static u64 next;
+    static jint (*get_vms)(JavaVM **, jsize, jsize *);
+    u64 now = x2_time_ns();
+    if (now < next) return aspect;
+    next = now + 1000000000ull;
+    if (!get_vms) {
+        get_vms = (jint (*)(JavaVM **, jsize, jsize *))dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs");
+        void *h = get_vms ? NULL : dlopen("libnativehelper.so", RTLD_NOW);
+        if (h) get_vms = (jint (*)(JavaVM **, jsize, jsize *))dlsym(h, "JNI_GetCreatedJavaVMs");
+        if (!get_vms) {
+            x2_log("libretro: no JNI_GetCreatedJavaVMs: overlays stay within the picture");
+            next = ~0ull;
+            return 0;
+        }
+    }
+    JavaVM *vm;
+    jsize n = 0;
+    if (get_vms(&vm, 1, &n) != JNI_OK || n < 1) return aspect;
+    JNIEnv *env;
+    bool attached = false;
+    if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
+        if ((*vm)->AttachCurrentThread(vm, &env, NULL) != JNI_OK) return aspect;
+        attached = true;
+    }
+    /* this thread may stay attached for good (the frontend's): its local references go with the frame */
+    if ((*env)->PushLocalFrame(env, 32) != JNI_OK) {
+        if (attached) (*vm)->DetachCurrentThread(vm);
+        return aspect;
+    }
+    /* ActivityThread.currentApplication().getSystemService("window").getDefaultDisplay().getRealMetrics() */
+    jclass at = (*env)->FindClass(env, "android/app/ActivityThread");
+    jobject app = NULL, wm = NULL, disp = NULL, dm = NULL;
+    /* an exception (none expected) ends the chain: each step checks and clears it */
+#define JNI_OK_SO_FAR (!(*env)->ExceptionCheck(env) || ((*env)->ExceptionClear(env), false))
+    if (JNI_OK_SO_FAR && at) {
+        jmethodID cur = (*env)->GetStaticMethodID(env, at, "currentApplication", "()Landroid/app/Application;");
+        if (cur) app = (*env)->CallStaticObjectMethod(env, at, cur);
+    }
+    if (JNI_OK_SO_FAR && app) {
+        jclass ctx = (*env)->FindClass(env, "android/content/Context");
+        jmethodID gss =
+            ctx ? (*env)->GetMethodID(env, ctx, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;") : NULL;
+        jstring name = (*env)->NewStringUTF(env, "window");
+        if (gss) wm = (*env)->CallObjectMethod(env, app, gss, name);
+    }
+    if (JNI_OK_SO_FAR && wm) {
+        jclass wmc = (*env)->FindClass(env, "android/view/WindowManager");
+        jmethodID gd = wmc ? (*env)->GetMethodID(env, wmc, "getDefaultDisplay", "()Landroid/view/Display;") : NULL;
+        if (gd) disp = (*env)->CallObjectMethod(env, wm, gd);
+    }
+    if (JNI_OK_SO_FAR && disp) {
+        jclass dmc = (*env)->FindClass(env, "android/util/DisplayMetrics");
+        jclass dc = (*env)->FindClass(env, "android/view/Display");
+        jmethodID init = dmc ? (*env)->GetMethodID(env, dmc, "<init>", "()V") : NULL;
+        jmethodID real = dc ? (*env)->GetMethodID(env, dc, "getRealMetrics", "(Landroid/util/DisplayMetrics;)V") : NULL;
+        if (init && real && (dm = (*env)->NewObject(env, dmc, init)) && JNI_OK_SO_FAR) {
+            (*env)->CallVoidMethod(env, disp, real, dm);
+            if (!JNI_OK_SO_FAR) dm = NULL;
+            if (!dm) goto metrics_done;
+            jint w = (*env)->GetIntField(env, dm, (*env)->GetFieldID(env, dmc, "widthPixels", "I"));
+            jint h = (*env)->GetIntField(env, dm, (*env)->GetFieldID(env, dmc, "heightPixels", "I"));
+            if (w > 0 && h > 0) aspect = (float)w / (float)h;
+        }
+    }
+metrics_done:
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+#undef JNI_OK_SO_FAR
+    (*env)->PopLocalFrame(env, NULL);
+    if (attached) (*vm)->DetachCurrentThread(vm);
+    return aspect;
+}
+#else
+static float screen_aspect(void) { return 0; } /* desktop: the picture is the window's */
+#endif
+
+/* out_w x out_h, the output for an iw x ih picture, and the picture's place in it (img_x, img_y) */
+static void frame_layout(u32 iw, u32 ih) {
+    u32 cw = iw, ch = ih, x = 0, y = 0;
+    bool portrait = false, touch = touch_shown();
+    float a = touch || option_is("typex2_fps", "on") ? screen_aspect() : 0;
+    if (a > 0) {
+        if (a < 1 && touch) { /* upright: the picture at the top under TEST, the pad in the bottom 40% */
+            ch = (u32)((float)iw / a) & ~1u;
+            y = (u32)((float)iw * 0.055f * 2.6f);
+            portrait = (float)(y + ih) <= (float)ch * 0.6f;
+            if (!portrait) y = (ch - ih) / 2;
+        } else if (a > (float)iw / (float)ih) {
+            cw = (u32)((float)ih * a) & ~1u;
+        } else {
+            ch = (u32)((float)iw / a) & ~1u;
+        }
+        if (cw > 1920 || ch > 1920 || cw < iw || ch < ih) cw = iw, ch = ih, portrait = false, y = 0;
+        x = (cw - iw) / 2;
+        if (!portrait && ch > ih) y = (ch - ih) / 2;
+    }
+    img_x = x;
+    img_y = y;
+    frame_portrait = portrait;
+    if (cw != out_w || ch != out_h) {
+        out_w = cw;
+        out_h = ch;
+        struct retro_game_geometry g = {cw, ch, 1920, 1920, (float)cw / (float)ch};
+        environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
+    }
+}
+
+/* a change in the menu: applied at once where it can be, saved for this game */
+static void options_changed(void) {
+    bool upd = false;
+    if (!environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &upd) || !upd) return;
+    apply_core_options();
+    x2_padmap_reload();
+    set_input_descriptors();
+    show_options();
+    options_save();
 }
 
 /* ---- game selection ------------------------------------------------------------------ */
@@ -561,6 +1063,8 @@ EXPORT void retro_set_environment(retro_environment_t cb) {
     environ_cb = cb;
     bool no_game = false;
     cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+    build_options();
+    if (!is_instance) set_core_options(cb); /* an instance for a later game: RetroArch has them */
     if (inst_on) inst.set_environment(cb);
 }
 EXPORT void retro_set_video_refresh(retro_video_refresh_t cb) {
@@ -623,7 +1127,7 @@ EXPORT void retro_get_system_av_info(struct retro_system_av_info *info) {
     info->geometry.base_width = out_w;
     info->geometry.base_height = out_h;
     info->geometry.max_width = 1920;
-    info->geometry.max_height = 1080;
+    info->geometry.max_height = 1920; /* upright, the output is taller than wide (frame_layout) */
     info->geometry.aspect_ratio = (float)out_w / (float)out_h;
     info->timing.fps = 60.0;
     info->timing.sample_rate = 48000.0;
@@ -668,7 +1172,10 @@ EXPORT bool retro_load_game(const struct retro_game_info *gi) {
         gfx_gl_set_cache_dir(sd, game->name);
     }
 
+    options_load();        /* this game's settings */
     x2_load_env_file(dir); /* X2_RENDERER is needed before the context (x2_boot loads it again) */
+    x2_env_override = apply_core_options;
+    apply_core_options();
     if (inherited) {       /* Reset: RetroArch's context, made for the instance this one replaces */
         hw_render = inherited_hw;
 #ifdef X2_VULKAN
@@ -864,6 +1371,7 @@ EXPORT void retro_run(void) {
         environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &m);
         pending_msg = NULL;
     }
+    options_changed();
     update_inputs();
     {
         /* X2_STALL=<frame>:<ms>: block this thread once at that guest frame (tests
@@ -914,21 +1422,18 @@ EXPORT void retro_run(void) {
             a0 = (float)((vh - voh) / 2) / (float)vh;
             a1 = a0 + (float)voh / (float)vh;
         }
-        if (vw != out_w || voh != out_h) {
-            out_w = vw;
-            out_h = voh;
-            struct retro_game_geometry g = {vw, voh, 1920, 1080, (float)vw / (float)voh};
-            environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
-        }
+        frame_layout(vw, voh);
         VkImage img;
         struct retro_vulkan_image ri;
         u32 ow, oh2;
-        if (vk_ready && gfx_vk_output(a0, a1, &img, &ri.image_view, &ri.create_info, &ow, &oh2)) {
+        if (vk_ready) overlays_draw();
+        if (vk_ready &&
+            gfx_vk_output(a0, a1, out_w, out_h, img_x, img_y, &img, &ri.image_view, &ri.create_info, &ow, &oh2)) {
             ri.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             vki->set_image(vki->handle, &ri, 0, NULL, VK_QUEUE_FAMILY_IGNORED);
             video_cb(RETRO_HW_FRAME_BUFFER_VALID, ow, oh2, 0);
         } else {
-            video_cb(NULL, vw, voh, 0);
+            video_cb(NULL, out_w, out_h, 0);
         }
         goto audio;
     }
@@ -957,17 +1462,16 @@ EXPORT void retro_run(void) {
         v0 = (float)((h - oh) / 2) / (float)h;
         v1 = v0 + (float)oh / (float)h;
     }
-    if (w != out_w || oh != out_h) {
-        out_w = w;
-        out_h = oh;
-        struct retro_game_geometry g = {w, oh, 1920, 1080, (float)w / (float)oh};
-        environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
-    }
+    frame_layout(w, oh);
     if (gl_ready) {
-        blit(tex, w, oh, v0, v1);
-        video_cb(RETRO_HW_FRAME_BUFFER_VALID, w, oh, 0);
+        blit(tex, out_w, out_h, img_x, img_y, w, oh, v0, v1);
+        overlays_draw();
+        glBindVertexArray(0);
+        glUseProgram(0);
+        gfx_gl_unbind_textures();
+        video_cb(RETRO_HW_FRAME_BUFFER_VALID, out_w, out_h, 0);
     } else {
-        video_cb(NULL, w, oh, 0);
+        video_cb(NULL, out_w, out_h, 0);
     }
 
 #ifdef X2_VULKAN

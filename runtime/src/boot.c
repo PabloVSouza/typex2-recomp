@@ -24,6 +24,7 @@
 #include "game_exe.h"
 
 const X2GameTables *x2_game;
+void (*x2_env_override)(void);
 
 /* <game_dir>/x2.env: KEY=VALUE lines applied as environment variables (debug
  * switches on platforms without a shell, e.g. Android) */
@@ -132,6 +133,7 @@ static LONG WINAPI on_exception(EXCEPTION_POINTERS *e) {
 X2Thread *x2_boot(const X2GameTables *game, const char *dir) {
     x2_game = game;
     x2_load_env_file(dir);
+    if (x2_env_override) x2_env_override();
     if (getenv("X2_LOG")) x2_log_level = atoi(getenv("X2_LOG"));
     x2_log("typex2-recomp %s", X2_VERSION);
 #ifdef _WIN32

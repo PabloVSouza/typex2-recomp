@@ -34,6 +34,8 @@ enum { X2P_SOUTH, X2P_EAST, X2P_WEST, X2P_NORTH, X2P_L1, X2P_R1, X2P_L2, X2P_R2,
 
 /* JVS player bits for each button (read X2_PAD on first call) */
 const uint16_t *x2_padmap(void);
+/* X2_PAD changed (the libretro core options): the next x2_padmap() reads it again */
+void x2_padmap_reload(void);
 /* "A+B" style label of a bit set ("-" if none), for input descriptors */
 void x2_padmap_label(uint16_t bits, char out[16]);
 /* KOF's button A..D (0..3) as cabinet switch bits for the running game (KOF XII: SHOT1 4 2 5;

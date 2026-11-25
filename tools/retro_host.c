@@ -11,6 +11,9 @@
  * --state s600,l900  retro_serialize (s) / retro_unserialize (l) of one in-memory state
  *               at those retro_run counts, as RetroArch's Save / Load State do
  * --reset N,M   retro_reset at those retro_run counts (Quick Menu → Restart)
+ * --option K=V  set core option K as the menu does, after the first retro_run of each content
+ * --option-at N:K=V  the same after retro_run N
+ * --touch F1-F2:x,y  a touch (RETRO_DEVICE_POINTER) from retro_run F1 to F2 at x, y (fractions of the picture)
  * --exit        end like RetroArch: retro_deinit, then exit() with its cleanup
  *               (default: _Exit, since guest threads cannot be joined)
  * Keys: arrows, Z X C V = Y B X A (game A B C D), 1 = Start, 5 = Select (coin),
@@ -56,6 +59,66 @@ static void core_log(enum retro_log_level level, const char *fmt, ...) {
 static uintptr_t get_fb(void) { return fbo; }
 static retro_proc_address_t get_proc(const char *sym) { return (retro_proc_address_t)SDL_GL_GetProcAddress(sym); }
 
+/* ---- core options (RetroArch's Core Options menu) and touches ------------------------------
+ * Values survive --next, as RetroArch keeps them; --option / --option-at change one as the menu
+ * does, during the game. */
+static struct {
+    char key[64], value[64];
+} opts[128];
+static int nopts;
+static bool opts_updated;
+static const char *opt_get(const char *key) {
+    for (int i = 0; i < nopts; i++)
+        if (!strcmp(opts[i].key, key)) return opts[i].value;
+    return NULL;
+}
+static void opt_set(const char *key, const char *value, bool add) {
+    for (int i = 0; i < nopts; i++)
+        if (!strcmp(opts[i].key, key)) {
+            snprintf(opts[i].value, sizeof opts[i].value, "%s", value);
+            return;
+        }
+    if (!add || nopts >= 128) return;
+    snprintf(opts[nopts].key, sizeof opts[nopts].key, "%s", key);
+    snprintf(opts[nopts].value, sizeof opts[nopts].value, "%s", value);
+    nopts++;
+}
+/* --option-at N:key=value (and --option key=value: N = 1), applied after that retro_run */
+static struct {
+    long at;
+    char key[64], value[64];
+} changes[32];
+static int nchanges;
+static void add_change(long at, const char *kv) {
+    const char *eq = strchr(kv, '=');
+    if (!eq || nchanges >= 32) return;
+    changes[nchanges].at = at;
+    snprintf(changes[nchanges].key, sizeof changes[nchanges].key, "%.*s", (int)(eq - kv), kv);
+    snprintf(changes[nchanges].value, sizeof changes[nchanges].value, "%s", eq + 1);
+    nchanges++;
+}
+/* --touch F1-F2:x,y: a finger down from retro_run F1 to F2 at (x, y), fractions of the picture */
+static struct {
+    long from, to;
+    float x, y;
+} touches[16];
+static int ntouches;
+static long cur_frame;
+static int16_t pointer_state(unsigned index, unsigned id) {
+    unsigned k = 0;
+    for (int i = 0; i < ntouches; i++) {
+        if (cur_frame < touches[i].from || cur_frame > touches[i].to) continue;
+        if (k++ != index) continue;
+        switch (id) {
+        case RETRO_DEVICE_ID_POINTER_X: return (int16_t)(touches[i].x * 65534.f - 32767.f);
+        case RETRO_DEVICE_ID_POINTER_Y: return (int16_t)(touches[i].y * 65534.f - 32767.f);
+        case RETRO_DEVICE_ID_POINTER_PRESSED: return 1;
+        default: return 0;
+        }
+    }
+    return 0;
+}
+
 static bool environment(unsigned cmd, void *data) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((struct retro_log_callback *)data)->log = core_log; return true;
@@ -81,6 +144,29 @@ static bool environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_SET_MESSAGE:
             fprintf(stderr, "[host] message: %s\n", ((const struct retro_message *)data)->msg);
             return true;
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: *(unsigned *)data = 1; return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
+            for (const struct retro_core_option_definition *o = data; o->key; o++)
+                if (!opt_get(o->key)) opt_set(o->key, o->default_value, true);
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: return true;
+        case RETRO_ENVIRONMENT_GET_VARIABLE: {
+            struct retro_variable *v = data;
+            v->value = opt_get(v->key);
+            return v->value != NULL;
+        }
+        case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            const struct retro_variable *v = data;
+            if (!v) return true; /* the query: supported */
+            if (!v->key || !v->value || !opt_get(v->key)) return false;
+            opt_set(v->key, v->value, false);
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
+            *(bool *)data = opts_updated;
+            opts_updated = false;
+            return true;
         case RETRO_ENVIRONMENT_SHUTDOWN: quit = true; return true;
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
         case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char **)data = "."; return true;
@@ -102,6 +188,7 @@ static size_t audio_batch(const int16_t *d, size_t frames) {
 }
 static void input_poll(void) {}
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id) {
+    if (port == 0 && device == RETRO_DEVICE_POINTER) return pointer_state(index, id);
     if (port > 1 || device != RETRO_DEVICE_JOYPAD || index || id >= 16) return 0;
     return pad[port][id];
 }
@@ -250,7 +337,18 @@ int main(int argc, char **argv) {
             state_ops = argv[++i];
         else if (!strcmp(argv[i], "--reset") && i + 1 < argc)
             reset_ops = argv[++i];
-        else if (!strcmp(argv[i], "--exit"))
+        else if (!strcmp(argv[i], "--option") && i + 1 < argc)
+            add_change(1, argv[++i]);
+        else if (!strcmp(argv[i], "--option-at") && i + 1 < argc) {
+            char *colon;
+            long at = strtol(argv[++i], &colon, 10);
+            if (*colon == ':') add_change(at, colon + 1);
+        } else if (!strcmp(argv[i], "--touch") && i + 1 < argc && ntouches < 16) {
+            long a, b;
+            float x, y;
+            if (sscanf(argv[++i], "%ld-%ld:%f,%f", &a, &b, &x, &y) == 4)
+                touches[ntouches++] = (typeof(touches[0])){a, b, x, y};
+        } else if (!strcmp(argv[i], "--exit"))
             full_exit = true;
     }
     if (ncontents > 1 && !max_frames) max_frames = 600;
@@ -311,7 +409,14 @@ int main(int argc, char **argv) {
                 if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE))
                     quit = true;
             update_keys();
+            cur_frame = n;
             core.run();
+            for (int c = 0; c < nchanges; c++)
+                if (changes[c].at == n) { /* --option-at: as the menu does */
+                    opt_set(changes[c].key, changes[c].value, false);
+                    opts_updated = true;
+                    fprintf(stderr, "[host] frame %ld: option %s = %s\n", n, changes[c].key, changes[c].value);
+                }
             if (*reset_ops && n >= atol(reset_ops)) { /* --reset */
                 fprintf(stderr, "[host] frame %ld: reset\n", n);
                 core.reset();

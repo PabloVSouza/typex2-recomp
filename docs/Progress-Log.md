@@ -2,6 +2,39 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-25: Touch-button layouts; the RetroArch core gets every setting, per game; OpenGL ES 16-bit textures
+
+- **Touch buttons** (standalone and app): this project's layout, Neo Geo (A B C D
+  in a row) or a custom pad of two rows of four (`X2_TOUCH_BUTTONS`, the
+  launcher's game settings). The buttons moved nearer the screen's edge, COIN
+  / START to the bottom middle (to the top when three or four columns leave
+  no room).
+- **The overlays are shared** (`overlay.c`): the FPS counter and the touch pad
+  left `platform_sdl.c` unchanged (the standalone's GL frames are byte-identical),
+  so the core draws them too: into RetroArch's framebuffer with GL, and with
+  Vulkan by drawing its output image instead of copying it when overlays are
+  queued (`gfx_vk_output`). RetroArch's pointer numbers touches by order, so
+  each is matched to the nearest finger of the previous frame.
+- **Out to the screen's edges.** RetroArch letterboxes the core's image, so
+  overlays drawn into the picture ended at its edges. While the touch pad or
+  the FPS counter shows, the core's image takes the display's shape (asked of
+  Android through JNI: `getRealMetrics`, once a second for rotation), the
+  picture centred in it, or at the top with the pad below when upright.
+- **Core options** hold every setting of the app's game page. Per game without
+  RetroArch's "Save Game Options": the core keeps `<saves>/typex2/<game>.opt`,
+  pushes its values into the menu when the game starts
+  (`RETRO_ENVIRONMENT_SET_VARIABLE`) and saves each change. Only the current
+  game's custom touch slots are listed (eight per button family, labelled with
+  the game's names). `x2.env` keeps the debugging switches; the core's settings
+  win over it (`x2_env_override`, after `x2_boot` reads `x2.env` again).
+- **OpenGL ES drew KOF '98 UM's sprites black.** Its palettes are A1R5G5B5
+  textures, uploaded as `GL_BGRA` + `GL_UNSIGNED_SHORT_1_5_5_5_REV`, which
+  OpenGL ES 3 rejects; the palette stayed empty. They (and A4R4G4B4) are now
+  converted to `5_5_5_1` / `4_4_4_4` on upload. Found by dumping the
+  palette texture (`X2_DUMPTEX`) on the tablet and on the Mac.
+- `retro_host` got core options (`--option`, `--option-at`) and touches
+  (`--touch`) to test it without RetroArch.
+
 ## 2026-11-25: The King of Fighters 2002 Unlimited Match
 
 - **Second NESiCAxLive game the same day**, a TeknoParrot-format dump

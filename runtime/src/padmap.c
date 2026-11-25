@@ -86,6 +86,11 @@ static void parse(const char *spec) {
     }
 }
 
+void x2_padmap_reload(void) {
+    memset(map, 0, sizeof map);
+    ready = 0;
+}
+
 const uint16_t *x2_padmap(void) {
     if (!ready) {
         if (!strcmp(game_id(), "ssf4ae")) {
