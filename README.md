@@ -20,6 +20,17 @@ game's code ahead of time into native code for your device, and supplies
 what the game expects from Windows, Direct3D, its sound and the cabinet's
 controls. The result runs at full speed on a budget Android tablet.
 
+**How it differs from TeknoParrot.** TeknoParrot (and OpenParrot) run the
+original Windows game on a Windows PC, standing in for the cabinet's hardware
+(I/O board, dongle, network service) around it. typex2-recomp rebuilds the
+game itself: its code becomes native code for your device, and the project
+supplies Windows and Direct3D too, so no Windows and no x86 processor are
+needed. That's what lets these games run on an Android tablet, in RetroArch,
+or on a Mac. The cost is that every game is ported one by one, so there are
+far fewer of them than TeknoParrot supports; on a Windows PC, TeknoParrot
+remains the broader choice. Both need your own copy of the games, and
+TeknoParrot-format dumps work here.
+
 **Bring your own games.** Nothing from the games is in this project or its
 releases: you point the launcher at your own copy, and the recompiling
 happens on your computer.

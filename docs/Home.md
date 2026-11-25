@@ -11,6 +11,21 @@ Each game then runs in one of two ways:
 - a standalone app (SDL3; launched by ES-DE on Android);
 - a RetroArch core that holds every supported game.
 
+### Compared with TeknoParrot
+
+| | TeknoParrot / OpenParrot | typex2-recomp |
+|---|---|---|
+| How | Runs the original `game.exe` on Windows, emulating the cabinet's hardware around it (I/O board, dongle, NESiCAxLive service) | Translates `game.exe` into native code once; reimplements Windows, Direct3D 9, sound and the cabinet's hardware |
+| Runs on | Windows PCs (x86) | Android (ARM), macOS (Apple Silicon); Windows and Linux builds too |
+| Graphics | The PC's own Direct3D | Vulkan, Metal or OpenGL, through our Direct3D 9 |
+| Front ends | Its own launcher | Its own launcher and app, RetroArch, ES-DE |
+| Games | Hundreds, across many arcade PCs | The ones ported here ([Game status](Game-Status.md)); each needs its own work |
+| Game files | Your own dumps | Your own dumps; TeknoParrot-format dumps work |
+
+Where TeknoParrot needs a stand-in for a piece of the cabinet, so does this
+project, written from the game's own code: the JVS and "FAST I/O" boards, the
+NESiCA card reader, the NESiCAxLive client ([Architecture](Architecture.md)).
+
 ## Pages
 
 | Page | What it covers |
