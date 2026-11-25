@@ -27,6 +27,9 @@ games are recompiled on your computer from your own files.
   reported the end at once), and a sample grabber hands out the format and size the game asked
   for.
 - **Android and Linux:** game files are found whatever the case of their names, as on Windows.
+- **KOF on touch screens:** the on-screen buttons put punches over kicks, as for SSF4: A C (light
+  and heavy punch) on the top row, B D (light and heavy kick) below. Pads and the stick preset
+  already did. In KOF 2002 UM the keyboard's Z X C V now press its A B C D.
 - `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
   (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,

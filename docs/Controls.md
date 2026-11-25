@@ -22,7 +22,8 @@
   - With Start (standalone app): quit.
 - **L3 / R3** stay free for frontend hotkeys.
 - **Touch.** On touch screens without a pad, an on-screen pad appears with
-  the game's buttons: KOF C D over A B, SSF4 LP MP HP over LK MK HK,
+  the game's buttons, punches over kicks: KOF A C over B D (light and heavy
+  punch over light and heavy kick), SSF4 LP MP HP over LK MK HK,
   BlazBlue A B C over D, Samurai Shodown EoD A B C over R. Sideways it lies
   over the picture; held upright, the picture moves to the top and the
   stick and buttons sit below it.
@@ -31,7 +32,7 @@
 
 | Game | Layout |
 |---|---|
-| KOF XII / XIII / XIII Climax / '98 UM / 2002 UM | FinalBurn Neo's Neo Geo "Modern" pad. Y B X A = A B C D. R2 = A+B, R1 = C+D, L2 = A+B+C, L1 = B+C+D. |
+| KOF XII / XIII / XIII Climax / '98 UM / 2002 UM | FinalBurn Neo's Neo Geo "Modern" pad, punches over kicks as in SSF4: A C (light and heavy punch) on Y X, B D (light and heavy kick) on B A. R2 = A+B, R1 = C+D, L2 = A+B+C, L1 = B+C+D. |
 | SSF4 AE | LP MP HP on Y X R1, LK MK HK on B A R2. L1 = three punches, L2 = three kicks. |
 | BlazBlue CS / CT | A B C on Y X R1, D on B. A = B+C (throw), R2 = A+B (barrier), L1 = A+B+C, L2 = A+B+C+D. |
 | Samurai Shodown EoD | As BlazBlue, with R in place of D: A B C on Y X R1, R on B. A = B+C, R2 = A+B, L1 = A+B+C, L2 = A+B+C+R. |

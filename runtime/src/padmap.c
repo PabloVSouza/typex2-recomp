@@ -33,11 +33,12 @@ static bool is_goketsuji(void) { return !strcmp(game_id(), "goketsuji"); }
 /* KOF 2002 UM (NESiCAxLive) has A B C D on cabinet SHOT1-4 in a row, not KOF XII's 1 4 2 5 */
 static bool is_kof2002um(void) { return !strcmp(game_id(), "kof2002um"); }
 /* KOF's button A..D (0..3) as cabinet switch bits */
-static uint16_t kof_button(int i) {
+uint16_t x2_kof_button(int i) {
     static const uint16_t xii[4] = {X2_BTN_A, X2_BTN_B, X2_BTN_C, X2_BTN_D};
     static const uint16_t row[4] = {JVS_B1, JVS_B2, JVS_B3, JVS_B4};
     return is_kof2002um() ? row[i] : xii[i];
 }
+static uint16_t kof_button(int i) { return x2_kof_button(i); }
 
 /* what each game calls cabinet SHOT1-6 (labels for frontends) */
 static const char *const *shot_names(void) {
@@ -204,10 +205,10 @@ void x2_touch_buttons(const char *label[6], uint16_t bits[6]) {
         label[1] = "HP", bits[1] = JVS_B2;
         label[3] = "LK", bits[3] = JVS_B4;
         label[4] = "HK", bits[4] = JVS_B5;
-    } else { /* KOF: C D above A B */
-        label[0] = "C", bits[0] = kof_button(2);
-        label[1] = "D", bits[1] = kof_button(3);
-        label[3] = "A", bits[3] = kof_button(0);
-        label[4] = "B", bits[4] = kof_button(1);
+    } else { /* KOF: punches above kicks, as SSF4's: A (light punch) C (heavy) over B D */
+        label[0] = "A", bits[0] = kof_button(0);
+        label[1] = "C", bits[1] = kof_button(2);
+        label[3] = "B", bits[3] = kof_button(1);
+        label[4] = "D", bits[4] = kof_button(3);
     }
 }

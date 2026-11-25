@@ -36,6 +36,9 @@ enum { X2P_SOUTH, X2P_EAST, X2P_WEST, X2P_NORTH, X2P_L1, X2P_R1, X2P_L2, X2P_R2,
 const uint16_t *x2_padmap(void);
 /* "A+B" style label of a bit set ("-" if none), for input descriptors */
 void x2_padmap_label(uint16_t bits, char out[16]);
+/* KOF's button A..D (0..3) as cabinet switch bits for the running game (KOF XII: SHOT1 4 2 5;
+   KOF 2002 UM: SHOT1-4) */
+uint16_t x2_kof_button(int i);
 /* true once coin has been held long enough to mean Test (one slot per player) */
 bool x2_padmap_hold_test(int slot, bool coin_down);
 /* X2_INPUT="frame:keys,frame:keys,..." scripted input for automated tests; each

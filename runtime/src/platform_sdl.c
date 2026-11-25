@@ -394,8 +394,8 @@ static int SDLCALL audio_thread(void *ud) {
 
 /* ---- touch controls -------------------------------------------------------------
  * On-screen pad for touch screens (player 1): a stick on the left (8-way, slide
- * between directions), A B C D on the right in the arcade layout (A B bottom
- * row, C D top row, staggered), COIN / START at the top and a small TEST button
+ * between directions), the game's buttons on the right, punches above kicks (KOF: A C top
+ * row, B D bottom, staggered; padmap.c: x2_touch_buttons), COIN / START at the top and a small TEST button
  * in the top-right corner. Shown on touch devices while no gamepad is
  * connected; X2_TOUCH=1 forces it on (e.g. to try it with a mouse-less tablet
  * plus a pad), X2_TOUCH=0 off. Multi-touch: each finger holds one control. */
@@ -711,10 +711,10 @@ static void update_inputs(void) {
     if (k[SDL_SCANCODE_DOWN]) p1 |= JVS_DOWN;
     if (k[SDL_SCANCODE_LEFT]) p1 |= JVS_LEFT;
     if (k[SDL_SCANCODE_RIGHT]) p1 |= JVS_RIGHT;
-    if (k[SDL_SCANCODE_Z]) p1 |= X2_BTN_A;
-    if (k[SDL_SCANCODE_X]) p1 |= X2_BTN_B;
-    if (k[SDL_SCANCODE_C]) p1 |= X2_BTN_C;
-    if (k[SDL_SCANCODE_V]) p1 |= X2_BTN_D;
+    if (k[SDL_SCANCODE_Z]) p1 |= x2_kof_button(0);
+    if (k[SDL_SCANCODE_X]) p1 |= x2_kof_button(1);
+    if (k[SDL_SCANCODE_C]) p1 |= x2_kof_button(2);
+    if (k[SDL_SCANCODE_V]) p1 |= x2_kof_button(3);
     if (k[SDL_SCANCODE_1]) p1 |= JVS_START;
     if (k[SDL_SCANCODE_2]) p2 |= JVS_START;
     if (k[SDL_SCANCODE_F1]) p1 |= JVS_SERVICE;
