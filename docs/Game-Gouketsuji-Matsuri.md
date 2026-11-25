@@ -55,5 +55,3 @@ test menu, which is in Japanese. Layouts: [Controls](Controls.md).
 ## Known issues
 
 - Not played by hand yet. Not tried in RetroArch.
-- The test menu's Japanese text uses the system's CJK font on Android (on the
-  test tablet, Samsung's), so it looks lighter than on macOS.

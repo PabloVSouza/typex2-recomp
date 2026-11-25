@@ -140,7 +140,7 @@ static void load_faces(void) {
 
 struct X2Font {
     float em;
-    bool bold, heavy; /* heavy: ultra / extra bold faces */
+    bool bold, heavy, black; /* heavy: ultra / extra bold faces; black: weight 900 */
 };
 
 X2Font *x2_font_open(const char *face, int weight, float em) {
@@ -150,6 +150,7 @@ X2Font *x2_font_open(const char *face, int weight, float em) {
     f->em = em;
     f->bold = weight >= 700 || (face && (strstr(face, "UB") || strstr(face, "EB") || strstr(face, " B")));
     f->heavy = weight >= 800 || (face && (strstr(face, "UB") || strstr(face, "EB")));
+    f->black = weight >= 900;
     return f;
 }
 
@@ -275,8 +276,11 @@ static void embolden(Ops *o, float r) {
         }
 }
 
-/* the bold stroke growth for a font: what FreeType uses (em / 24), more for ultra-bold faces */
-static float bold_strength(const X2Font *f) { return f->bold ? f->em / (f->heavy ? 14.f : 24.f) : 0.f; }
+/* the bold stroke growth for a font: what FreeType uses (em / 24), more for ultra-bold faces, and
+   most for black (900: Gouketsuji's menus; the Mac draws them with Hiragino's heaviest weight) */
+static float bold_strength(const X2Font *f) {
+    return f->bold ? f->em / (f->black ? 9.f : f->heavy ? 14.f : 24.f) : 0.f;
+}
 
 bool x2_font_glyph(X2Font *f, uint32_t cp, X2GlyphMetrics *gm, X2PathFn path, void *ud) {
     int gi;

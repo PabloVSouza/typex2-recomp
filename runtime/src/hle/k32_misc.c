@@ -419,16 +419,20 @@ static void GetDateFormatA(X2Cpu *c) {
 }
 
 /* ---- locale / code pages ---------------------------------------------------- *
- * The ANSI code page is reported as 1252 and treated as Latin-1; UTF-8 (65001)
- * is supported. Shift-JIS (932) is logged and decoded as Latin-1 for now. */
-static void GetACP(X2Cpu *c) { RET(1252); }
+ * The ANSI code page is 1252 (Latin-1), or 932 (Shift-JIS) for the Japanese NESiCAxLive games
+ * (cp932.c: x2_acp); UTF-8 (65001) is supported. CP_ACP (0) and CP_THREAD_ACP (3) are the ANSI page. */
+static void GetACP(X2Cpu *c) { RET(x2_acp()); }
+static u32 real_cp(u32 cp) { return cp == 0 || cp == 3 ? x2_acp() : cp; }
 static void GetOEMCP(X2Cpu *c) { RET(437); }
 static void IsValidCodePage(X2Cpu *c) { RET(ARG(0) == 1252 || ARG(0) == 437 || ARG(0) == 65001 || ARG(0) == 932); }
 static void GetCPInfo(X2Cpu *c) {
-    u32 p = ARG(1);
+    u32 p = ARG(1), cp = real_cp(ARG(0));
     memset(X2P(p), 0, 20);
-    WR32(p, ARG(0) == 65001 ? 4 : 1);
+    WR32(p, cp == 65001 ? 4 : cp == 932 ? 2 : 1);
     WR8(p + 4, '?');
+    if (cp == 932) { /* CPINFO.LeadByte: the two lead-byte ranges */
+        WR8(p + 6, 0x81), WR8(p + 7, 0x9F), WR8(p + 8, 0xE0), WR8(p + 9, 0xFC);
+    }
     RET(1);
 }
 static void GetUserDefaultLCID(X2Cpu *c) { RET(0x0409); }
@@ -439,7 +443,7 @@ static void EnumSystemLocalesA(X2Cpu *c) { RET(1); }
 static const char *locale_info(u32 type) {
     switch (type & 0xFFFF) {
         case 0x0B: return "437";        /* LOCALE_IDEFAULTCODEPAGE */
-        case 0x1004: return "1252";     /* LOCALE_IDEFAULTANSICODEPAGE */
+        case 0x1004: return x2_acp() == 932 ? "932" : "1252"; /* LOCALE_IDEFAULTANSICODEPAGE */
         case 0x01: return "0409";       /* LOCALE_ILANGUAGE */
         case 0x03: return "ENU";        /* LOCALE_SABBREVLANGNAME */
         case 0x07: return "USA";        /* LOCALE_SABBREVCTRYNAME */
@@ -468,15 +472,18 @@ static void GetLocaleInfoW(X2Cpu *c) {
 }
 
 static void MultiByteToWideChar(X2Cpu *c) {
-    u32 cp = ARG(0), src = ARG(2), dst = ARG(4), cap = ARG(5);
+    u32 cp = real_cp(ARG(0)), src = ARG(2), dst = ARG(4), cap = ARG(5);
     s32 len = (s32)ARG(3);
     if (len < 0) len = (s32)strlen(GSTR(src)) + 1;
-    if (cp == 932) X2_TRACE("MultiByteToWideChar: CP932 treated as Latin-1");
     u32 out = 0;
     const u8 *s = (const u8 *)X2P(src);
     for (s32 i = 0; i < len;) {
         u32 ch = s[i++];
-        if (cp == 65001 && ch >= 0xC0) {
+        if (cp == 932 && ch >= 0x80) { /* Shift-JIS */
+            size_t used;
+            ch = x2_cp932_next(s + i - 1, (size_t)(len - i + 1), &used);
+            i += (s32)used - 1;
+        } else if (cp == 65001 && ch >= 0xC0) {
             int extra = ch >= 0xF0 ? 3 : ch >= 0xE0 ? 2 : 1;
             ch &= 0x3F >> extra;
             while (extra-- && i < len) ch = (ch << 6) | (s[i++] & 0x3F);
@@ -499,7 +506,7 @@ static void MultiByteToWideChar(X2Cpu *c) {
     RET(out);
 }
 static void WideCharToMultiByte(X2Cpu *c) {
-    u32 cp = ARG(0), src = ARG(2), dst = ARG(4), cap = ARG(5);
+    u32 cp = real_cp(ARG(0)), src = ARG(2), dst = ARG(4), cap = ARG(5);
     s32 len = (s32)ARG(3);
     if (len < 0) {
         len = 0;
@@ -515,6 +522,16 @@ static void WideCharToMultiByte(X2Cpu *c) {
             if (ch < 0x80) buf[0] = (u8)ch;
             else if (ch < 0x800) { buf[0] = (u8)(0xC0 | ch >> 6); buf[1] = (u8)(0x80 | (ch & 0x3F)); n = 2; }
             else { buf[0] = (u8)(0xE0 | ch >> 12); buf[1] = (u8)(0x80 | (ch >> 6 & 0x3F)); buf[2] = (u8)(0x80 | (ch & 0x3F)); n = 3; }
+        } else if (cp == 932) { /* Shift-JIS: one or two bytes, '?' when it has no code */
+            u32 code = x2_cp932_from(ch);
+            if (!code && ch) {
+                code = '?';
+                if (ARG(7)) WR32(ARG(7), 1);
+            }
+            if (code > 0xFF)
+                buf[0] = (u8)(code >> 8), buf[1] = (u8)code, n = 2;
+            else
+                buf[0] = (u8)code;
         } else {
             buf[0] = ch < 0x100 ? (u8)ch : '?';
             if (ch >= 0x100 && ARG(7)) WR32(ARG(7), 1);
@@ -766,8 +783,8 @@ static void ConnectNamedPipe(X2Cpu *c) {
     RET(0);
 }
 static void SetConsoleCtrlHandler(X2Cpu *c) { RET(1); }
-/* code page 1252 (GetACP) has no lead bytes */
-static void IsDBCSLeadByte(X2Cpu *c) { RET(0); }
+/* code page 1252 has no lead bytes; 932 has two ranges */
+static void IsDBCSLeadByte(X2Cpu *c) { RET(x2_acp() == 932 && x2_cp932_lead((u8)ARG(0))); }
 static void FatalAppExitA(X2Cpu *c) { x2_fatal("FatalAppExitA: %s", ARG(1) ? GSTR(ARG(1)) : ""); }
 static void lstrlenW(X2Cpu *c) {
     u32 n = 0;

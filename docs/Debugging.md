@@ -78,6 +78,7 @@ RetroArch core takes `X2_RENDERER`, `X2_BB_SCALE`, `X2_FPS`, `X2_PAD`, `X2_TOUCH
 | Variable | Effect |
 |---|---|
 | `X2_LOG=0..3` | log level (same as -v/-vv/-vvv) |
+| `X2_ACP=932` / `1252` | the ANSI code page games see: 932 (Shift-JIS, as on the cabinets' Japanese Windows) for KOF 2002 UM and Gouketsuji, 1252 (Latin-1) for the others (`cp932.c`) |
 | `X2_SHOT=f1,f2,...` `X2_SHOT_PATH=x.png` `X2_SHOT_EXIT=1` | save frames as PNG |
 | `X2_SHOT_WINDOW=1` | screenshots capture the window (with overlays; GL only) |
 | `X2_STATE_AT=s600,l900,...` | save (`s`) or load (`l`) a state when the frame count reaches each number (player) |

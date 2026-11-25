@@ -312,6 +312,15 @@ static void GetGlyphOutlineW(X2Cpu *c) {
 static void SetBkColor(X2Cpu *c) { RET(0x00FFFFFFu); }
 static void SetTextColor(X2Cpu *c) { RET(0); }
 static void TextOutA(X2Cpu *c) { RET(1); }
+/* The character code is in the ANSI code page: Latin-1 = Unicode under 1252; under 932 (cp932.c) a
+   Shift-JIS code, one byte or lead << 8 | trail (KOF 2002 UM's boot screen) */
+static void GetGlyphOutlineA(X2Cpu *c) {
+    if (x2_acp() == 932 && ARG(1) >= 0x80) {
+        u32 u = x2_cp932_char(ARG(1) & 0xFFFF);
+        WR32(c->esp + 8, u ? u : '?'); /* ARG(1): stdcall arguments are the callee's */
+    }
+    GetGlyphOutlineW(c);
+}
 static void CreateFontA(X2Cpu *c) { RET(0x00040040u); }
 static void GetDeviceCaps(X2Cpu *c) {
     switch (ARG(1)) {
@@ -355,6 +364,6 @@ const X2Hle x2_hle_gdi32[] = {
     {"GetGlyphOutlineW", GetGlyphOutlineW, 7},
     {"CreateFontIndirectA", CreateFontIndirectA, 1},
     {"GetTextMetricsA", GetTextMetricsA, 2},
-    {"GetGlyphOutlineA", GetGlyphOutlineW, 7}, /* character codes: code page 1252 (GetACP), Latin-1 = Unicode */
+    {"GetGlyphOutlineA", GetGlyphOutlineA, 7},
     {NULL, NULL, 0},
 };

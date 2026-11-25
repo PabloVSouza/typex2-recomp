@@ -120,10 +120,31 @@ static void draw_text(X2Cpu *c, bool wide) {
         for (; n < 2047 && (count < 0 || (s32)n < count) && RD16(str + 2 * n); n++) tmp[n] = RD16(str + 2 * n);
         tmp[n] = 0;
         x2_wstr_utf8(tmp, s, 8192);
-    } else {
-        u32 n = 0;
-        for (; n < 8191 && (count < 0 || (s32)n < count) && RD8(str + n); n++) s[n] = (char)RD8(str + n);
-        s[n] = 0;
+    } else if (x2_acp() == 932) { /* Shift-JIS -> UTF-8 */
+        const u8 *in = (const u8 *)X2P(str);
+        size_t len = 0, o = 0;
+        while ((count < 0 || (s32)len < count) && in[len] && len < 4096) len++;
+        for (size_t i = 0, used; i < len && o < 8188; i += used) {
+            u32 cp = x2_cp932_next(in + i, len - i, &used);
+            if (cp < 0x80)
+                s[o++] = (char)cp;
+            else if (cp < 0x800)
+                s[o++] = (char)(0xC0 | cp >> 6), s[o++] = (char)(0x80 | (cp & 0x3F));
+            else
+                s[o++] = (char)(0xE0 | cp >> 12), s[o++] = (char)(0x80 | (cp >> 6 & 0x3F)),
+                s[o++] = (char)(0x80 | (cp & 0x3F));
+        }
+        s[o] = 0;
+    } else { /* code page 1252: Latin-1 */
+        u32 n = 0, o = 0;
+        for (; o < 8190 && (count < 0 || (s32)n < count) && RD8(str + n); n++) {
+            u8 b = RD8(str + n);
+            if (b < 0x80)
+                s[o++] = (char)b;
+            else
+                s[o++] = (char)(0xC0 | b >> 6), s[o++] = (char)(0x80 | (b & 0x3F));
+        }
+        s[o] = 0;
     }
     if (getenv("X2_TRACE")) { /* each new text once */
         static u32 seen[512], nseen;
@@ -272,8 +293,33 @@ static void create_font(X2Cpu *c, u32 dev, u32 d, u32 out, bool wide) {
         u16 face[33] = {0};
         for (int i = 0; i < 32; i++) face[i] = RD16(d + 24 + 2 * (u32)i);
         x2_wstr_utf8(face, f->face, sizeof f->face);
+    } else if (x2_acp() == 932) { /* a Shift-JIS face name (MS Gothic is "ＭＳ ゴシック") */
+        const u8 *in = (const u8 *)X2P(d + 24);
+        size_t o = 0;
+        for (size_t i = 0, used; i < 32 && in[i] && o + 4 < sizeof f->face; i += used) {
+            u32 cp = x2_cp932_next(in + i, 32 - i, &used);
+            if (cp < 0x80)
+                f->face[o++] = (char)cp;
+            else if (cp < 0x800)
+                f->face[o++] = (char)(0xC0 | cp >> 6), f->face[o++] = (char)(0x80 | (cp & 0x3F));
+            else
+                f->face[o++] = (char)(0xE0 | cp >> 12), f->face[o++] = (char)(0x80 | (cp >> 6 & 0x3F)),
+                f->face[o++] = (char)(0x80 | (cp & 0x3F));
+        }
+        f->face[o] = 0;
     } else {
         snprintf(f->face, sizeof f->face, "%.31s", (const char *)X2P(d + 24));
+    }
+    {
+        static char logged[8][64];
+        char key[64];
+        snprintf(key, sizeof key, "%s/%d/%u", f->face, f->height, f->weight);
+        int i = 0;
+        while (i < 8 && logged[i][0] && strcmp(logged[i], key)) i++;
+        if (i < 8 && !logged[i][0]) {
+            snprintf(logged[i], sizeof logged[i], "%s", key);
+            x2_log("d3dx9: D3DXCreateFont(\"%s\", height %d, weight %u)", f->face, f->height, f->weight);
+        }
     }
     /* Height as in LOGFONT: negative the character height, positive the cell height */
     float em = f->height < 0 ? (float)-f->height : f->height > 0 ? (float)f->height : 16.0f;

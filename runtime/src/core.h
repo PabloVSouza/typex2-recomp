@@ -169,6 +169,12 @@ int x2_spawn(pthread_t *t, const pthread_attr_t *a, void *(*fn)(void *), void *a
 /* boot.c: load <dir>/game.exe for `game` and start its main thread */
 X2Thread *x2_boot(const X2GameTables *game, const char *dir);
 void x2_load_env_file(const char *dir);
+/* the ANSI code page (cp932.c): 932 for the Japanese NESiCAxLive games, else 1252; X2_ACP overrides */
+u32 x2_acp(void);
+bool x2_cp932_lead(u8 b);
+u32 x2_cp932_char(u32 code);                            /* one byte or lead << 8 | trail -> Unicode, 0 none */
+u32 x2_cp932_next(const u8 *s, size_t n, size_t *used); /* the next character, its length in used */
+u32 x2_cp932_from(u32 u);                               /* Unicode -> code, 0 none */
 /* set by a front end whose own settings override x2.env (the libretro core options); x2_boot calls it after x2.env */
 extern void (*x2_env_override)(void);
 /* the game draws a 16:9 picture with bars into a 4:3 backbuffer (KOF XIII

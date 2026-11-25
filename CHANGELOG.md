@@ -48,6 +48,10 @@ games are recompiled on your computer from your own files.
 - **Android app:** a game whose folder was found before the app supported it (listed as not
   supported yet) no longer stays in the library as a second card without Play once a newer app
   supports it.
+- **Japanese text from the NESiCAxLive games:** KOF 2002 UM and Gouketsuji see code page 932
+  (Shift-JIS), as on the cabinets' Japanese Windows. KOF 2002 UM's boot screen was garbled.
+- **Android:** text a game asks for in a black (900) weight is drawn heavier, closer to the
+  Mac: Gouketsuji's menus looked light in the device's single-weight CJK font.
 - `X2_VK_VALIDATE=1` turns on Khronos' validation layer and puts its messages in the log
   (for reports from Windows and Linux; needs the Vulkan SDK).
 - **Windows:** the game window and `x2-player.exe` show the launcher's icon,

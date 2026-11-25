@@ -42,10 +42,17 @@ test switch (F2, or hold Select). [Controls](Controls.md).
   `GetGlyphOutlineA`, `D3DXCreateFontA`, the `d3dx9d_42.dll` debug D3DX,
   OLE Automation strings and variants (`SysAllocString`, `VariantClear`, ...),
   named-pipe calls, `lstrlenW`, `IsDBCSLeadByte`.
+- **Shift-JIS.** The boot screen's status lines are Shift-JIS strings, split
+  with `IsDBCSLeadByte` and drawn character by character with
+  `GetGlyphOutlineA`. The game sees code page 932, as on the cabinet's
+  Japanese Windows (`cp932.c`).
 
 ## Known issues
 
 - Not played by hand yet; RetroArch not tried yet.
-- Shift-JIS text drawn by GDI (the boot screen's status lines, shown only while
-  it starts) is garbled: the runtime's code page is 1252.
+- The boot screen reports that NESiCA's exclusive control couldn't be
+  processed (NESiCAの排他制御が処理できませんでした), then starts normally.
+  That step reads the card id from the NESiCAxLive client, which reports no
+  card: with one, the game would go on to XML requests through MSXML 4, which
+  the runtime doesn't have.
 - Rankings and other NESiCAxLive network features are offline.

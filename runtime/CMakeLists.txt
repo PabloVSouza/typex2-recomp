@@ -41,6 +41,7 @@ add_library(x2rt_common OBJECT
   src/png.c
   src/natives.c
   src/padmap.c
+  src/cp932.c
   src/mem.c
   src/loader.c
   src/dispatch.c
