@@ -206,7 +206,7 @@ void x2_fps_tick(bool swapped) {
 
 void x2_fps_draw(int w, int h) {
     if (!fps_tex) return;
-    int scale = h >= 360 ? h / 360 : 1;
+    int sm = w < h ? w : h, scale = sm >= 360 ? sm / 360 : 1; /* by the shorter side: upright too */
     int qw = (int)fps_tw * scale, qh = (int)fps_th * scale, m = 4 * scale;
     ov_quad(h, (float)m, (float)m, (float)qw, (float)qh, fps_tex, 2, 1, 1, 1, 1);
 }
@@ -285,13 +285,15 @@ void x2_touch_layout(int ww, int wh, bool portrait) {
         c->bits = bits[i];
     }
     float tr = s * 0.055f;
-    /* COIN and START at the bottom, in the gap between the stick and the buttons; at the top in the
-       middle when the buttons leave no room (three or four columns on a narrow screen) */
+    /* COIN and START at the bottom, in the gap between the stick and the buttons. When the buttons leave no
+       room (three or four columns on a narrow screen): sideways at the top in the middle, upright at the
+       top of the pad's area, under the picture */
     float left = sx + sr * 1.15f, right = (float)ww;
     for (int i = 0; i < 8; i++)
         if (label[i]) right = fminf(right, tctl[TC_BTN + i].x - br * 1.1f);
     bool fits = right - left >= tr * 5.6f; /* the two buttons span 5.2 radii */
-    float cx = fits ? (left + right) * 0.5f : (float)ww * 0.5f, cy = fits ? (float)wh - tr * 1.4f : tr * 1.3f;
+    float cx = fits ? (left + right) * 0.5f : (float)ww * 0.5f;
+    float cy = fits ? (float)wh - tr * 1.4f : portrait ? (float)wh * 0.6f + tr * 1.4f : tr * 1.3f;
     tctl[TC_COIN].x = cx - tr * 1.6f;
     tctl[TC_COIN].y = cy;
     tctl[TC_COIN].r = tr;

@@ -3638,15 +3638,16 @@ typedef struct {
 static OutSlot outs[INFLIGHT];
 static u32 out_i;
 /* The image the core hands the frontend: rows [v0, v1) of the game's image (the band), placed at
- * (ix, iy) in a cw x ch output (0 x 0: the band's own size). A larger output carries the overlays
- * out to the screen's edges, the margins black. */
-bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, VkImage *img, VkImageView *view,
+ * (ix, iy) in a cw x ch output at pw x ph (0: the band's own size). A larger output carries the overlays
+ * out to the screen's edges, the margins black; past 1920 pixels the whole frame is scaled down. */
+bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, u32 pw, u32 ph, VkImage *img, VkImageView *view,
                    VkImageViewCreateInfo *ci, u32 *ow, u32 *oh) {
     VTex *src = shown();
     u32 w = src->w, y0 = (u32)(v0 * src->h), y1 = (u32)(v1 * src->h), h = y1 - y0;
     if (!w || !h) return false;
-    if (cw < w + ix || ch < h + iy) cw = w, ch = h, ix = iy = 0;
-    bool framed = cw != w || ch != h;
+    if (!pw || !ph) pw = w, ph = h;
+    if (cw < pw + ix || ch < ph + iy) cw = pw = w, ch = ph = h, ix = iy = 0;
+    bool framed = cw != w || ch != h || pw != w || ph != h;
     OutSlot *o = &outs[out_i++ % INFLIGHT];
     if (!o->cb) {
         VkCommandBufferAllocateInfo ai = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, NULL, cpool,
@@ -3696,11 +3697,12 @@ bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, VkImage *
         ri.pColorAttachments = &ca;
         pvkCmdBeginRendering(o->cb, &ri);
         vkCmdBindPipeline(o->cb, VK_PIPELINE_BIND_POINT_GRAPHICS, ov_pipe);
-        VkRect2D sc = {{(s32)ix, (s32)iy}, {w, h}}; /* the band only */
+        VkRect2D sc = {{(s32)ix, (s32)iy}, {pw, ph}}; /* the band only */
         vkCmdSetScissor(o->cb, 0, 1, &sc);
         static const float white[4] = {1, 1, 1, 1};
-        ov_quad_draw(o->cb, ov_samp, src->view, 2, white, (float)ix, (float)iy - (float)y0, (float)w,
-                     (float)src->h); /* 1:1 */
+        float ky = (float)ph / (float)h; /* 1 unless scaled */
+        ov_quad_draw(o->cb, pw == w ? ov_samp : ov_lin, src->view, 2, white, (float)ix, (float)iy - (float)y0 * ky,
+                     (float)pw, (float)src->h * ky);
         ov_draw(o->cb, (VkExtent2D){cw, ch});
         pvkCmdEndRendering(o->cb);
     }

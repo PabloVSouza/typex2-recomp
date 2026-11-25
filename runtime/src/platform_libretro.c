@@ -23,6 +23,7 @@
  * Start = start, Select = coin, L3 = test (service menu), R3 = service. */
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,7 +83,7 @@ void gfx_vk_init_external(VkInstance i, VkPhysicalDevice g, VkDevice d, VkQueue 
                           void (*unlock)(void *), void *handle, u32 w, u32 h);
 bool gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_shown_size(u32 *w, u32 *h);
-bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, VkImage *img, VkImageView *view,
+bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, u32 pw, u32 ph, VkImage *img, VkImageView *view,
                    VkImageViewCreateInfo *ci, u32 *ow, u32 *oh);
 
 static const VkApplicationInfo *vk_app_info(void) {
@@ -701,7 +702,7 @@ static void options_save(void) {
  * finger of the previous frame. */
 /* the picture's place in the output (frame_layout, below), and whether the output is upright with the pad
  * under the picture */
-static u32 img_x, img_y;
+static u32 img_x, img_y, img_w, img_h;
 static bool frame_portrait;
 static bool touch_recent; /* touched since the last controller button (Automatic) */
 static struct {
@@ -865,33 +866,39 @@ metrics_done:
 static float screen_aspect(void) { return 0; } /* desktop: the picture is the window's */
 #endif
 
-/* out_w x out_h, the output for an iw x ih picture, and the picture's place in it (img_x, img_y) */
+/* out_w x out_h, the output for an iw x ih picture, and the picture's place and size in it (img_x,
+ * img_y, img_w x img_h: smaller than iw x ih when the frame would pass the 1920 limit and is scaled) */
 static void frame_layout(u32 iw, u32 ih) {
-    u32 cw = iw, ch = ih, x = 0, y = 0;
+    float cw = (float)iw, ch = (float)ih, x = 0, y = 0;
     bool portrait = false, touch = touch_shown();
     float a = touch || option_is("typex2_fps", "on") ? screen_aspect() : 0;
     if (a > 0) {
         if (a < 1 && touch) { /* upright: the picture at the top under TEST, the pad in the bottom 40% */
-            ch = (u32)((float)iw / a) & ~1u;
-            y = (u32)((float)iw * 0.055f * 2.6f);
-            portrait = (float)(y + ih) <= (float)ch * 0.6f;
-            if (!portrait) y = (ch - ih) / 2;
-        } else if (a > (float)iw / (float)ih) {
-            cw = (u32)((float)ih * a) & ~1u;
+            ch = cw / a;
+            y = cw * 0.055f * 2.6f;
+            portrait = y + (float)ih <= ch * 0.6f;
+            if (!portrait) y = (ch - (float)ih) / 2;
+        } else if (a > cw / ch) {
+            cw = ch * a;
         } else {
-            ch = (u32)((float)iw / a) & ~1u;
+            ch = cw / a;
         }
-        if (cw > 1920 || ch > 1920 || cw < iw || ch < ih) cw = iw, ch = ih, portrait = false, y = 0;
-        x = (cw - iw) / 2;
-        if (!portrait && ch > ih) y = (ch - ih) / 2;
+        x = (cw - (float)iw) / 2;
+        if (!portrait) y = (ch - (float)ih) / 2;
     }
-    img_x = x;
-    img_y = y;
+    float k = fminf(1.f, 1920.f / fmaxf(cw, ch)); /* the frame scaled down to fit the limit, picture too */
+    img_x = (u32)(x * k);
+    img_y = (u32)(y * k);
+    img_w = k < 1 ? (u32)((float)iw * k) & ~1u : iw;
+    img_h = k < 1 ? (u32)((float)ih * k) & ~1u : ih;
+    u32 ow = k < 1 || a > 0 ? (u32)(cw * k) & ~1u : iw, oh = k < 1 || a > 0 ? (u32)(ch * k) & ~1u : ih;
+    if (ow < img_x + img_w) ow = img_x + img_w;
+    if (oh < img_y + img_h) oh = img_y + img_h;
     frame_portrait = portrait;
-    if (cw != out_w || ch != out_h) {
-        out_w = cw;
-        out_h = ch;
-        struct retro_game_geometry g = {cw, ch, 1920, 1920, (float)cw / (float)ch};
+    if (ow != out_w || oh != out_h) {
+        out_w = ow;
+        out_h = oh;
+        struct retro_game_geometry g = {ow, oh, 1920, 1920, (float)ow / (float)oh};
         environ_cb(RETRO_ENVIRONMENT_SET_GEOMETRY, &g);
     }
 }
@@ -1427,8 +1434,8 @@ EXPORT void retro_run(void) {
         struct retro_vulkan_image ri;
         u32 ow, oh2;
         if (vk_ready) overlays_draw();
-        if (vk_ready &&
-            gfx_vk_output(a0, a1, out_w, out_h, img_x, img_y, &img, &ri.image_view, &ri.create_info, &ow, &oh2)) {
+        if (vk_ready && gfx_vk_output(a0, a1, out_w, out_h, img_x, img_y, img_w, img_h, &img, &ri.image_view,
+                                      &ri.create_info, &ow, &oh2)) {
             ri.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             vki->set_image(vki->handle, &ri, 0, NULL, VK_QUEUE_FAMILY_IGNORED);
             video_cb(RETRO_HW_FRAME_BUFFER_VALID, ow, oh2, 0);
@@ -1464,7 +1471,7 @@ EXPORT void retro_run(void) {
     }
     frame_layout(w, oh);
     if (gl_ready) {
-        blit(tex, out_w, out_h, img_x, img_y, w, oh, v0, v1);
+        blit(tex, out_w, out_h, img_x, img_y, img_w, img_h, v0, v1);
         overlays_draw();
         glBindVertexArray(0);
         glUseProgram(0);
