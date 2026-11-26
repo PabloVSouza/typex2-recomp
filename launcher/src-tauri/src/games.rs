@@ -33,7 +33,7 @@ pub struct Game {
 const DEFAULT: Layout = Layout { id: "default", label: "Game default", pad: "" };
 const KOF: &[Layout] = &[
     DEFAULT,
-    Layout { id: "stick-kof", label: "8-button stick (L1 / L2 rows): A C over B D", pad: "l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc" },
+    Layout { id: "stick-kof", label: "8-button stick (L1 / L2 rows): A C over B D", pad: "l1=a,west=c,north=cd,r1=bcd,l2=b,south=d,east=ab,r2=abc" },
 ];
 const SF4: &[Layout] = &[
     DEFAULT,
@@ -41,15 +41,15 @@ const SF4: &[Layout] = &[
 ];
 const BLAZBLUE: &[Layout] = &[
     DEFAULT,
-    Layout { id: "stick-bb", label: "8-button stick, Type B panel", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" },
+    Layout { id: "stick-bb", label: "8-button stick, Type B panel", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234" },
 ];
 const SSE: &[Layout] = &[
     DEFAULT,
-    Layout { id: "stick-sse", label: "8-button stick: A B C over R", pad: "l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234" },
+    Layout { id: "stick-sse", label: "8-button stick: A B C over R", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234" },
 ];
 const GOKETSUJI: &[Layout] = &[
     DEFAULT,
-    Layout { id: "stick-gok", label: "8-button stick (L1 / L2 rows): punches over kicks", pad: "l1=1,west=2,north=12,r1=14,l2=4,south=5,east=45,r2=25" },
+    Layout { id: "stick-gok", label: "8-button stick (L1 / L2 rows): punches over kicks", pad: "l1=1,west=2,north=25,r1=245,l2=4,south=5,east=14,r2=124" },
 ];
 
 pub const GAMES: &[Game] = &[

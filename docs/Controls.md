@@ -66,11 +66,11 @@ Several values together make one button press several at once
 # SSF4 AE
 X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
 # BlazBlue CS / CT, Samurai Shodown EoD (R in place of D)
-X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234
+X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234
 # KOF (A C over B D)
-X2_PAD=l1=a,west=c,north=ab,r1=bc,l2=b,south=d,east=cd,r2=abc
-# Gouketsuji Ichizoku Matsuri (punches over kicks; north LP+HP, east LK+HK, R1 LP+LK, R2 HP+HK)
-X2_PAD=l1=1,west=2,north=12,r1=14,l2=4,south=5,east=45,r2=25
+X2_PAD=l1=a,west=c,north=cd,r1=bcd,l2=b,south=d,east=ab,r2=abc
+# Gouketsuji Ichizoku Matsuri (punches over kicks; north HP+HK, east LP+LK, R1 LK+HP+HK, R2 LP+LK+HP)
+X2_PAD=l1=1,west=2,north=25,r1=245,l2=4,south=5,east=14,r2=124
 ```
 
 The launcher's game page edits the layout without typing it: pick a preset,

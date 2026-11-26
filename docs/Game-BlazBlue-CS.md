@@ -28,7 +28,7 @@ The default layout follows the arcade "Type B" panel:
 On an 8-button stick whose rows are L1 Y X R1 / L2 B A R2:
 
 ```
-X2_PAD=l1=1,west=2,north=3,r1=12,l2=4,south=23,east=123,r2=1234
+X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234
 ```
 
 ## What it needed
