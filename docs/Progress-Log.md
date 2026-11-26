@@ -2,6 +2,24 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-26: 0.7.0; Shift-JIS for the NESiCAxLive games
+
+- **Code page 932** for KOF 2002 UM and Gouketsuji (`cp932.c`, a table generated
+  once from the host's iconv): `GetACP`, `GetCPInfo`, `IsDBCSLeadByte`, both
+  conversions, `GetGlyphOutlineA` and D3DX's `DrawTextA` and face names. KOF
+  2002 UM's boot screen reads correctly; it shows that NESiCA's exclusive
+  control failed, because the client reports no card (a card id would lead to
+  MSXML 4).
+- **Black weight on Android**: Gouketsuji asks for weight 900; the synthetic
+  bold for it grows strokes by em / 9 (was em / 14).
+- **RetroArch runs** on the tablet: KOF 2002 UM fights at 60 fps (1.9 ms of game
+  work a frame). Gouketsuji runs at 40-58 fps: it waits on its own timer after
+  each Present, in series with RetroArch's clock. Two frames in flight, and
+  not waiting for the frame at all, were both worse (replaying the queued
+  frames); left for after the release.
+- 0.7.0 released: KOF 2002 UM, Gouketsuji, the core's settings and touch pad,
+  the Vulkan barrier fix, OpenGL ES 16-bit textures.
+
 ## 2026-11-25: Touch-button layouts; the RetroArch core gets every setting, per game; OpenGL ES 16-bit textures
 
 - **Touch buttons** (standalone and app): this project's layout, Neo Geo (A B C D

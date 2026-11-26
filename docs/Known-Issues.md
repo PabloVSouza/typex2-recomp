@@ -21,6 +21,10 @@ that isn't here? Report it in
 
 ## Games
 
+- **Gouketsuji Ichizoku Matsuri Senzo Kuyou, RetroArch:** 40-58 fps on the test
+  tablet, where the Android app holds 60. The game paces its own frames, which
+  clashes with RetroArch's clock; play it in the app for now
+  ([details](Game-Gouketsuji-Matsuri.md#known-issues)).
 - **BlazBlue: Calamity Trigger:** on slower Android devices the fight start
   pauses for 0.3-0.6 s while the game loads it, mostly the game's own work
   ([details](Game-BlazBlue-CT.md#known-issues)).

@@ -6,7 +6,7 @@
 |---|---|
 | Board | Type X2, NESiCAxLive (SNK Playmore, 2011; this build: version 1.20, 2011/11/24) |
 | `games/` id | `kof2002um` |
-| Status | **Playable** on macOS: attract mode with sound, coin / start, How to Play, team and order select, fights, the test menu. The Android app runs a scripted fight at 60 fps (about 1.3 ms of game work a frame on the test tablet). Not played by hand yet. |
+| Status | **Playable** on macOS: attract mode with sound, coin / start, How to Play, team and order select, fights, the test menu. The Android app and the RetroArch core (Vulkan) run a scripted fight at 60 fps (about 1.3-1.9 ms of game work a frame on the test tablet). Not played by hand yet. |
 | Executable | `game.exe` (TeknoParrot-format dumps work: the extra DLLs in the folder are ignored) |
 
 ## Controls
@@ -49,7 +49,7 @@ test switch (F2, or hold Select). [Controls](Controls.md).
 
 ## Known issues
 
-- Not played by hand yet; RetroArch not tried yet.
+- Not played by hand yet.
 - The boot screen reports that NESiCA's exclusive control couldn't be
   processed (NESiCAの排他制御が処理できませんでした), then starts normally.
   That step reads the card id from the NESiCAxLive client, which reports no

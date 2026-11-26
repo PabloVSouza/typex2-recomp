@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.0 - 2026-11-26
 
 - **New game: Gouketsuji Ichizoku Matsuri Senzo Kuyou** (Type X2, NESiCAxLive). Attract mode
   with its opening movie, coin / start, character select, fights with sound and the test menu
@@ -15,7 +15,7 @@ games are recompiled on your computer from your own files.
   [page](docs/Game-Gouketsuji-Matsuri.md).
 - **New game: The King of Fighters 2002 Unlimited Match** (Type X2, NESiCAxLive). Attract mode,
   coin / start, team select and fights with sound on macOS; scripted fights at 60 fps in the
-  Android app. Not played by hand yet: [page](docs/Game-KOF-2002-UM.md). NESiCAxLive games that
+  Android app and in RetroArch. Not played by hand yet: [page](docs/Game-KOF-2002-UM.md). NESiCAxLive games that
   need the NESiCAxLive service get an offline stand-in for it, and the NESiCA card reader
   reports no card.
 - **Vulkan (Android, Windows, Linux):** two writes in a row to the same image (a game's

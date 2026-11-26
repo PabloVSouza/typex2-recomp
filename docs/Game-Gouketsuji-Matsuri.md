@@ -6,7 +6,7 @@
 |---|---|
 | Board | Type X2, NESiCAxLive (Atlus / Noise Factory; this build: version 1.0.1, 2011/12/1) |
 | `games/` id | `goketsuji` |
-| Status | **Playable** on macOS: attract mode with its opening movie, coin / start, character select, fights with sound, and the test menu. The Android app runs a scripted fight at 60 fps on the test tablet. Not played by hand yet. |
+| Status | **Playable** on macOS: attract mode with its opening movie, coin / start, character select, fights with sound, and the test menu. The Android app runs a scripted fight at 60 fps on the test tablet; the RetroArch core runs it below 60 (see Known issues). Not played by hand yet. |
 | Executable | `Game.exe` (the runtime and the launcher find it whatever its case). |
 
 ## Controls
@@ -54,4 +54,9 @@ test menu, which is in Japanese. Layouts: [Controls](Controls.md).
 
 ## Known issues
 
-- Not played by hand yet. Not tried in RetroArch.
+- Not played by hand yet.
+- **RetroArch: 40-58 fps** on the test tablet (the Android app holds 60). The
+  game paces its own frames: after each Present it waits on its timer in a
+  `Sleep(0)` loop. RetroArch clocks the core too, and the two clocks run in
+  series. More frames in flight, or not waiting for the frame, made it worse;
+  the fix is to be worked out after 0.7. Play it in the Android app meanwhile.
