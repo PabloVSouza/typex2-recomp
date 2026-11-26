@@ -1489,8 +1489,8 @@ bool gfx_mtl_init(void *metal_layer, u32 w, u32 h) {
     sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterLinear;
     samp_linear = [dev newSamplerStateWithDescriptor:sd];
     [sd release];
-    /* opaque black, as GL's: samplers the game left empty */
-    static const u32 px[6] = {0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u, 0xFF000000u};
+    /* transparent black: samplers the game left empty (BlazBlue CT masks a stage overlay by its alpha) */
+    static const u32 px[6] = {0};
     MTLTextureDescriptor *td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
                                                                                   width:1
                                                                                  height:1

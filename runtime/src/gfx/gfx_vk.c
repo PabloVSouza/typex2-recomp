@@ -3332,7 +3332,7 @@ u32 gfx_vk_run_frames(u32 timeout_ms) {
 /* ---- init ------------------------------------------------------------------------- */
 static VTex *black_tex(bool cube, bool vol) {
     VTex *t = tex_new(GFX_FMT_BGRA8, 1, 1, 1, false, cube, GFX_SCALE_ONE, vol, false);
-    static const u32 px[1] = {0xFF000000u};
+    static const u32 px[1] = {0}; /* transparent black, as in GL and Metal */
     for (u32 f = 0; f < (cube ? 6u : 1u); f++) upload(t, 0, f, 0, 0, 1, 1, (const u8 *)px, 4);
     return t;
 }

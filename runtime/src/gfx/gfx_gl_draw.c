@@ -532,7 +532,7 @@ static void draw_init(void) {
     glGenBuffers(1, &scratch_ibo);
     glGenTextures(1, &black_tex);
     glBindTexture(GL_TEXTURE_2D, black_tex);
-    u32 px = 0xFF000000u;
+    u32 px = 0; /* transparent black: BlazBlue CT uses an empty sampler's alpha 0 to skip a stage overlay */
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &px);
 }
 
@@ -868,8 +868,14 @@ void gfx_gl_draw(const GfxState *st, u32 prim, u32 start, u32 count, bool indexe
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &cur_fbo);
         x2_log("  -> gl error %x, fbo %d status %x, prog %u, verts %u", err, cur_fbo, fbs, pg->prog, n);
         u8 px[4] = {0};
-        glReadPixels(640, 360, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-        x2_log("  target pixel (640,360) = %02x %02x %02x %02x", px[0], px[1], px[2], px[3]);
+        static int probe_x = -1, probe_y = 360; /* X2_DRAWLOG_PX=x,y: the target pixel to report */
+        if (probe_x < 0) {
+            const char *p = getenv("X2_DRAWLOG_PX");
+            probe_x = 640;
+            if (p && strchr(p, ',')) probe_x = atoi(p), probe_y = atoi(strchr(p, ',') + 1);
+        }
+        glReadPixels(probe_x, probe_y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        x2_log("  target pixel (%d,%d) = %02x %02x %02x %02x", probe_x, probe_y, px[0], px[1], px[2], px[3]);
         if (st->tex[0]) {
             GLuint t = gfx_gl_texture(st->tex[0]), f;
             glGenFramebuffers(1, &f);

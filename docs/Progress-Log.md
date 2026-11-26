@@ -2,6 +2,19 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-26: Empty texture slots read transparent black (BlazBlue CT's Bang stage)
+
+- **Black shapes on Bang's stage** (issue #7): the temple, the foreground posts and
+  chains and the gears came out as black silhouettes on every renderer. Their pixel
+  shader samples an overlay in sampler 0 (second texture coordinates) and the
+  diffuse texture in sampler 1, and uses the overlay only where its alpha is above 0.
+  The game leaves sampler 0 empty on these meshes; our placeholder for an empty slot
+  was opaque black, so the overlay multiplied the colour to black. The placeholder
+  is now (0, 0, 0, 0) in GL, Metal and Vulkan, which is what the cabinet evidently
+  returns. Attract-mode shots of every game show no change beyond run-to-run timing
+  (the old build, rebuilt, differs from itself just as much).
+- `X2_DRAWLOG_PX=x,y` picks the pixel the GL draw log reports after each draw.
+
 ## 2026-11-26: Thread ids before the thread runs; the core replays on its own thread (Gouketsuji 60 fps in RetroArch)
 
 - **KOF 2002 UM's boot hang** at server authentication (about 1 boot in 8): libnesys

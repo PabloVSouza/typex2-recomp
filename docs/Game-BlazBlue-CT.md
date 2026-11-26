@@ -36,6 +36,11 @@ input test confirms SHOT1-4 = A B C D.
   begins a pass before its loader has set a texture. That used to pass the
   effect's object index as a texture pointer, and crashed on the tablet at
   fight start.
+- **Empty texture slots.** Bang's stage draws its temple, posts and chains
+  with a shader that applies an overlay texture only where the overlay's
+  alpha is above 0, and leaves the overlay's slot empty. An empty slot reads
+  as transparent black (it read as opaque black, which drew them as black
+  silhouettes).
 
 ## Known issues
 
