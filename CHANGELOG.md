@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.1 - 2026-11-26
 
 - **KOF 2002 UM no longer hangs at boot** at "サーバー認証を行います" (server
   authentication), which happened about one boot in eight. New threads now get their

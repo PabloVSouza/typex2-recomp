@@ -6,7 +6,7 @@ supported_extensions = "exe|x2"
 corename = "Type X2"
 categories = "Emulator"
 permissions = ""
-display_version = "0.7.0"
+display_version = "0.7.1"
 
 manufacturer = "Taito"
 systemname = "Type X2"
