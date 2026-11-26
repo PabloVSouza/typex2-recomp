@@ -188,7 +188,19 @@ pub fn sync(config: &mut Config) -> bool {
         let Some(game) = games::detect(&dir) else { continue };
         let path = dir.to_string_lossy().to_string();
         match config.games.iter_mut().find(|g| g.id == game.id) {
-            Some(g) if Path::new(&g.path).is_dir() => {}
+            Some(g) if Path::new(&g.path).is_dir() => {
+                // The game's x2.env is what it runs with (ES-DE starts it from there too): an edit
+                // made outside the app becomes its settings, or saving them would write the old ones
+                // back over it (a KOF 2002 UM layout set in x2.env was lost that way).
+                if let Ok(t) = fs::read_to_string(Path::new(&g.path).join("x2.env")) {
+                    let mut s = GameSettings::from_env_file(&t);
+                    s.fullscreen = g.settings.fullscreen; // not in x2.env
+                    if s.env_file() != g.settings.env_file() {
+                        g.settings = s;
+                        changed = true;
+                    }
+                }
+            }
             Some(g) => {
                 g.path = path;
                 changed = true;

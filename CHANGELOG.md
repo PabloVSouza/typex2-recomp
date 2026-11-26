@@ -16,6 +16,9 @@ games are recompiled on your computer from your own files.
   gets the KOF arrangement with punches over kicks. SSF4: L1 / L2 press all three punches /
   kicks, the punches and kicks on the rest of each row (the default layout). Games set to
   the 8-button layout before need it picked again in their settings.
+- **Android app: a game's `x2.env` is its settings.** The app now reads each game's `x2.env`
+  again whenever it starts, so a change made there (by hand, or by another tool) shows in the
+  app and is no longer overwritten the next time the game's settings are saved.
 
 ## 0.7.1 - 2026-11-26
 

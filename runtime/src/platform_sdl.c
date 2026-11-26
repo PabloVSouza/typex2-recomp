@@ -411,6 +411,34 @@ static u16 pad_bits(SDL_Gamepad *g) {
     if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > trig) v |= map[X2P_L2];
     if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > trig) v |= map[X2P_R2];
     if (SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_START)) v |= JVS_START;
+    /* X2_PADLOG=1: each change of the controller buttons SDL reports, and what they press (as the
+     * RetroArch core's X2_PADLOG; tells a layout problem from a controller naming one) */
+    static int padlog = -1;
+    if (padlog < 0) padlog = getenv("X2_PADLOG") != NULL;
+    if (padlog) {
+        static const struct {
+            SDL_GamepadButton b;
+            const char *name;
+        } btns[] = {{SDL_GAMEPAD_BUTTON_SOUTH, "south"},      {SDL_GAMEPAD_BUTTON_EAST, "east"},
+                    {SDL_GAMEPAD_BUTTON_WEST, "west"},        {SDL_GAMEPAD_BUTTON_NORTH, "north"},
+                    {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, "l1"}, {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, "r1"},
+                    {SDL_GAMEPAD_BUTTON_LEFT_STICK, "l3"},    {SDL_GAMEPAD_BUTTON_RIGHT_STICK, "r3"},
+                    {SDL_GAMEPAD_BUTTON_START, "start"},      {SDL_GAMEPAD_BUTTON_BACK, "back"}};
+        char s[160] = "";
+        for (size_t i = 0; i < sizeof btns / sizeof btns[0]; i++)
+            if (SDL_GetGamepadButton(g, btns[i].b)) snprintf(s + strlen(s), sizeof s - strlen(s), " %s", btns[i].name);
+        if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > trig)
+            snprintf(s + strlen(s), sizeof s - strlen(s), " l2");
+        if (SDL_GetGamepadAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > trig)
+            snprintf(s + strlen(s), sizeof s - strlen(s), " r2");
+        static char last[160];
+        if (strcmp(s, last)) {
+            char lab[16];
+            x2_padmap_label(v & ~(JVS_UP | JVS_DOWN | JVS_LEFT | JVS_RIGHT | JVS_START), lab);
+            x2_log("pad: %s (%s) -> %s", s[0] ? s + 1 : "-", SDL_GetGamepadName(g), lab);
+            snprintf(last, sizeof last, "%s", s);
+        }
+    }
     return v;
 }
 
