@@ -1,11 +1,3 @@
-          if [ -f "docs/releases/$tag.md" ]; then # written for players, as the bloodborne-native releases
-            cp "docs/releases/$tag.md" notes.md
-          else
-            awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1} on' CHANGELOG.md | tail -n +2 > notes.md
-            test -s notes.md || { echo "CHANGELOG.md has no section for $v"; exit 1; }
-            # known issues live in one page (docs/Known-Issues.md), not in the notes
-            printf  "$GITHUB_REPOSITORY" >> notes.md
-          fi
 # Launcher releases: push a tag v<version> to build the launcher for macOS, Linux and
 # Windows, each carrying its kit (x2recomp, x2-player, their libraries and the runtime
 # sources, see launcher/scripts/stage-kit.sh), and the Android app (typex2-android.apk), into a
