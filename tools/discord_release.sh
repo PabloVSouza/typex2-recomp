@@ -17,11 +17,19 @@ cd "$(dirname "$0")/.."
 # the icon, pinned to a commit: Discord keeps an image by its URL
 icon="https://raw.githubusercontent.com/$repo/6348b03/launcher/src-tauri/icons/128x128%402x.png"
 
-notes=$(awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1; next} on' CHANGELOG.md)
-[ -n "$notes" ] || { echo "CHANGELOG.md has no section for $v" >&2; exit 1; }
+# The notes: docs/releases/<tag>.md when it exists (written for players: its summary and What's new,
+# up to its first ## section), else the version's CHANGELOG.md section.
+mode=changelog
+if [ -f "docs/releases/$tag.md" ]; then
+    mode=notes
+    notes=$(awk 'NR > 1 && /^## / {exit} NR > 1 && $0 != "What'"'"'s new:"' "docs/releases/$tag.md")
+else
+    notes=$(awk -v v="$v" '/^## / {on = index($0, "## " v " ") == 1; next} on' CHANGELOG.md)
+fi
+[ -n "$notes" ] || { echo "no notes for $tag (docs/releases/$tag.md or CHANGELOG.md)" >&2; exit 1; }
 
 version=$(printf '%s' "${tag#v}" | sed 's/-rc\./ RC /')
-body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v url="https://github.com/$repo/releases/tag/$tag" '
+body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v mode="$mode" -v url="https://github.com/$repo/releases/tag/$tag" '
     function plain(s) { gsub(/\*\*/, "", s); s = gensub_links(s); return s }
     function gensub_links(s,   out, i) { # [text](url) -> text
         out = ""
@@ -34,6 +42,8 @@ body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v url
     }
     # paragraphs and list items, each joined into one line
     /^[[:space:]]*$/ { flush(); next }
+    mode == "notes" && /^- / { flush(); cur = "TOP " substr($0, 3); next }    # a point
+    mode == "notes" && /^ +- / { flush(); sub(/^ +- /, ""); cur = "SUB " $0; next } # a sub-point
     /^- / { flush(); cur = $0; next }
     { sub(/^[[:space:]]+/, ""); cur = cur == "" ? $0 : cur " " $0 }
     function flush() { if (cur != "") items[n++] = cur; cur = "" }
@@ -44,6 +54,8 @@ body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v url
         for (i = 0; i < n; i++) {
             s = items[i]
             if (s ~ /^\*\*Known issues:\*\*/) continue # the page below has them
+            if (s ~ /^TOP /) { new = new "\n• " plain(substr(s, 5)); continue }
+            if (s ~ /^SUB /) { new = new "\n   ◦ " plain(substr(s, 5)); continue }
             if (s ~ /^- /) { new = new "\n   ◦ " plain(substr(s, 3)); continue }
             if (s ~ /^\*\*/) { new = new "\n• " plain(s); continue }
             if (new == "") summary = summary (summary == "" ? "" : "\n\n") plain(s)
@@ -53,7 +65,10 @@ body=$(printf '%s\n' "$notes" | awk -v repo="$repo" -v version="$version" -v url
         if (new != "") print "\nWhat'"'"'s new" new
         print "\nKnown issues: https://github.com/" repo "/blob/main/docs/Known-Issues.md"
         print "\nDownload: " url
-        print "\nInstall over the previous version: your game folders, builds and settings are kept. Bring your own games: none are included."
+        if (mode == "notes")
+            print "\nTo update: install the new launcher (your library and settings stay), rebuild your games, then send new game packs or the RetroArch core to Android. Steps on the release page. Bring your own games: none are included."
+        else
+            print "\nInstall over the previous version: your game folders, builds and settings are kept. Bring your own games: none are included."
     }')
 
 # Discord's limit is 2000 characters; the release page has the rest
