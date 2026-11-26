@@ -81,10 +81,84 @@ typedef VkDevice (*VkDeviceWrap)(VkPhysicalDevice gpu, void *opaque, const VkDev
 VkDevice gfx_vk_make_device(VkPhysicalDevice gpu, VkSurfaceKHR surf, VkDeviceWrap wrap, void *opaque, u32 *out_qfam);
 void gfx_vk_init_external(VkInstance i, VkPhysicalDevice g, VkDevice d, VkQueue q, u32 fam, void (*lock)(void *),
                           void (*unlock)(void *), void *handle, u32 w, u32 h);
-bool gfx_vk_run_frames(u32 timeout_ms);
+u32 gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_shown_size(u32 *w, u32 *h);
 bool gfx_vk_output(float v0, float v1, u32 cw, u32 ch, u32 ix, u32 iy, u32 pw, u32 ph, VkImage *img, VkImageView *view,
                    VkImageViewCreateInfo *ci, u32 *ow, u32 *oh);
+void gfx_vk_lock(void);
+void gfx_vk_unlock(void);
+
+/* The replay thread: the game's frames are replayed (recorded into Vulkan and submitted) as the
+ * guest presents them, on a thread of our own, as the standalone app does, instead of inside
+ * retro_run. retro_run then only draws the output, while the next frame replays during
+ * RetroArch's own waits (vsync in video_cb, audio sync). Replay in retro_run put guest-dependent
+ * CPU work in series with them: Gouketsuji's 146 render-target switches a frame cost 4-6 ms of
+ * replay, and it dropped to about 46 fps. X2_REPLAY_THREAD=0: replay in retro_run (as before). */
+static bool replay_on;
+static pthread_t replay_thread;
+static u64 replayed; /* frames replayed by the thread (under replay_mx) */
+static pthread_mutex_t replay_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t replay_cv = PTHREAD_COND_INITIALIZER;
+static bool replay_threaded(void) {
+    static int on = -1;
+    if (on < 0) {
+        on = !getenv("X2_REPLAY_THREAD") || atoi(getenv("X2_REPLAY_THREAD")) != 0;
+        x2_log("libretro: frames replayed %s",
+               on ? "on their own thread (X2_REPLAY_THREAD=0: in retro_run)" : "in retro_run");
+    }
+    return on;
+}
+static void *replay_main(void *arg) {
+    (void)arg;
+    x2_thread_perf("x2-replay", true);
+    u32 n;
+    while (__atomic_load_n(&replay_on, __ATOMIC_ACQUIRE))
+        if ((n = gfx_vk_run_frames(10))) {
+            pthread_mutex_lock(&replay_mx);
+            replayed += n;
+            pthread_cond_broadcast(&replay_cv);
+            pthread_mutex_unlock(&replay_mx);
+        }
+    return NULL;
+}
+static void replay_start(void) {
+    if (replay_on) return;
+    pthread_attr_t a;
+    pthread_attr_init(&a);
+    pthread_attr_setstacksize(&a, 8u << 20);
+    __atomic_store_n(&replay_on, true, __ATOMIC_RELEASE);
+    gfx_clock_count_shown(true); /* the guest paced by the frames shown, not replayed */
+    if (x2_spawn(&replay_thread, &a, replay_main, NULL)) {
+        replay_on = false;
+        gfx_clock_count_shown(false);
+        x2_log("libretro: no replay thread; replaying in retro_run");
+    }
+    pthread_attr_destroy(&a);
+}
+/* before the Vulkan objects or the guest's memory go */
+static void replay_stop(void) {
+    if (!replay_on) return;
+    __atomic_store_n(&replay_on, false, __ATOMIC_RELEASE);
+    pthread_join(replay_thread, NULL);
+    gfx_clock_count_shown(false);
+}
+/* the next frame replayed after *seen, waiting up to timeout_ms for one. One per call, as the frontend
+   shows one per retro_run: frames replayed ahead are the guest's lead (taking them all at once
+   left it none: the guest then computed each frame while retro_run waited for it). */
+static bool replay_wait(u64 *seen, u32 timeout_ms) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += (long)timeout_ms * 1000000L;
+    ts.tv_sec += ts.tv_nsec / 1000000000L;
+    ts.tv_nsec %= 1000000000L;
+    pthread_mutex_lock(&replay_mx);
+    while (replayed <= *seen)
+        if (pthread_cond_timedwait(&replay_cv, &replay_mx, &ts)) break;
+    bool got = replayed > *seen;
+    if (got) ++*seen;
+    pthread_mutex_unlock(&replay_mx);
+    return got;
+}
 
 static const VkApplicationInfo *vk_app_info(void) {
     static const VkApplicationInfo app = {
@@ -156,6 +230,7 @@ static void vk_context_reset(void) {
     if (vk_ready) {
         msg("Type X2: the video context was recreated; restart the game", 600);
         x2_log("libretro: context_reset on a live session (resources lost)");
+        replay_stop(); /* restarted by the next retro_run */
     }
     if (!environ_cb(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE, (void *)&vki) || !vki ||
         vki->interface_type != RETRO_HW_RENDER_INTERFACE_VULKAN) {
@@ -1255,6 +1330,17 @@ boot:
                       RETRO_SERIALIZATION_QUIRK_PLATFORM_DEPENDENT | RETRO_SERIALIZATION_QUIRK_INCOMPLETE;
     environ_cb(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
     x2_boot(game->tables, dir);
+    /* Gouketsuji's frame limiter (its main loop at 0x4be530) waits until 14.66 / 15.78 ms after the
+       previous frame with Sleep(1) / Sleep(0), and leaves the rest to the display's vsync in Present.
+       Here the frontend's clock is that vsync: the limiter only adds a second clock beating against
+       it. Its two thresholds (doubles, in performance-counter ticks) go to 0, checked first;
+       X2_LIMITER=1 keeps them. */
+    if (!strcmp(game->tables->id ? game->tables->id : "", "goketsuji") && !getenv("X2_LIMITER") &&
+        RD32(0x839560) == 0x40000000u && RD32(0x839564) == 0x416de1bdu && RD32(0x839568) == 0x40000000u &&
+        RD32(0x83956c) == 0x416bf975u) {
+        WR32(0x839560, 0), WR32(0x839564, 0), WR32(0x839568, 0), WR32(0x83956c, 0);
+        x2_log("libretro: the game's own frame limiter is off (the frontend's clock paces it)");
+    }
     set_input_descriptors(); /* after x2_boot: x2.env may set X2_PAD */
 #ifdef X2_VULKAN
     if (inherited && use_vk) vk_context_reset(); /* RetroArch made the context already */
@@ -1268,6 +1354,9 @@ boot:
 static void close_game(const char *why) {
     running = false;
     x2_park_all();
+#ifdef X2_VULKAN
+    replay_stop(); /* it reads the guest's frames and memory */
+#endif
     x2_mem_release();
 #ifdef X2_INSTANCE_HEAP
     void x2_heap_release(void);
@@ -1286,6 +1375,7 @@ EXPORT bool retro_x2_release(struct retro_hw_render_callback *hw) {
         if (!vk_ready) return false;
         *hw = hw_render;
         x2_park_all(); /* before the objects go: the guest stops recording */
+        replay_stop();
         void gfx_vk_release(void);
         gfx_vk_release();
         vk_ready = false;
@@ -1418,8 +1508,20 @@ EXPORT void retro_run(void) {
 #ifdef X2_VULKAN
     if (use_vk) { /* Vulkan: the frame into an output image the frontend shows */
         u32 vw = 1280, vh = 720;
+        bool locked = false;
         if (vk_ready) {
-            if (!gfx_vk_run_frames(50)) repeats++;
+            static u64 seen;
+            if (replay_threaded()) replay_start();
+            if (replay_on) { /* the replay thread's latest frame; the next one replays meanwhile */
+                if (replay_wait(&seen, 50))
+                    gfx_frame_shown();
+                else
+                    repeats++;
+                gfx_vk_lock();
+                locked = true;
+            } else if (!gfx_vk_run_frames(50)) {
+                repeats++;
+            }
             gfx_vk_shown_size(&vw, &vh);
         }
         u32 voh = vh;
@@ -1434,8 +1536,10 @@ EXPORT void retro_run(void) {
         struct retro_vulkan_image ri;
         u32 ow, oh2;
         if (vk_ready) overlays_draw();
-        if (vk_ready && gfx_vk_output(a0, a1, out_w, out_h, img_x, img_y, img_w, img_h, &img, &ri.image_view,
-                                      &ri.create_info, &ow, &oh2)) {
+        bool out = vk_ready && gfx_vk_output(a0, a1, out_w, out_h, img_x, img_y, img_w, img_h, &img, &ri.image_view,
+                                             &ri.create_info, &ow, &oh2);
+        if (locked) gfx_vk_unlock();
+        if (out) {
             ri.image_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             vki->set_image(vki->handle, &ri, 0, NULL, VK_QUEUE_FAMILY_IGNORED);
             video_cb(RETRO_HW_FRAME_BUFFER_VALID, ow, oh2, 0);

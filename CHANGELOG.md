@@ -12,6 +12,12 @@ games are recompiled on your computer from your own files.
 - **KOF 2002 UM no longer hangs at boot** at "サーバー認証を行います" (server
   authentication), which happened about one boot in eight. New threads now get their
   thread id before they start running, as on Windows.
+- **Gouketsuji runs at 60 fps in RetroArch** (about 46 in fights before).
+- **RetroArch core: more headroom for every game with Vulkan.** The game's frames are now
+  prepared on a thread of their own, as in the Android app, while RetroArch waits for the
+  display and the audio, instead of after those waits.
+- **Gouketsuji renders at 1x** by default: it builds its sprites at its own resolution, so 2x
+  only cost GPU time. The render scale setting still changes it.
 
 ## 0.7.0 - 2026-11-26
 

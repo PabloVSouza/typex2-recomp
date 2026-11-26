@@ -20,6 +20,10 @@ void gfx_gl_unbind_textures(void);
  * the guest may then present up to <frames replayed> + 1 + lead (lead 0 = lockstep). */
 void gfx_set_external_clock(bool on);
 void gfx_clock_release(uint32_t lead);
+/* count frames given to the front end (gfx_frame_shown) instead of frames replayed: for a
+ * renderer replaying on its own thread */
+void gfx_clock_count_shown(bool on);
+void gfx_frame_shown(void);
 /* gfx.c-side statistics for overlays */
 uint64_t gfx_frame_count(void);
 double gfx_guest_work_ms(void);

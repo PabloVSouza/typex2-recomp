@@ -393,7 +393,15 @@ Frame *gfx_take_frames(u32 timeout_ms) {
     return list;
 }
 void gfx_frame_free(Frame *f) { frame_free(f); }
-void gfx_frame_replayed(void) { __atomic_fetch_add(&frames_replayed, 1, __ATOMIC_RELEASE); }
+/* With a replay thread (the RetroArch core on Vulkan) frames are replayed as soon as they are
+ * presented, so counting replays would let the guest run ahead of the frontend (twice the speed):
+ * the clock counts the frames the frontend was given instead (gfx_frame_shown). */
+static bool count_shown;
+void gfx_clock_count_shown(bool on) { __atomic_store_n(&count_shown, on, __ATOMIC_RELEASE); }
+void gfx_frame_shown(void) { __atomic_fetch_add(&frames_replayed, 1, __ATOMIC_RELEASE); }
+void gfx_frame_replayed(void) {
+    if (!__atomic_load_n(&count_shown, __ATOMIC_ACQUIRE)) __atomic_fetch_add(&frames_replayed, 1, __ATOMIC_RELEASE);
+}
 void gfx_replay_time(u64 ns) {
     if (ns > replay_max_ns) replay_max_ns = ns;
 }

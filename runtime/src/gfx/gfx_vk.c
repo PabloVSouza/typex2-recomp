@@ -3301,20 +3301,32 @@ void gfx_vk_screenshot(const char *path) {
     mem_free(a);
 }
 
-bool gfx_vk_run_frames(u32 timeout_ms) {
+/* The RetroArch core replays on a thread of its own while RetroArch's thread draws the output
+ * (gfx_vk_output, the overlays): each holds this lock, a frame at a time, so the output copies
+ * a whole frame and the two never record into the backend's state at once. */
+static pthread_mutex_t replay_lock = PTHREAD_MUTEX_INITIALIZER;
+void gfx_vk_lock(void) { pthread_mutex_lock(&replay_lock); }
+void gfx_vk_unlock(void) { pthread_mutex_unlock(&replay_lock); }
+
+/* the number of frames (Presents) replayed, 0 if none came within timeout_ms */
+u32 gfx_vk_run_frames(u32 timeout_ms) {
     Frame *list = gfx_take_frames(timeout_ms);
     bool any = list != NULL;
+    u32 n_frames = 0;
     u64 t0 = x2_time_ns();
     while (list) {
         Frame *n = list->next;
+        pthread_mutex_lock(&replay_lock);
         cur_frame = list;
         run_frame(list);
+        n_frames++;
         cur_frame = NULL;
         if (!list->refs) gfx_frame_free(list); /* else freed with its last queued upload */
+        pthread_mutex_unlock(&replay_lock);
         list = n;
     }
     if (any) gfx_replay_time(x2_time_ns() - t0);
-    return any;
+    return n_frames;
 }
 
 /* ---- init ------------------------------------------------------------------------- */

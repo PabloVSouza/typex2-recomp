@@ -1390,6 +1390,10 @@ static void A_CreateDevice(X2Cpu *c) {
      * picture keeps the detail of its HD render targets. X2_BB_SCALE overrides. */
     u32 scale = 1;
     while (bw * (scale + 1) <= 1280 && bh * (scale + 1) <= 1024) scale++;
+    /* Gouketsuji builds its sprites in a 2048x1024 target at its own resolution and copies them
+       onto the backbuffer: a larger backbuffer adds no detail, only GPU time (about 4 ms a frame
+       on a Mali-G57, the difference between 60 fps and not in RetroArch) */
+    if (x2_game && x2_game->id && !strcmp(x2_game->id, "goketsuji")) scale = 1;
     if (getenv("X2_BB_SCALE")) scale = (u32)atoi(getenv("X2_BB_SCALE"));
     if (scale < 1 || scale > 4) scale = 1;
     if (scale > 1) x2_log("d3d9: backbuffer rendered at %ux (%ux%u)", scale, bw * scale, bh * scale);

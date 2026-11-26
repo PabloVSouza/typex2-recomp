@@ -6,7 +6,7 @@
 |---|---|
 | Board | Type X2, NESiCAxLive (Atlus / Noise Factory; this build: version 1.0.1, 2011/12/1) |
 | `games/` id | `goketsuji` |
-| Status | **Playable** on macOS: attract mode with its opening movie, coin / start, character select, fights with sound, and the test menu. The Android app runs a scripted fight at 60 fps on the test tablet; the RetroArch core runs it below 60 (see Known issues). Not played by hand yet. |
+| Status | **Playable** on macOS: attract mode with its opening movie, coin / start, character select, fights with sound, and the test menu. The Android app and the RetroArch core run a scripted fight at 60 fps on the test tablet. Not played by hand yet. |
 | Executable | `Game.exe` (the runtime and the launcher find it whatever its case). |
 
 ## Controls
@@ -51,14 +51,18 @@ test menu, which is in Japanese. Layouts: [Controls](Controls.md).
   `GetPrivateProfileIntW` / `WritePrivateProfileStringW`.
 - **Case.** The game asks for `data\effect\...` in its `Data/Effect` folder:
   on case-sensitive storage (Android, Linux) paths are matched without case.
+- **60 fps in RetroArch** took three changes (it ran at about 46 in fights):
+  - The game builds each group of sprites in a 2048x1024 target at its own
+    resolution and copies it onto the backbuffer, switching targets about 146
+    times a frame. A larger backbuffer adds no detail, so it is rendered at 1x
+    (`X2_BB_SCALE` still overrides): about 4 ms less GPU time a frame on the
+    tablet's Mali-G57.
+  - The core replays frames on a thread of its own (all games), so that work
+    overlaps RetroArch's video and audio waits instead of adding to them.
+  - The game's own frame limiter (its main loop at `0x4be530` waits until 15.78
+    ms after the previous frame) is turned off in the core: it beat against
+    RetroArch's clock (`X2_LIMITER=1` keeps it).
 
 ## Known issues
 
 - Not played by hand yet.
-- **RetroArch: about 46 fps in fights** on the test tablet (the Android app holds
-  60). The GPU is the limit: a fight frame takes 15 ms of GPU time in the app and
-  19 ms in RetroArch, whose own drawing shares the GPU. The game switches render
-  targets about 146 times a frame (it builds each group of sprites in a
-  2048x1024 target, then copies it to the backbuffer), and on a tile GPU each
-  switch ends a render pass. The game's own frame limiter is not the cause:
-  turning it off changed nothing. Play it in the Android app meanwhile.

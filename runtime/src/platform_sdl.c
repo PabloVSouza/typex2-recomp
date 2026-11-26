@@ -33,7 +33,7 @@ static bool use_vk;
 bool gfx_vk_init(SDL_Window *win, u32 w, u32 h);
 u32 gfx_vk_overlay_tex(u32 id, const u8 *rgba, u32 w, u32 h);
 void gfx_vk_overlay_quad(float x, float y, float w, float h, u32 tex, int mode, float r, float g, float b, float a);
-bool gfx_vk_run_frames(u32 timeout_ms);
+u32 gfx_vk_run_frames(u32 timeout_ms);
 void gfx_vk_present(u32 ww, u32 wh);
 void gfx_vk_screenshot(const char *path);
 #endif

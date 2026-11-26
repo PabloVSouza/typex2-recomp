@@ -2,7 +2,7 @@
 
 Milestones, newest first. `git log` has the details.
 
-## 2026-11-26: Thread ids before the thread runs; Gouketsuji's RetroArch speed measured
+## 2026-11-26: Thread ids before the thread runs; the core replays on its own thread (Gouketsuji 60 fps in RetroArch)
 
 - **KOF 2002 UM's boot hang** at server authentication (about 1 boot in 8): libnesys
   starts its pipe threads with `_beginthreadex(..., &entry->id)`, and each thread
@@ -11,12 +11,28 @@ Milestones, newest first. `git log` has the details.
   itself and exited. `CreateThread` and the HLE `_beginthreadex` now create the
   thread suspended, write the id, then resume it. 16 boots out of 16 went through;
   every game's attract mode checked.
-- **Gouketsuji in RetroArch** (about 46 fps in fights) is GPU-bound, not paced by its
-  own limiter: 19 ms of GPU a frame in RetroArch against 15 ms in the app, with
-  about 146 render-target switches a frame (sprites built in a 2048x1024 target,
-  then copied to the backbuffer). Turning the limiter off changed nothing. A
-  smaller render area cut the backbuffer passes from 6.2 to 3.8 ms on the Mali
-  but not the 2048x1024 ones.
+- **Gouketsuji in RetroArch: 60 fps** (was about 46 in fights). Three limits stacked:
+  - **Replay in `retro_run`.** The core replayed the game's frames on RetroArch's
+    thread, in series with its vsync wait in `video_cb` and its audio sync (4-6 ms
+    replay + 4-8 + 4-6 ms). The Vulkan core now replays on its own thread
+    (`X2_REPLAY_THREAD=0` for the old way); `retro_run` takes one replayed frame
+    per call and copies it out under a lock shared with the replay. Two pitfalls
+    on the way: the guest's clock counted replayed frames, which the thread
+    replays at once, so the guest ran at twice the speed (it now counts frames
+    given to the frontend, `gfx_clock_count_shown`); and taking every replayed
+    frame at once, or counting one per `gfx_vk_run_frames` call when it replays
+    two, lost the one-frame lead and went back to lockstep (30 fps).
+  - **GPU.** About 146 render-target switches a frame (sprites built in a
+    2048x1024 target at the game's resolution, then copied to the backbuffer): 15
+    ms of GPU at 2x, too much beside RetroArch's own drawing. 2x adds no detail
+    here, so the backbuffer defaults to 1x for this game (7-11 ms). A smaller
+    render area cut the backbuffer passes from 6.2 to 3.8 ms on the Mali, but not
+    the 2048x1024 ones (not pursued).
+  - **The game's frame limiter** (15.78 ms after the previous frame) beat against
+    RetroArch's clock: off in the core (`X2_LIMITER=1` keeps it); with it, fights
+    ran at 18-24 ms a frame even with the replay thread.
+  - SSF4 in RetroArch: the same share of late frames with and without the thread
+    (two runs each); reset, close and switching games checked on the tablet.
 
 ## 2026-11-26: 0.7.0; Shift-JIS for the NESiCAxLive games
 
