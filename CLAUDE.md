@@ -276,7 +276,7 @@ switches it to `vulkan`, the default renderer on Android) and ES-DE
   `x2.env` and restore it afterwards (normally `X2_FPS=1` + the `X2_PAD`
   line).
 * The user's stick is 8-button with L1 / L2 leading each row; 6-button games
-  (SSF4) use `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456`;
+  (SSF4) use `X2_PAD=l1=123,west=1,north=2,r1=3,l2=456,south=4,east=5,r2=6`;
   BlazBlue `X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234`;
   KOF (A C over B D) `X2_PAD=l1=a,west=c,north=cd,r1=bcd,l2=b,south=d,east=ab,r2=abc`.
 

@@ -31,11 +31,11 @@ Default pad layout:
 | L1 | all three punches |
 | L2 | all three kicks |
 
-On an 8-button stick whose rows are L1 Y X R1 / L2 B A R2, the arcade layout
-is:
+On an 8-button stick whose rows are L1 Y X R1 / L2 B A R2, the default layout
+already fits (L1 / L2 all punches / kicks), as in RetroArch:
 
 ```
-X2_PAD=l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456
+X2_PAD=l1=123,west=1,north=2,r1=3,l2=456,south=4,east=5,r2=6
 ```
 
 ## What it needed

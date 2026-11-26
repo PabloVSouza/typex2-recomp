@@ -37,7 +37,7 @@ const KOF: &[Layout] = &[
 ];
 const SF4: &[Layout] = &[
     DEFAULT,
-    Layout { id: "stick-sf4", label: "8-button stick (L1 / L2 rows)", pad: "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456" },
+    Layout { id: "stick-sf4", label: "8-button stick: L1 / L2 all punches / kicks", pad: "l1=123,west=1,north=2,r1=3,l2=456,south=4,east=5,r2=6" },
 ];
 const BLAZBLUE: &[Layout] = &[
     DEFAULT,

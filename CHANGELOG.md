@@ -13,7 +13,8 @@ games are recompiled on your computer from your own files.
   8-button layouts, and the core's *8-button stick* option, now put the same combinations
   on the same buttons as a RetroArch setup with the Game default layout: KOF X / R1 / A are
   C+D / B+C+D / A+B, BlazBlue and Samurai Shodown R1 / A are A+B+C / A+B, and Gouketsuji
-  gets the KOF arrangement with punches over kicks. SSF4's layout is unchanged. Games set to
+  gets the KOF arrangement with punches over kicks. SSF4: L1 / L2 press all three punches /
+  kicks, the punches and kicks on the rest of each row (the default layout). Games set to
   the 8-button layout before need it picked again in their settings.
 
 ## 0.7.1 - 2026-11-26

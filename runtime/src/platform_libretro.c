@@ -544,7 +544,7 @@ static const struct {
     const char *games, *pad;
 } stick_presets[] = {
     {" kof12 kof13 kof13cl kof98um kofmira kof2002um ", "l1=a,west=c,north=cd,r1=bcd,l2=b,south=d,east=ab,r2=abc"},
-    {" ssf4ae ", "l1=1,west=2,north=3,r1=123,l2=4,south=5,east=6,r2=456"},
+    {" ssf4ae ", "l1=123,west=1,north=2,r1=3,l2=456,south=4,east=5,r2=6"},
     {" bbcs bbct sse ", "l1=1,west=2,north=3,r1=123,l2=4,south=23,east=12,r2=1234"},
     {" goketsuji ", "l1=1,west=2,north=25,r1=245,l2=4,south=5,east=14,r2=124"},
 };
@@ -584,8 +584,8 @@ static void build_options(void) {
          "off"},
         {"typex2_layout",
          "Button layout",
-         "Game default: the usual pad layout. 8-button stick: L1 and L2 lead each row (KOF A C over B D, SSF4 "
-         "LP MP HP over LK MK HK, BlazBlue A B C over D), as the Android app's 8-button layout. RetroArch's "
+         "Game default: the usual pad layout. 8-button stick: L1 and L2 lead each row (KOF A C over B D, BlazBlue "
+         "A B C over D; SSF4: L1 / L2 all punches / kicks), as the Android app's 8-button layout. RetroArch's "
          "remapping applies on top.",
          {{"default", "Game default"}, {"stick", "8-button stick (L1 / L2 rows)"}, {NULL, NULL}},
          "default"},
