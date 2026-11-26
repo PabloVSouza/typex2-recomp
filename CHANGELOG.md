@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.2 - 2026-11-26
 
 - **8-button stick layouts match RetroArch's.** The launcher's and the Android app's
   8-button layouts, and the core's *8-button stick* option, now put the same combinations
