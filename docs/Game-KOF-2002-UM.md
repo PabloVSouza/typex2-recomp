@@ -26,7 +26,12 @@ test switch (F2, or hold Select). [Controls](Controls.md).
   game's parser at `0x7b9e30` and its boot states), with empty payloads (an
   offline cabinet), and reports no NESiCA card (`card_id` empty), which keeps the
   game away from its MSXML 4 requests. Reads on the pipe stay pending until a
-  reply exists, as the game's overlapped reader expects.
+  reply exists, as the game's overlapped reader expects. The whole sequence
+  takes under a second: nothing to wait for or skip.
+- **Thread ids before the thread runs.** libnesys finds each of its pipe threads
+  in a table by the id `_beginthreadex` stored there; `CreateThread` now writes
+  it before the thread starts, as Windows does (a thread that ran first exited,
+  and the boot hung at server authentication about one time in eight).
 - **The NESiCA card reader**, a second JVS device on COM2: general-purpose
   inputs (`0x26`, no card), card read (`0x61`), and `0x62`.
 - **iDmacDrv32.dll is cdecl.** The callers pop the arguments; the HLE popped

@@ -55,8 +55,10 @@ test menu, which is in Japanese. Layouts: [Controls](Controls.md).
 ## Known issues
 
 - Not played by hand yet.
-- **RetroArch: 40-58 fps** on the test tablet (the Android app holds 60). The
-  game paces its own frames: after each Present it waits on its timer in a
-  `Sleep(0)` loop. RetroArch clocks the core too, and the two clocks run in
-  series. More frames in flight, or not waiting for the frame, made it worse;
-  the fix is to be worked out after 0.7. Play it in the Android app meanwhile.
+- **RetroArch: about 46 fps in fights** on the test tablet (the Android app holds
+  60). The GPU is the limit: a fight frame takes 15 ms of GPU time in the app and
+  19 ms in RetroArch, whose own drawing shares the GPU. The game switches render
+  targets about 146 times a frame (it builds each group of sprites in a
+  2048x1024 target, then copies it to the backbuffer), and on a tile GPU each
+  switch ends a render pass. The game's own frame limiter is not the cause:
+  turning it off changed nothing. Play it in the Android app meanwhile.

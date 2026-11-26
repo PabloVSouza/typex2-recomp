@@ -587,9 +587,10 @@ static void c_sleep(X2Cpu *c) { usleep(ARG(0) * 1000u); }
 
 /* ---- threads -------------------------------------------------------------------------- */
 static void c_beginthreadex(X2Cpu *c) { /* (security, stack, start, arg, flags, *id) */
-    X2Thread *t = x2_thread_create(ARG(2), ARG(3), ARG(1), (ARG(4) & 4) != 0 /* CREATE_SUSPENDED */);
+    X2Thread *t = x2_thread_create(ARG(2), ARG(3), ARG(1), true); /* *id written before it runs (CreateThread) */
     x2_log("_beginthreadex(start %08x, arg %08x) -> thread %u", ARG(2), ARG(3), t->id);
     if (ARG(5)) WR32(ARG(5), t->id);
+    if (!(ARG(4) & 4)) x2_thread_resume(t); /* CREATE_SUSPENDED: ResumeThread does it */
     RET(t->handle);
 }
 static void c_endthreadex(X2Cpu *c) { x2_exit_thread(ARG(0)); }

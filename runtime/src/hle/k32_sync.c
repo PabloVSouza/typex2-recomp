@@ -634,9 +634,13 @@ static void CreateSemaphoreW(X2Cpu *c) { CreateSemaphoreA(c); }
 /* ---- threads ------------------------------------------------------------- */
 static void CreateThread(X2Cpu *c) {
     u32 stack = ARG(1), start = ARG(2), param = ARG(3), flags = ARG(4), ptid = ARG(5);
-    X2Thread *t = x2_thread_create(start, param, stack, (flags & 4) != 0 /* CREATE_SUSPENDED */);
+    /* Windows writes *lpThreadId before the thread can run: KOF 2002 UM's NESiCAxLive threads find
+       their table entry by the id _beginthreadex stored there, and one that ran first exited at
+       once (the boot hung at server authentication about 1 time in 8). So: start it suspended. */
+    X2Thread *t = x2_thread_create(start, param, stack, true);
     x2_log("CreateThread(start %08x, param %08x [%08x %08x]) -> thread %u", start, param, param ? RD32(param + 0x54) : 0, param ? RD32(param + 0x58) : 0, t->id);
     if (ptid) WR32(ptid, t->id);
+    if (!(flags & 4)) x2_thread_resume(t); /* CREATE_SUSPENDED: ResumeThread does it */
     RET(t->handle);
 }
 static X2Thread *thread_of(u32 h) {

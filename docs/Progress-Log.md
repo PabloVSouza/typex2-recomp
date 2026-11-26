@@ -2,6 +2,22 @@
 
 Milestones, newest first. `git log` has the details.
 
+## 2026-11-26: Thread ids before the thread runs; Gouketsuji's RetroArch speed measured
+
+- **KOF 2002 UM's boot hang** at server authentication (about 1 boot in 8): libnesys
+  starts its pipe threads with `_beginthreadex(..., &entry->id)`, and each thread
+  looks itself up in that table by `GetCurrentThreadId`. `CreateThread` wrote
+  `*lpThreadId` after starting the thread, so a thread that ran first did not find
+  itself and exited. `CreateThread` and the HLE `_beginthreadex` now create the
+  thread suspended, write the id, then resume it. 16 boots out of 16 went through;
+  every game's attract mode checked.
+- **Gouketsuji in RetroArch** (about 46 fps in fights) is GPU-bound, not paced by its
+  own limiter: 19 ms of GPU a frame in RetroArch against 15 ms in the app, with
+  about 146 render-target switches a frame (sprites built in a 2048x1024 target,
+  then copied to the backbuffer). Turning the limiter off changed nothing. A
+  smaller render area cut the backbuffer passes from 6.2 to 3.8 ms on the Mali
+  but not the 2048x1024 ones.
+
 ## 2026-11-26: 0.7.0; Shift-JIS for the NESiCAxLive games
 
 - **Code page 932** for KOF 2002 UM and Gouketsuji (`cp932.c`, a table generated

@@ -7,6 +7,12 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
+## Unreleased
+
+- **KOF 2002 UM no longer hangs at boot** at "サーバー認証を行います" (server
+  authentication), which happened about one boot in eight. New threads now get their
+  thread id before they start running, as on Windows.
+
 ## 0.7.0 - 2026-11-26
 
 - **New game: Gouketsuji Ichizoku Matsuri Senzo Kuyou** (Type X2, NESiCAxLive). Attract mode

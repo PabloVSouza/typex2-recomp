@@ -27,7 +27,7 @@ game comes as a pack (`x2-<size>-<entry>.so`) built on a computer.
 | The King of Fighters '98 Ultimate Match (Type X) | `kof98um` | playable (macOS, RetroArch on Android at 60 fps); fixed-function D3D9, palettized sprites |
 | The King of Fighters Maximum Impact Regulation A | `kofmira` | playable on macOS (D3D8 over D3D9, DirectDraw overlay movie, MSVCR80 HLE); Android: attract mode and scripted fights at 60 fps |
 | Samurai Shodown: Edge of Destiny | `sse` | fights run on macOS and Android (HD mode from the JVS feature list order, `.X` stage meshes, toon shading, shadow maps); in the launcher; Android runs it in SD (`X2_HD`) at 60 fps |
-| Gouketsuji Ichizoku Matsuri Senzo Kuyou | `goketsuji` | playable on macOS (NESiCAxLive build: iDmacDrv32 I/O board, ID3DXSprite / ID3DXFont, setjmp / longjmp task exits, Shift-JIS); Android app: scripted fights at 60 fps; RetroArch 40-58 fps (it paces itself on a timer, in series with RetroArch's clock); not played by hand yet |
+| Gouketsuji Ichizoku Matsuri Senzo Kuyou | `goketsuji` | playable on macOS (NESiCAxLive build: iDmacDrv32 I/O board, ID3DXSprite / ID3DXFont, setjmp / longjmp task exits, Shift-JIS); Android app: scripted fights at 60 fps; RetroArch ~46 fps in fights (GPU-bound: ~146 render-target switches a frame, 19 ms of GPU with RetroArch's own drawing); not played by hand yet |
 | The King of Fighters 2002 Unlimited Match | `kof2002um` | playable on macOS (NESiCAxLive: an emulated nesys client on its pipe, the NESiCA card reader on JVS, Shift-JIS); Android app and RetroArch: scripted fights at 60 fps; not played by hand yet |
 
 Every game in the maintainer's collection is playable except Samurai Shodown: Edge of Destiny, in progress.
