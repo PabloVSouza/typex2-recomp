@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.3 - 2026-11-27
 
 - **BlazBlue: Calamity Trigger: Bang's stage drawn in full.** The temple, the posts and
   chains in the foreground and the gears were black shapes
