@@ -2702,10 +2702,17 @@ static VkPipeline build_ahead(const PipeKey *k, VkShaderModule vm, VkShaderModul
 
 /* ---- replay -------------------------------------------------------------------- */
 static void run_frame(Frame *f) {
-    frame_begin();
-    /* X2_PACELOG: where a replay over 100 ms went, by command type, plus ring flushes */
+    /* X2_PACELOG[=<ms>]: where a replay over that long (default 100 ms) went: the wait for the
+     * GPU's earlier frame, then by command type, plus ring flushes */
     static int slowlog = -1;
-    if (slowlog < 0) slowlog = getenv("X2_PACELOG") != NULL;
+    static u64 slow_ns;
+    if (slowlog < 0) {
+        const char *e = getenv("X2_PACELOG");
+        slowlog = e != NULL;
+        slow_ns = (u64)(e && atoi(e) > 1 ? atoi(e) : 100) * 1000000u;
+    }
+    u64 w0 = x2_time_ns();
+    frame_begin();
     gfx_tex_create_hook = tex_announce; /* textures announced from now on get their memory ahead */
     u64 f0 = x2_time_ns(), by[32] = {0};
     u32 cnt[32] = {0};
@@ -2804,13 +2811,15 @@ static void run_frame(Frame *f) {
     frame_end();
     tex_room_update();
     u64 total = x2_time_ns() - f0;
-    if (slowlog && total > 100000000) {
+    static u64 slow_last;
+    if (slowlog && total + (f0 - w0) > slow_ns && f0 - slow_last > 1000000000u) { /* at most one a second */
+        slow_last = f0;
         static const char *const nm[] = {"?",          "tex create",  "tex upload",    "tex destroy",    "buf create",
                                          "buf upload", "buf destroy", "shader create", "shader destroy", "decl",
                                          "consts",     "clear",       "draw",          "draw up",        "present",
                                          "blit"};
         char s[400];
-        int o = snprintf(s, sizeof s, "vulkan: slow replay %.0f ms:", total / 1e6);
+        int o = snprintf(s, sizeof s, "vulkan: slow replay %.0f ms (GPU wait %.0f ms):", total / 1e6, (f0 - w0) / 1e6);
         for (u32 i = 1; i < 32 && o < (int)sizeof s - 40; i++)
             if (by[i] > 5000000)
                 o += snprintf(s + o, sizeof s - (size_t)o, " %s %u (%.0f ms)", i < 16 ? nm[i] : "other", cnt[i],
