@@ -7,13 +7,17 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.4 - 2026-11-27
 
 - **Windows: building with an installed LLVM.** With LLVM's own clang on `PATH` and no
   downloaded clang, building a game failed with "unsupported option '-fPIC' for target
   'x86_64-pc-windows-msvc'" ([#8](https://github.com/PabloVSouza/typex2-recomp/issues/8)).
   That clang builds for MSVC and can't build games; the launcher now says to download LLVM
   clang in Settings → Tools instead.
+- **Slow frames in the log (Vulkan).** `X2_PACELOG=<ms>` under a game's Environment logs
+  frames that take longer than that (at most one line a second), with how long each waited
+  for the GPU and where the rest went. It helps find slowdowns such as the one reported on
+  BlazBlue: Calamity Trigger's Litchi stage.
 
 ## 0.7.3 - 2026-11-27
 

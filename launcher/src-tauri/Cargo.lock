@@ -4552,7 +4552,7 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "typex2-launcher"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "jni 0.21.1",
  "ndk-context",
