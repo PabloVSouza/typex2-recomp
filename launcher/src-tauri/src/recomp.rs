@@ -362,7 +362,27 @@ fn compiler(data: &Path, kit: &Kit) -> Result<Compiler> {
         return Ok(Compiler { cc: llvm.clang, compile, link });
     }
     let cc = kit::cc().ok_or("No C compiler: download LLVM clang in Settings → Tools.")?;
+    if cfg!(windows) && !targets_mingw(&cc) {
+        // LLVM's own Windows clang targets MSVC: no MinGW headers or C runtime, and it cannot
+        // link against x2-player's MinGW import library
+        return Err(format!(
+            "{} builds for MSVC; games need a MinGW clang: download LLVM clang in Settings → Tools.",
+            cc.display()
+        ));
+    }
     Ok(Compiler { cc, compile: Vec::new(), link: shared })
+}
+
+/// Whether a clang builds for MinGW (`x86_64-w64-windows-gnu`), as x2-player on Windows is built.
+fn targets_mingw(cc: &Path) -> bool {
+    Command::new(cc)
+        .arg("-dumpmachine")
+        .output()
+        .map(|o| {
+            let t = String::from_utf8_lossy(&o.stdout);
+            t.contains("mingw") || t.contains("windows-gnu")
+        })
+        .unwrap_or(false)
 }
 
 pub fn build_library(ctx: &Ctx, data: &Path, kit: &Kit, game: &Game, exe: &Path, jobs: usize) -> Result<Value> {
@@ -406,8 +426,11 @@ pub fn build_library(ctx: &Ctx, data: &Path, kit: &Kit, game: &Game, exe: &Path,
                 let mut cmd = Command::new(&cc.cc);
                 cmd.args(&cc.compile);
                 // the flags x2_add_game uses for generated code (runtime/CMakeLists.txt)
-                cmd.args(["-c", "-w", "-fno-strict-aliasing", "-fwrapv", "-fno-semantic-interposition", "-O1", "-fPIC"])
-                    .arg("-I")
+                cmd.args(["-c", "-w", "-fno-strict-aliasing", "-fwrapv", "-fno-semantic-interposition", "-O1"]);
+                if !cfg!(windows) {
+                    cmd.arg("-fPIC"); // Windows code is position-independent as is; clang rejects the flag for MSVC
+                }
+                cmd.arg("-I")
                     .arg(&gen)
                     .arg("-I")
                     .arg(&include)

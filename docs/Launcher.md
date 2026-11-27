@@ -88,7 +88,9 @@ The downloaded clang has no OS SDK:
 - The C library's functions are looked up when the player loads the game.
 
 Without downloads, tools already installed are used instead (Xcode Command
-Line Tools, CMake, Ninja, an NDK found under the Android SDK).
+Line Tools, CMake, Ninja, an NDK found under the Android SDK). On Windows a clang
+on `PATH` is used only if it builds for MinGW, as `x2-player` is built; LLVM's own
+Windows clang builds for MSVC, so the launcher asks for the download instead.
 
 ## What a release contains
 
