@@ -128,14 +128,15 @@ fn ndk() -> Option<Package> {
 
 
 /// Android platform-tools r37.0.3 (adb), to send exports to a device; SHA-1 from Google's SDK
-/// repository manifest (repository2-3.xml). One build per OS (no Linux arm64 build).
+/// repository manifest (repository2-3.xml). One build per OS (no Linux arm64 build). Google rebuilt
+/// the Windows and macOS zips under the same names on 2026-11-16: pins updated from the manifest.
 fn platform_tools() -> Option<Package> {
     let (url, size, sum) = if cfg!(target_os = "macos") {
-        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-darwin.zip", 16597640, "eca4effbe35f4968139b051bbb16753302a3c33c")
+        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-darwin.zip", 16597626, "d48920e2650321710b4d15d3acd9e277d59cd55b")
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         ("https://dl.google.com/android/repository/platform-tools_r37.0.3-linux.zip", 9571024, "e1579b288a7ae4e9bc28dedec6a154d78b3c04ed")
     } else if cfg!(windows) {
-        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-win.zip", 8188595, "b3fde5239ad89229d5a9178375b81c9887a24172")
+        ("https://dl.google.com/android/repository/platform-tools_r37.0.3-win.zip", 8188601, "7fea85bc18d0480bc81d3603952d666f49496e5a")
     } else {
         return None;
     };
