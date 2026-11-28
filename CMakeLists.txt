@@ -20,9 +20,9 @@ if(X2_BUILD_TOOLS AND NOT CMAKE_CROSSCOMPILING)
   if(X2_FETCH_CAPSTONE)
     include(FetchContent)
     FetchContent_Declare(capstone
-      GIT_REPOSITORY https://github.com/capstone-engine/capstone.git
-      GIT_TAG 5.0.1
-      GIT_SHALLOW TRUE)
+      URL https://github.com/capstone-engine/capstone/archive/refs/tags/5.0.1.tar.gz
+      URL_HASH SHA256=2b9c66915923fdc42e0e32e2a9d7d83d3534a45bb235e163a70047951890c01a
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     set(CAPSTONE_ARCHITECTURE_DEFAULT OFF CACHE BOOL "" FORCE)
     set(CAPSTONE_X86_SUPPORT ON CACHE BOOL "" FORCE)
     set(CAPSTONE_BUILD_TESTS OFF CACHE BOOL "" FORCE)

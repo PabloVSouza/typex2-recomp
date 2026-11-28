@@ -132,9 +132,9 @@ if(ANDROID OR (X2_DESKTOP_VULKAN AND NOT APPLE))
   set(GLSLANG_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
   set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
   FetchContent_Declare(glslang
-    GIT_REPOSITORY https://github.com/KhronosGroup/glslang.git
-    GIT_TAG 16.6.0
-    GIT_SHALLOW TRUE)
+    URL https://github.com/KhronosGroup/glslang/archive/refs/tags/16.6.0.tar.gz
+    URL_HASH SHA256=9c09b901149c729df745057dafa815278aaa101b84d2b6e14f16a42de52f97f2
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(glslang)
   if(ANDROID)
     set(X2_VK_LIBS glslang glslang-default-resource-limits vulkan)
@@ -161,9 +161,9 @@ if(X2_STANDALONE)
     else()
       include(FetchContent)
       FetchContent_Declare(SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.4.20
-        GIT_SHALLOW TRUE)
+        URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
       FetchContent_MakeAvailable(SDL3)
       set(X2_SDL3_SOURCE_DIR ${sdl3_SOURCE_DIR} CACHE INTERNAL "")
     endif()
@@ -178,9 +178,9 @@ if(X2_STANDALONE)
       set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
       include(FetchContent)
       FetchContent_Declare(SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.4.20
-        GIT_SHALLOW TRUE)
+        URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
       FetchContent_MakeAvailable(SDL3)
     endif()
   endif()
