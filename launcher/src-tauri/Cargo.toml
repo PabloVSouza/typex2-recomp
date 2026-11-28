@@ -1,6 +1,6 @@
 [package]
 name = "typex2-launcher"
-version = "0.7.5"
+version = "0.7.6"
 edition = "2021"
 description = "Launcher and build tool for typex2-recomp"
 license = "GPL-3.0-or-later"

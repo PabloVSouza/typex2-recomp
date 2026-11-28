@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.6 - 2026-11-28
 
 - **Android exports without git.** Exporting game packs or the RetroArch core failed with
   "Configuring failed ... FetchContent" on computers without git (most Windows PCs): two
