@@ -11,7 +11,9 @@ games are recompiled on your computer from your own files.
 
 - **adb downloads again on Windows and macOS.** Google replaced the Android platform tools
   37.0.3 downloads with rebuilt files under the same names, so Settings → Tools refused them
-  ("its checksum differs"). The launcher now expects the new files.
+  ("its checksum differs"). The launcher now expects the new files, and if Google replaces
+  a file again, it checks the download against the checksum Google publishes for it instead
+  of refusing it.
 
 ## 0.7.4 - 2026-11-27
 

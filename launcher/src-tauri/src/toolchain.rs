@@ -274,7 +274,7 @@ pub fn install(ctx: &Ctx, data: &Path, ids: &[String]) -> Result<serde_json::Val
             (Hasher::S1(h), Sum::Sha1(w)) => (format!("{:x}", h.finalize()), w),
             _ => unreachable!(),
         };
-        if sum != want {
+        if sum != want && google_sha1(&client, p.url).as_deref() != Some(sum.as_str()) {
             let _ = fs::remove_file(&archive);
             return Err(format!("The downloaded {} is not the expected file (its checksum differs).", p.name));
         }
@@ -288,6 +288,27 @@ pub fn install(ctx: &Ctx, data: &Path, ids: &[String]) -> Result<serde_json::Val
         done.push(p.id);
     }
     Ok(json!({"installed": done}))
+}
+
+const GOOGLE_REPO: &str = "https://dl.google.com/android/repository/";
+
+/// The SHA-1 Google's SDK manifest gives today for one of its files. Google rebuilds files
+/// under the same name (platform-tools 37.0.3, 2026-11-16), so a pin that no longer matches
+/// is checked against the manifest before the download is refused.
+fn google_sha1(client: &reqwest::blocking::Client, url: &str) -> Option<String> {
+    let name = url.strip_prefix(GOOGLE_REPO)?;
+    let xml = client.get(format!("{GOOGLE_REPO}repository2-3.xml")).send().ok()?.text().ok()?;
+    manifest_sha1(&xml, name)
+}
+
+fn manifest_sha1(xml: &str, name: &str) -> Option<String> {
+    // <complete><size>..</size><checksum type="sha1">..</checksum><url>name</url></complete>
+    let at = xml.find(&format!("<url>{name}</url>"))?;
+    let block = &xml[xml[..at].rfind("<complete>")?..at];
+    let tag = "<checksum type=\"sha1\">";
+    let start = block.find(tag)? + tag.len();
+    let sum = &block[start..start + block[start..].find('<')?];
+    (sum.len() == 40 && sum.bytes().all(|b| b.is_ascii_hexdigit())).then(|| sum.to_ascii_lowercase())
 }
 
 /// tar (bsdtar on macOS and Windows 10+ also reads zip); unzip for zips on Linux.
@@ -328,6 +349,28 @@ pub fn disk_use(data: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manifest_checksum_is_the_files_own() {
+        let xml = r#"<archive><complete><size>1</size><checksum type="sha1">aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</checksum><url>a-win.zip</url></complete></archive>
+<archive><complete><size>2</size><checksum type="sha1">BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB</checksum><url>b-win.zip</url></complete></archive>
+<archive><complete><size>3</size><url>c-win.zip</url></complete></archive>"#;
+        assert_eq!(manifest_sha1(xml, "a-win.zip").as_deref(), Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        assert_eq!(manifest_sha1(xml, "b-win.zip").as_deref(), Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        assert_eq!(manifest_sha1(xml, "c-win.zip"), None);
+        assert_eq!(manifest_sha1(xml, "d-win.zip"), None);
+    }
+
+    /// `cargo test -- --ignored`: are the pins of Google's files still what Google serves?
+    #[test]
+    #[ignore]
+    fn google_pins_match_the_manifest() {
+        let client = reqwest::blocking::Client::builder().user_agent("typex2-launcher").build().unwrap();
+        for p in packages().into_iter().filter(|p| p.url.starts_with(GOOGLE_REPO)) {
+            let Sum::Sha1(pin) = p.sum else { panic!("{}: Google publishes SHA-1", p.id) };
+            assert_eq!(google_sha1(&client, p.url).as_deref(), Some(pin), "{}", p.url);
+        }
+    }
 
     #[test]
     fn nested_archive_folders_are_searched() {

@@ -81,6 +81,13 @@ then run with only those tools and the OS's base folders on `PATH`.
 | CMake | 4.5.0 | Exports | SHA-256 from the GitHub release |
 | Ninja | 1.13.2 | Exports | SHA-256 from the GitHub release |
 | Android NDK | r30 | Android exports | SHA-1 from Google's SDK repository manifest |
+| Android platform tools (adb) | 37.0.3 | Sending exports to a device | SHA-1 from Google's SDK repository manifest |
+
+Google sometimes rebuilds a file under the same name (platform-tools 37.0.3 on
+2026-11-16). When a Google download doesn't match its pin, the launcher reads the
+manifest (`repository2-3.xml` on dl.google.com) and accepts the file if it matches
+the SHA-1 listed there. `cargo test -- --ignored` in `launcher/src-tauri` checks the
+pins against the live manifest.
 
 The downloaded clang has no OS SDK:
 - Generated code compiles against clang's own headers plus small stand-ins for
