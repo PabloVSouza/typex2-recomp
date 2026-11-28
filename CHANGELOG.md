@@ -7,7 +7,7 @@ Versions follow [semantic versioning](https://semver.org); before 1.0 a minor
 version may change how things work. Releases carry this project's code only:
 games are recompiled on your computer from your own files.
 
-## Unreleased
+## 0.7.5 - 2026-11-28
 
 - **adb downloads again on Windows and macOS.** Google replaced the Android platform tools
   37.0.3 downloads with rebuilt files under the same names, so Settings → Tools refused them
